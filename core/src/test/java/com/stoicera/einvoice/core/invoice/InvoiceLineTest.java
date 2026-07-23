@@ -8,6 +8,7 @@ import com.stoicera.einvoice.core.money.Money;
 import com.stoicera.einvoice.core.tax.VatRate;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 class InvoiceLineTest {
 
@@ -95,5 +96,64 @@ class InvoiceLineTest {
     assertThatThrownBy(() -> new InvoiceLine("1", "x", BigDecimal.ONE, "C62", BigDecimal.ONE, null))
         .isInstanceOf(InvariantViolationException.class)
         .hasMessageContaining("VAT");
+  }
+
+  @Test
+  @Timeout(5)
+  void astronomicalQuantityAndPriceAreRejected() {
+    assertThatThrownBy(
+            () ->
+                new InvoiceLine(
+                    "1",
+                    "Bombe",
+                    new BigDecimal("1E+100000"),
+                    "C62",
+                    BigDecimal.ONE,
+                    VatRate.STANDARD_20))
+        .isInstanceOf(InvariantViolationException.class);
+    assertThatThrownBy(
+            () ->
+                new InvoiceLine(
+                    "1",
+                    "Bombe",
+                    BigDecimal.ONE,
+                    "C62",
+                    new BigDecimal("1E+100000"),
+                    VatRate.STANDARD_20))
+        .isInstanceOf(InvariantViolationException.class);
+  }
+
+  @Test
+  void quantityAndPriceIntegerDigitCeilings() {
+    // 7 integer digits max for quantity, 8 for unit price -> product stays within Money's 15
+    InvoiceLine max =
+        new InvoiceLine(
+            "1",
+            "Grenze",
+            new BigDecimal("9999999"),
+            "C62",
+            new BigDecimal("99999999"),
+            VatRate.STANDARD_20);
+    assertThat(max.netAmount(Money.EUR).amount()).isEqualByComparingTo("999999890000001.00");
+    assertThatThrownBy(
+            () ->
+                new InvoiceLine(
+                    "1",
+                    "X",
+                    new BigDecimal("10000000"),
+                    "C62",
+                    BigDecimal.ONE,
+                    VatRate.STANDARD_20))
+        .isInstanceOf(InvariantViolationException.class);
+    assertThatThrownBy(
+            () ->
+                new InvoiceLine(
+                    "1",
+                    "X",
+                    BigDecimal.ONE,
+                    "C62",
+                    new BigDecimal("100000000"),
+                    VatRate.STANDARD_20))
+        .isInstanceOf(InvariantViolationException.class);
   }
 }

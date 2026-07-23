@@ -21,6 +21,20 @@ public record InvoiceLine(
 
   private static final int MAX_SCALE = 4;
 
+  /**
+   * Defensive DoS bound, not a business rule: 7 integer digits for quantity, combined with {@link
+   * #MAX_UNIT_PRICE_INTEGER_DIGITS}'s 8, keeps the line-net product (quantity × unitPrice) always
+   * representable within {@link Money#MAX_INTEGER_DIGITS}'s 15 digits.
+   */
+  private static final int MAX_QUANTITY_INTEGER_DIGITS = 7;
+
+  /**
+   * Defensive DoS bound, not a business rule: 8 integer digits for unit price, combined with {@link
+   * #MAX_QUANTITY_INTEGER_DIGITS}'s 7, keeps the line-net product (quantity × unitPrice) always
+   * representable within {@link Money#MAX_INTEGER_DIGITS}'s 15 digits.
+   */
+  private static final int MAX_UNIT_PRICE_INTEGER_DIGITS = 8;
+
   public InvoiceLine {
     requireNonBlank(id, "line id");
     requireNonBlank(description, "line description");
@@ -28,12 +42,20 @@ public record InvoiceLine(
     if (quantity == null || quantity.signum() == 0) {
       throw new InvariantViolationException("Line quantity must be non-zero");
     }
+    if (quantity.precision() - quantity.scale() > MAX_QUANTITY_INTEGER_DIGITS) {
+      throw new InvariantViolationException(
+          "Line quantity exceeds %d integer digits".formatted(MAX_QUANTITY_INTEGER_DIGITS));
+    }
     if (quantity.scale() > MAX_SCALE) {
       throw new InvariantViolationException(
           "Line quantity %s exceeds scale %d".formatted(quantity.toPlainString(), MAX_SCALE));
     }
     if (unitPrice == null || unitPrice.signum() < 0) {
       throw new InvariantViolationException("Unit price must be non-negative (EN 16931 BR-27)");
+    }
+    if (unitPrice.precision() - unitPrice.scale() > MAX_UNIT_PRICE_INTEGER_DIGITS) {
+      throw new InvariantViolationException(
+          "Unit price exceeds %d integer digits".formatted(MAX_UNIT_PRICE_INTEGER_DIGITS));
     }
     if (unitPrice.scale() > MAX_SCALE) {
       throw new InvariantViolationException(

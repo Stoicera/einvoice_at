@@ -19,12 +19,19 @@ public record Money(BigDecimal amount, Currency currency) implements Comparable<
   public static final RoundingMode ROUNDING = RoundingMode.HALF_UP;
   public static final Currency EUR = Currency.getInstance("EUR");
 
+  /** Defensive ceiling: amounts beyond 15 integer digits are absurd for invoices and can OOM. */
+  public static final int MAX_INTEGER_DIGITS = 15;
+
   public Money {
     if (amount == null) {
       throw new InvariantViolationException("Money amount must not be null");
     }
     if (currency == null) {
       throw new InvariantViolationException("Money currency must not be null");
+    }
+    if (integerDigits(amount) > MAX_INTEGER_DIGITS) {
+      throw new InvariantViolationException(
+          "Money amount exceeds %d integer digits".formatted(MAX_INTEGER_DIGITS));
     }
     if (amount.scale() > SCALE) {
       throw new InvariantViolationException(
@@ -46,6 +53,10 @@ public record Money(BigDecimal amount, Currency currency) implements Comparable<
   public static Money rounded(BigDecimal raw, Currency currency) {
     if (raw == null) {
       throw new InvariantViolationException("Money amount must not be null");
+    }
+    if (integerDigits(raw) > MAX_INTEGER_DIGITS) {
+      throw new InvariantViolationException(
+          "Money amount exceeds %d integer digits".formatted(MAX_INTEGER_DIGITS));
     }
     return new Money(raw.setScale(SCALE, ROUNDING), currency);
   }
@@ -86,6 +97,10 @@ public record Money(BigDecimal amount, Currency currency) implements Comparable<
   @Override
   public int compareTo(Money other) {
     return amount.compareTo(sameCurrency(other).amount);
+  }
+
+  private static int integerDigits(BigDecimal value) {
+    return value.precision() - value.scale();
   }
 
   private Money sameCurrency(Money other) {

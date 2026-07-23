@@ -11,6 +11,7 @@ import net.jqwik.api.Property;
 import net.jqwik.api.constraints.BigRange;
 import net.jqwik.api.constraints.Scale;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 class MoneyTest {
 
@@ -94,6 +95,26 @@ class MoneyTest {
     assertThatThrownBy(() -> Money.rounded(null, Money.EUR))
         .isInstanceOf(InvariantViolationException.class)
         .hasMessageContaining("amount");
+  }
+
+  @Test
+  @Timeout(5)
+  void astronomicalExponentIsRejectedNotMaterialized() {
+    assertThatThrownBy(() -> Money.of("1E+1000000000", Money.EUR))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("integer digits");
+    assertThatThrownBy(() -> Money.rounded(new BigDecimal("1E+1000000000"), Money.EUR))
+        .isInstanceOf(InvariantViolationException.class);
+    assertThatThrownBy(() -> Money.of("1.00", Money.EUR).times(new BigDecimal("1E+1000000000")))
+        .isInstanceOf(InvariantViolationException.class);
+  }
+
+  @Test
+  void fifteenIntegerDigitsAreTheCeiling() {
+    assertThat(Money.of("999999999999999.99", Money.EUR).amount())
+        .isEqualByComparingTo("999999999999999.99");
+    assertThatThrownBy(() -> Money.of("1000000000000000.00", Money.EUR))
+        .isInstanceOf(InvariantViolationException.class);
   }
 
   // jqwik canary: proves the jqwik engine runs alongside JUnit Platform 6.
