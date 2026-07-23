@@ -84,4 +84,37 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- Mutation testing gives the coverage number teeth; run via CI job or
+         ./mvnw -pl core -am -Pmutation test-compile org.pitest:pitest-maven:mutationCoverage -->
+    <profile>
+      <id>mutation</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.pitest</groupId>
+            <artifactId>pitest-maven</artifactId>
+            <version>${pitest.version}</version>
+            <dependencies>
+              <dependency>
+                <groupId>org.pitest</groupId>
+                <artifactId>pitest-junit5-plugin</artifactId>
+                <version>${pitest-junit5.version}</version>
+              </dependency>
+            </dependencies>
+            <configuration>
+              <targetClasses>
+                <param>com.stoicera.einvoice.core.*</param>
+              </targetClasses>
+              <!-- Measured mutation score was 95% (95/100 mutants killed) on 2026-07-24;
+                   gate set to (measured - 5) to leave headroom for benign survivors. -->
+              <mutationThreshold>90</mutationThreshold>
+              <timestampedReports>false</timestampedReports>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

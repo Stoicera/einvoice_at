@@ -56,6 +56,13 @@
     <jqwik.version>1.10.1</jqwik.version>
     <archunit.version>1.4.2</archunit.version>
     <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
+
+    <!-- Mutation testing. Versions verified against Maven Central maven-metadata.xml
+         on 2026-07-24 (the solrsearch API reports a stale latest). pitest 1.25.8 bundles
+         ASM 9.10.1, which reads class-file major version 69 (Java 25 bytecode);
+         pitest-junit5-plugin 1.2.3 requires pitest 1.19.4+, so the pair is compatible. -->
+    <pitest.version>1.25.8</pitest.version>
+    <pitest-junit5.version>1.2.3</pitest-junit5.version>
   </properties>
 
   <dependencyManagement>

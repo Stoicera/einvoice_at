@@ -63,6 +63,7 @@ Formatting is google-java-format, enforced by Spotless in every build and in CI.
 JUnit 5 + AssertJ + Mockito for unit tests, ArchUnit for module-boundary rules, Testcontainers for integration tests, Selenium WebDriver for E2E — built out milestone by milestone per [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md). Currently: `core` domain model at 100 % line/branch coverage (JaCoCo gate: 95/90), including
 a [jqwik](https://jqwik.net) property suite for money/VAT arithmetic and an ArchUnit rule
 pinning `core` to JDK-only dependencies. Plus the application smoke test on the health endpoint.
+Mutation testing ([PIT](https://pitest.org)) gates the `core` module in CI, so the coverage number has teeth.
 
 ## Deployment
 
