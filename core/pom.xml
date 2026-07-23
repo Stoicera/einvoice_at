@@ -34,4 +34,26 @@
       <artifactId>archunit</artifactId>
     </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <!-- jqwik property classes use the *Properties suffix, which Surefire's default
+           name filter (**/Test*, **/*Test, **/*Tests, **/*TestCase) does not match. Extend
+           the include set so these classes are discovered and actually executed, rather than
+           compiling silently and never running. See the jqwik Maven setup guide. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <includes>
+            <include>**/Test*.java</include>
+            <include>**/*Test.java</include>
+            <include>**/*Tests.java</include>
+            <include>**/*TestCase.java</include>
+            <include>**/*Properties.java</include>
+          </includes>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>
