@@ -98,6 +98,18 @@ class InvoiceArithmeticPropertyTest {
     assertThat(invoice.totals().payableAmount().amount()).isGreaterThanOrEqualTo(BigDecimal.ZERO);
   }
 
+  @Property
+  void everyDerivedAmountCarriesTheInvoiceCurrency(@ForAll("invoices") Invoice invoice) {
+    assertThat(invoice.totals().netTotal().currency()).isEqualTo(invoice.currency());
+    assertThat(invoice.totals().taxTotal().currency()).isEqualTo(invoice.currency());
+    assertThat(invoice.totals().grossTotal().currency()).isEqualTo(invoice.currency());
+    assertThat(invoice.totals().payableAmount().currency()).isEqualTo(invoice.currency());
+    for (VatBreakdownEntry entry : invoice.vatBreakdown()) {
+      assertThat(entry.taxableAmount().currency()).isEqualTo(invoice.currency());
+      assertThat(entry.taxAmount().currency()).isEqualTo(invoice.currency());
+    }
+  }
+
   // ---- structural properties (kept: they check ordering/exemption shape, not arithmetic) ----
 
   @Property

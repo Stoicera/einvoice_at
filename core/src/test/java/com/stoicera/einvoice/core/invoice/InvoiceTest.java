@@ -15,6 +15,7 @@ import com.stoicera.einvoice.core.tax.VatExemptionReason;
 import com.stoicera.einvoice.core.tax.VatRate;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Currency;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -371,6 +372,27 @@ class InvoiceTest {
   @Test
   void currencyDefaultsToEur() {
     assertThat(minimal().build().currency()).isEqualTo(Money.EUR);
+  }
+
+  @Test
+  void totalsAndBreakdownCarryTheInvoiceCurrency() {
+    Currency chf = Currency.getInstance("CHF");
+    Invoice invoice =
+        base()
+            .currency(chf)
+            .addLine(
+                new InvoiceLine(
+                    "1",
+                    "Beratung",
+                    new BigDecimal("2"),
+                    "HUR",
+                    new BigDecimal("150.00"),
+                    VatRate.STANDARD_20))
+            .build();
+    assertThat(invoice.totals().netTotal().currency()).isEqualTo(chf);
+    assertThat(invoice.totals().netTotal()).isEqualTo(Money.of("300.00", chf));
+    assertThat(invoice.totals().taxTotal()).isEqualTo(Money.of("60.00", chf));
+    assertThat(invoice.vatBreakdown().getFirst().taxableAmount().currency()).isEqualTo(chf);
   }
 
   @Test

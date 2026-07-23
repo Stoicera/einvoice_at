@@ -3,7 +3,6 @@ package com.stoicera.einvoice.core.property;
 import com.stoicera.einvoice.core.invoice.Invoice;
 import com.stoicera.einvoice.core.invoice.InvoiceLine;
 import com.stoicera.einvoice.core.invoice.InvoiceTypeCode;
-import com.stoicera.einvoice.core.money.Money;
 import com.stoicera.einvoice.core.party.Address;
 import com.stoicera.einvoice.core.party.Party;
 import com.stoicera.einvoice.core.tax.VatCategory;
@@ -12,6 +11,7 @@ import com.stoicera.einvoice.core.tax.VatRate;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.Currency;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -30,7 +30,21 @@ final class Generators {
   private static final Party BUYER =
       new Party("Bund", new Address("Ballhausplatz 2", "Wien", "1010", "AT"), "ATU99999999");
 
+  // All five have 2 fraction digits — Money.SCALE is fixed at 2 by design; non-2-digit
+  // currencies like JPY are out of scope until the model supports them.
+  private static final List<Currency> CURRENCIES =
+      List.of(
+          Currency.getInstance("EUR"),
+          Currency.getInstance("USD"),
+          Currency.getInstance("CHF"),
+          Currency.getInstance("GBP"),
+          Currency.getInstance("SEK"));
+
   private Generators() {}
+
+  static Arbitrary<Currency> currencies() {
+    return Arbitraries.of(CURRENCIES);
+  }
 
   static Arbitrary<BigDecimal> moneyAmounts() {
     return Arbitraries.bigDecimals()
@@ -64,9 +78,11 @@ final class Generators {
 
   static Arbitrary<Invoice> invoices() {
     return Combinators.combine(
-            lines().list().ofMinSize(1).ofMaxSize(40), Arbitraries.of(InvoiceTypeCode.values()))
+            lines().list().ofMinSize(1).ofMaxSize(40),
+            Arbitraries.of(InvoiceTypeCode.values()),
+            currencies())
         .as(
-            (lineList, type) -> {
+            (lineList, type, currency) -> {
               // Keep generated invoices payable-non-negative (BT-3 invariant): compute the
               // oracle payable (net + per-rate tax, plain BigDecimal) and flip every quantity
               // if it would be negative. Flipping on the net sign alone is NOT enough — an
@@ -112,6 +128,7 @@ final class Generators {
                       .invoiceNumber("RE-PROP-1")
                       .type(type)
                       .issueDate(LocalDate.of(2026, 7, 23))
+                      .currency(currency)
                       .seller(SELLER)
                       .buyer(BUYER)
                       .exemptionReason(
@@ -130,11 +147,5 @@ final class Generators {
               }
               return builder.build();
             });
-  }
-
-  static Money sumOfLineNets(Invoice invoice) {
-    return invoice.lines().stream()
-        .map(l -> l.netAmount(invoice.currency()))
-        .reduce(Money.zero(invoice.currency()), Money::plus);
   }
 }
