@@ -64,3 +64,65 @@
 - M2 — ebInterface 6.1 erzeugen + validieren: `formats-ebinterface` (ph-ebinterface 8.1.0),
   `mapping` (canonical → ebInterface), validation stages XSD + Schematron (phive) + first
   business rules (Auftragsreferenz, IBAN), golden-file corpus.
+
+## 2026-07-24 — M1 hostile-review fix wave: complete
+
+**What**
+
+- Closed the P1/P2 findings (plus the cheap P3s) of the M1 hostile due-diligence review in
+  16 commits on `feat/m1-canonical-model` (PR #1).
+- Domain: `VatExemptionReason` (BT-120/BT-121) — required for categories AE/E, forbidden for
+  S/Z (BR-AE-10/BR-E-10/BR-S-10/BR-Z-10), AE defaults to VATEX-EU-AE "Reverse charge", E must
+  be explicit; `InvoiceTypeCode` (BT-3, 380/381) with credit direction carried by the type
+  code, never by sign — payable amount is now a non-negative hard invariant; BigDecimal
+  magnitude bounds (Money 15 integer digits, line quantity/price 7/8) rejecting OOM-class
+  inputs before `setScale`; exception hygiene (no IBAN/BIC echo ever, `Texts.safeEcho` for
+  all raw-input echoes, scale numbers instead of `toPlainString`, null/zero message split,
+  `NumberFormatException` wrapped); defensive length caps on all free-text fields;
+  countryCode/BIC trim+uppercase normalization behind pre-normalization length guards.
+- Tests: replaced the tautological jqwik properties with an independent plain-BigDecimal
+  oracle — falsifiability proven by oracle mutation; multi-currency generation (EUR/USD/CHF/
+  GBP/SEK) with a currency-propagation property verified against a deliberate EUR-hardcode;
+  ten hand-computed Austrian VAT pins (incl. HALF_UP-vs-HALF_EVEN discriminators);
+  deterministic boundary pins (scale-4, VAT 2.5/100 %, checksum-valid over-length IBAN,
+  HALF_UP midpoints both signs). `*Properties` classes renamed `*PropertyTest`, so the
+  hand-maintained Surefire include-list from the M1 entry above is deleted — superseded by
+  the default `**/*Test.java` includes.
+- PIT mutation testing gates `core` in CI: measured 95 % kill rate, threshold 90, ~20 s
+  (pitest-maven 1.25.8 / pitest-junit5-plugin 1.2.3, verified via maven-metadata.xml — the
+  solrsearch API under-reports latest versions).
+- Supply chain: all GitHub Actions pinned to verified commit SHAs (tag comments kept), base
+  images pinned tag+digest, Dependabot (maven/actions/docker, weekly), Surefire reports
+  uploaded on CI failure so jqwik seeds are recoverable. Compose: `POSTGRES_PASSWORD`
+  required (no default), Postgres bound to 127.0.0.1, README quickstart gained the
+  `.env` copy step.
+- Docs: ArchUnit claims scoped to reality (core rule since M1, cross-module rules M2/M3) in
+  README/ADR-0002/SPEC; SPEC §3 reconciled with the real field set (no `id`, `vatBreakdown`
+  not `taxSummary`, BT-3); ADR-0003 extended (exemption-reason decision, sign convention,
+  completed deliberately-absent list: K/G/O/L/M, BR-CO-26, Address vs BG-5); glossary
+  gained kaufmännisches Runden and Kleinunternehmer, Kennzahl kept (used as "KZ" in SPEC §7).
+
+**Decisions**
+
+- Coverage claims are measured-honest now: core at 99.46 % line / 97.81 % branch (gate
+  95/90) — the two uncovered branches are documented guard paths; mutation testing gives
+  the number teeth.
+- Final whole-branch review verdict "with fixes": the fixes (BIC echo gap in PaymentMeans,
+  breakdown-guard tests, Javadoc sync, honest coverage sentence) landed and were re-reviewed.
+- Deferred to an M2 hygiene note (final-review minors): breakdown-mismatch message echoes
+  the full supplied list (bounded but linear), VatExemptionReason trims before its length
+  cap, "standard-mandated" wording on the AE default, ADR Konsequenzen note on importing
+  standard-legal negative 380 invoices, message-style capitalization drift.
+
+**Verification**
+
+- `./mvnw verify` green across all modules (core: 147 tests incl. property + architecture;
+  JaCoCo 99.46/97.81, gate 95/90; PIT 95 %, gate 90). CI on PR #1 is a pull_request-triggered
+  run (push CI covers main only) — checked green after this push, including the new
+  mutation job.
+
+**Next**
+
+- Sebastian: merge decision on PR #1 (M1 + fix wave); jqwik keep-or-replace decision still
+  open; enable Dependabot in the GitHub repo settings after merge.
+- M2 — ebInterface 6.1 erzeugen + validieren (unchanged from the entry above).
