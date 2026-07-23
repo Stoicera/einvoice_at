@@ -1,6 +1,7 @@
 package com.stoicera.einvoice.core.invoice;
 
 import com.stoicera.einvoice.core.InvariantViolationException;
+import com.stoicera.einvoice.core.internal.Texts;
 import com.stoicera.einvoice.core.money.Money;
 import com.stoicera.einvoice.core.party.Party;
 import com.stoicera.einvoice.core.payment.PaymentMeans;
@@ -87,7 +88,7 @@ public record Invoice(
     for (InvoiceLine line : lines) {
       if (!ids.add(line.id())) {
         throw new InvariantViolationException(
-            "Line ids must be unique; duplicate id '%s'".formatted(line.id()));
+            "Line ids must be unique; duplicate id '%s'".formatted(Texts.safeEcho(line.id())));
       }
     }
     Map<VatCategory, VatExemptionReason> suppliedReasons = new EnumMap<>(VatCategory.class);

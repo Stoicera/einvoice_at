@@ -327,6 +327,20 @@ class InvoiceTest {
   }
 
   @Test
+  void duplicateLineIdMessageSanitizesControlCharacters() {
+    String idWithNewline = "1\n2";
+    assertThatThrownBy(
+            () ->
+                base()
+                    .addLine(line(idWithNewline, "1", "1.00", VatRate.STANDARD_20))
+                    .addLine(line(idWithNewline, "1", "1.00", VatRate.STANDARD_20))
+                    .build())
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("?")
+        .hasMessageNotContaining("\n");
+  }
+
+  @Test
   void builderRejectsNullLine() {
     assertThatThrownBy(() -> minimal().addLine(null))
         .isInstanceOf(InvariantViolationException.class)

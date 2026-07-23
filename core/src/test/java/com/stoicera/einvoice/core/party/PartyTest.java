@@ -115,6 +115,22 @@ class PartyTest {
   }
 
   @Test
+  void countryCodeAtSixteenCharactersIsRejectedByTheRegexNotTheLengthGuard() {
+    String sixteenCharsInvalid = "x".repeat(16);
+    assertThatThrownBy(() -> new Address("Hauptplatz 1", "Linz", "4020", sixteenCharsInvalid))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("ISO 3166-1 alpha-2");
+  }
+
+  @Test
+  void countryCodeOverSixteenCharactersIsRejectedBeforeNormalization() {
+    String overLimit = "x".repeat(17);
+    assertThatThrownBy(() -> new Address("Hauptplatz 1", "Linz", "4020", overLimit))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessage("Address country code exceeds 16 characters");
+  }
+
+  @Test
   void countryCodeRejectionMessageSanitizesAndBoundsTheEcho() {
     String withControlChar = "A\n" + "x".repeat(80);
     assertThatThrownBy(() -> new Address("Hauptplatz 1", "Linz", "4020", withControlChar))

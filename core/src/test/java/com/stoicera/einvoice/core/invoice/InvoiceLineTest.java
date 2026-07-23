@@ -76,17 +76,6 @@ class InvoiceLineTest {
     assertThatThrownBy(() -> line("1", "1.00001"))
         .isInstanceOf(InvariantViolationException.class)
         .hasMessageContaining("scale");
-  }
-
-  @Test
-  void scaleViolationMessagesStateScaleNumbersNotTheRawValue() {
-    // Never toPlainString() an unvalidated value: state the two scale numbers instead.
-    assertThatThrownBy(() -> line("1.00001", "1.00"))
-        .isInstanceOf(InvariantViolationException.class)
-        .hasMessage("Line quantity scale 5 exceeds scale 4");
-    assertThatThrownBy(() -> line("1", "1.00001"))
-        .isInstanceOf(InvariantViolationException.class)
-        .hasMessage("Unit price scale 5 exceeds scale 4");
     assertThatThrownBy(
             () ->
                 new InvoiceLine(
@@ -107,6 +96,17 @@ class InvoiceLineTest {
     assertThatThrownBy(() -> new InvoiceLine("1", "x", BigDecimal.ONE, "C62", BigDecimal.ONE, null))
         .isInstanceOf(InvariantViolationException.class)
         .hasMessageContaining("VAT");
+  }
+
+  @Test
+  void scaleViolationMessagesStateScaleNumbersNotTheRawValue() {
+    // Never toPlainString() an unvalidated value: state the two scale numbers instead.
+    assertThatThrownBy(() -> line("1.00001", "1.00"))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessage("Line quantity scale 5 exceeds scale 4");
+    assertThatThrownBy(() -> line("1", "1.00001"))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessage("Unit price scale 5 exceeds scale 4");
   }
 
   @Test

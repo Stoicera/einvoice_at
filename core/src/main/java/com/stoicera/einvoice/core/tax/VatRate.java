@@ -33,12 +33,14 @@ public record VatRate(VatCategory category, BigDecimal percentage) implements Co
       throw new InvariantViolationException("VAT percentage must not be null");
     }
     if (percentage.scale() > 2) {
+      // Never echo percentage.toPlainString() here: an astronomical scale would materialize a
+      // huge string before truncation could help. State the scale number instead (see Money,
+      // InvoiceLine).
       throw new InvariantViolationException(
-          "VAT percentage %s exceeds scale 2".formatted(percentage.toPlainString()));
+          "VAT percentage scale %d exceeds scale 2".formatted(percentage.scale()));
     }
     if (percentage.signum() < 0 || percentage.compareTo(new BigDecimal("100")) > 0) {
-      throw new InvariantViolationException(
-          "VAT percentage %s out of range [0, 100]".formatted(percentage.toPlainString()));
+      throw new InvariantViolationException("VAT percentage out of range [0, 100]");
     }
     if (category == VatCategory.STANDARD && percentage.signum() <= 0) {
       throw new InvariantViolationException("Category S requires a positive percentage");

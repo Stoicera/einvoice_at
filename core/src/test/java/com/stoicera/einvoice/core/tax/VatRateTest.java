@@ -86,6 +86,22 @@ class VatRateTest {
   }
 
   @Test
+  void scaleViolationMessageStatesTheScaleNumberNotTheRawValue() {
+    // Never toPlainString() an unvalidated value: state the scale number instead (see Money,
+    // InvoiceLine).
+    assertThatThrownBy(() -> new VatRate(VatCategory.STANDARD, new BigDecimal("20.00005")))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessage("VAT percentage scale 5 exceeds scale 2");
+  }
+
+  @Test
+  void outOfRangeMessageDoesNotEchoTheValue() {
+    assertThatThrownBy(() -> new VatRate(VatCategory.STANDARD, new BigDecimal("100.01")))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessage("VAT percentage out of range [0, 100]");
+  }
+
+  @Test
   void sortsByCategoryThenPercentageDescending() {
     assertThat(
             java.util.stream.Stream.of(
