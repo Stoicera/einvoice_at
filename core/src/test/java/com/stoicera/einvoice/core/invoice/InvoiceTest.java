@@ -33,13 +33,17 @@ class InvoiceTest {
         id, "Pos " + id, new BigDecimal(qty), "C62", new BigDecimal(price), rate);
   }
 
-  private static Invoice.Builder minimal() {
+  /** Builder with the common header fields set but no lines — for tests that supply their own. */
+  private static Invoice.Builder base() {
     return Invoice.builder()
         .invoiceNumber("RE-2026-001")
         .issueDate(LocalDate.of(2026, 7, 23))
         .seller(SELLER)
-        .buyer(BUYER)
-        .addLine(line("1", "2", "100.00", VatRate.STANDARD_20));
+        .buyer(BUYER);
+  }
+
+  private static Invoice.Builder minimal() {
+    return base().addLine(line("1", "2", "100.00", VatRate.STANDARD_20));
   }
 
   @Test
@@ -161,6 +165,7 @@ class InvoiceTest {
             () ->
                 new Invoice(
                     valid.invoiceNumber(),
+                    valid.type(),
                     valid.issueDate(),
                     valid.dueDate(),
                     valid.currency(),
@@ -190,6 +195,7 @@ class InvoiceTest {
             () ->
                 new Invoice(
                     valid.invoiceNumber(),
+                    valid.type(),
                     valid.issueDate(),
                     valid.dueDate(),
                     valid.currency(),
@@ -245,6 +251,7 @@ class InvoiceTest {
             () ->
                 new Invoice(
                     null,
+                    valid.type(),
                     valid.issueDate(),
                     valid.dueDate(),
                     valid.currency(),
@@ -263,6 +270,7 @@ class InvoiceTest {
             () ->
                 new Invoice(
                     valid.invoiceNumber(),
+                    valid.type(),
                     valid.issueDate(),
                     valid.dueDate(),
                     null,
@@ -281,6 +289,7 @@ class InvoiceTest {
             () ->
                 new Invoice(
                     valid.invoiceNumber(),
+                    valid.type(),
                     valid.issueDate(),
                     valid.dueDate(),
                     valid.currency(),
@@ -299,6 +308,7 @@ class InvoiceTest {
             () ->
                 new Invoice(
                     valid.invoiceNumber(),
+                    valid.type(),
                     valid.issueDate(),
                     valid.dueDate(),
                     valid.currency(),
@@ -361,5 +371,83 @@ class InvoiceTest {
   @Test
   void currencyDefaultsToEur() {
     assertThat(minimal().build().currency()).isEqualTo(Money.EUR);
+  }
+
+  @Test
+  void typeDefaultsToCommercialInvoice() {
+    assertThat(minimal().build().type()).isEqualTo(InvoiceTypeCode.COMMERCIAL_INVOICE);
+  }
+
+  @Test
+  void creditNoteTypeIsCarried() {
+    Invoice creditNote = minimal().type(InvoiceTypeCode.CREDIT_NOTE).build();
+    assertThat(creditNote.type()).isEqualTo(InvoiceTypeCode.CREDIT_NOTE);
+  }
+
+  @Test
+  void whollyNegativeInvoiceIsRejected() {
+    assertThatThrownBy(
+            () ->
+                base()
+                    .addLine(
+                        new InvoiceLine(
+                            "1",
+                            "Storno",
+                            new BigDecimal("-1"),
+                            "C62",
+                            new BigDecimal("100.00"),
+                            VatRate.STANDARD_20))
+                    .build())
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("must not be negative")
+        .hasMessageContaining("381");
+  }
+
+  @Test
+  void negativeLineWithinPositiveInvoiceIsAllowed() {
+    Invoice invoice =
+        base()
+            .addLine(
+                new InvoiceLine(
+                    "1",
+                    "Leistung",
+                    new BigDecimal("1"),
+                    "C62",
+                    new BigDecimal("100.00"),
+                    VatRate.STANDARD_20))
+            .addLine(
+                new InvoiceLine(
+                    "2",
+                    "Rabatt",
+                    new BigDecimal("-1"),
+                    "C62",
+                    new BigDecimal("10.00"),
+                    VatRate.STANDARD_20))
+            .build();
+    assertThat(invoice.totals().netTotal()).isEqualTo(Money.of("90.00", Money.EUR));
+  }
+
+  @Test
+  void nullTypeIsRejected() {
+    Invoice valid = minimal().build();
+    assertThatThrownBy(
+            () ->
+                new Invoice(
+                    valid.invoiceNumber(),
+                    null,
+                    valid.issueDate(),
+                    valid.dueDate(),
+                    valid.currency(),
+                    valid.orderReference(),
+                    valid.supplierNumber(),
+                    valid.seller(),
+                    valid.buyer(),
+                    valid.lines(),
+                    valid.paymentMeans(),
+                    valid.paymentTerms(),
+                    valid.vatBreakdown(),
+                    valid.totals()))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("type");
   }
 }

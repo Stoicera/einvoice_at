@@ -33,6 +33,7 @@ import java.util.TreeMap;
  */
 public record Invoice(
     String invoiceNumber,
+    InvoiceTypeCode type,
     LocalDate issueDate,
     LocalDate dueDate,
     Currency currency,
@@ -49,6 +50,9 @@ public record Invoice(
   public Invoice {
     if (invoiceNumber == null || invoiceNumber.isBlank()) {
       throw new InvariantViolationException("Invoice number must not be blank");
+    }
+    if (type == null) {
+      throw new InvariantViolationException("Invoice type code (BT-3) must not be null");
     }
     if (issueDate == null) {
       throw new InvariantViolationException("Invoice issue date must not be null");
@@ -98,6 +102,11 @@ public record Invoice(
       throw new InvariantViolationException(
           "Invoice totals %s do not match the totals derived from the lines %s"
               .formatted(totals, expectedTotals));
+    }
+    if (totals.payableAmount().isNegative()) {
+      throw new InvariantViolationException(
+          "Payable amount %s must not be negative; represent credits as a type 381 credit note"
+              .formatted(totals.payableAmount()));
     }
   }
 
@@ -149,6 +158,7 @@ public record Invoice(
   public static final class Builder {
 
     private String invoiceNumber;
+    private InvoiceTypeCode type = InvoiceTypeCode.COMMERCIAL_INVOICE;
     private LocalDate issueDate;
     private LocalDate dueDate;
     private Currency currency = Money.EUR;
@@ -166,6 +176,11 @@ public record Invoice(
 
     public Builder invoiceNumber(String invoiceNumber) {
       this.invoiceNumber = invoiceNumber;
+      return this;
+    }
+
+    public Builder type(InvoiceTypeCode type) {
+      this.type = type;
       return this;
     }
 
@@ -252,6 +267,7 @@ public record Invoice(
       }
       return new Invoice(
           invoiceNumber,
+          type,
           issueDate,
           dueDate,
           currency,
