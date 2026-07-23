@@ -55,9 +55,9 @@
 
 **Verification**
 
-- `./mvnw verify` green (61 core tests: unit + property + architecture; JaCoCo measured
-  100 % line / 100 % branch on core, gate 95/90).
-- CI green on push.
+- `./mvnw verify` green (63 core tests after the final-review fix wave: unit + property +
+  architecture; JaCoCo measured 100 % line / 100 % branch on core, gate 95/90).
+- CI run 30026798053 green on branch push (both jobs); PR #1.
 
 **Next**
 
