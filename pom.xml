@@ -53,6 +53,9 @@
     <spotless-maven-plugin.version>3.8.0</spotless-maven-plugin.version>
     <google-java-format.version>1.35.0</google-java-format.version>
     <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
+    <jqwik.version>1.10.1</jqwik.version>
+    <archunit.version>1.4.2</archunit.version>
+    <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
   </properties>
 
   <dependencyManagement>
@@ -87,10 +90,31 @@
         <artifactId>phive-rules-peppol</artifactId>
         <version>${phive-rules.version}</version>
       </dependency>
+      <dependency>
+        <groupId>net.jqwik</groupId>
+        <artifactId>jqwik</artifactId>
+        <version>${jqwik.version}</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>com.tngtech.archunit</groupId>
+        <artifactId>archunit</artifactId>
+        <version>${archunit.version}</version>
+        <scope>test</scope>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 
   <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.jacoco</groupId>
+          <artifactId>jacoco-maven-plugin</artifactId>
+          <version>${jacoco-maven-plugin.version}</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
