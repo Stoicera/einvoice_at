@@ -29,8 +29,11 @@ it, and the validation module (M2) compares documents against it.
    arithmetic). Austrian B2G profile rules (Auftragsreferenz mandatory, IBAN presence) are
    validation-module business rules — they produce German findings, not exceptions.
 5. **Deliberately absent (YAGNI, documented):** document- and line-level allowances/charges
-   (BG-20/BG-21), prepaid amounts, rounding amount (BT-114), multi-currency tax accounting.
-   Added when mapping (M2/M4) demonstrates the need, with property tests in the same PR.
+   (BG-20/BG-21), prepaid amounts, rounding amount (BT-114), multi-currency tax accounting; a
+   persistence `id` (the domain model is identity-free — database identity arrives with the
+   persistence layer in M3); SPEC §3's `taxSummary` is realized as `vatBreakdown` (EN 16931
+   BG-23 naming). Added when mapping (M2/M4) demonstrates the need, with property tests in the
+   same PR.
 
 ## Konsequenzen
 
