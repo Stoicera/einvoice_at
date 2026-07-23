@@ -5,6 +5,8 @@ import com.stoicera.einvoice.core.invoice.InvoiceLine;
 import com.stoicera.einvoice.core.money.Money;
 import com.stoicera.einvoice.core.party.Address;
 import com.stoicera.einvoice.core.party.Party;
+import com.stoicera.einvoice.core.tax.VatCategory;
+import com.stoicera.einvoice.core.tax.VatExemptionReason;
 import com.stoicera.einvoice.core.tax.VatRate;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -67,7 +69,10 @@ final class Generators {
                       .invoiceNumber("RE-PROP-1")
                       .issueDate(LocalDate.of(2026, 7, 23))
                       .seller(SELLER)
-                      .buyer(BUYER);
+                      .buyer(BUYER)
+                      .exemptionReason(
+                          VatCategory.EXEMPT,
+                          new VatExemptionReason(null, "Kleinunternehmer § 6 Abs 1 Z 27 UStG"));
               for (int i = 0; i < lineList.size(); i++) {
                 InvoiceLine l = lineList.get(i);
                 builder.addLine(

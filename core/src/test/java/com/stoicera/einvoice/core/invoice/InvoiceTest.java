@@ -10,6 +10,8 @@ import com.stoicera.einvoice.core.party.Party;
 import com.stoicera.einvoice.core.payment.Iban;
 import com.stoicera.einvoice.core.payment.PaymentMeans;
 import com.stoicera.einvoice.core.tax.VatBreakdownEntry;
+import com.stoicera.einvoice.core.tax.VatCategory;
+import com.stoicera.einvoice.core.tax.VatExemptionReason;
 import com.stoicera.einvoice.core.tax.VatRate;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -90,6 +92,60 @@ class InvoiceTest {
             .build();
     assertThat(invoice.totals().taxTotal()).isEqualTo(Money.zero(Money.EUR));
     assertThat(invoice.totals().payableAmount()).isEqualTo(Money.of("1000.00", Money.EUR));
+  }
+
+  @Test
+  void reverseChargeInvoiceDefaultsTheStandardExemptionReason() {
+    Invoice invoice =
+        Invoice.builder()
+            .invoiceNumber("RE-2026-003")
+            .issueDate(LocalDate.of(2026, 7, 23))
+            .seller(SELLER)
+            .buyer(BUYER)
+            .addLine(line("1", "1", "100.00", VatRate.REVERSE_CHARGE))
+            .build();
+    assertThat(invoice.vatBreakdown()).hasSize(1);
+    assertThat(invoice.vatBreakdown().getFirst().exemptionReason())
+        .isEqualTo(VatExemptionReason.REVERSE_CHARGE);
+  }
+
+  @Test
+  void exemptInvoiceWithoutReasonIsRejected() {
+    assertThatThrownBy(
+            () ->
+                Invoice.builder()
+                    .invoiceNumber("RE-2026-004")
+                    .issueDate(LocalDate.of(2026, 7, 23))
+                    .seller(SELLER)
+                    .buyer(BUYER)
+                    .addLine(line("1", "1", "100.00", VatRate.EXEMPT))
+                    .build())
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("BR-E-10");
+  }
+
+  @Test
+  void exemptInvoiceCarriesTheSuppliedReason() {
+    VatExemptionReason reason =
+        new VatExemptionReason(null, "Kleinunternehmer § 6 Abs 1 Z 27 UStG");
+    Invoice invoice =
+        Invoice.builder()
+            .invoiceNumber("RE-2026-005")
+            .issueDate(LocalDate.of(2026, 7, 23))
+            .seller(SELLER)
+            .buyer(BUYER)
+            .exemptionReason(VatCategory.EXEMPT, reason)
+            .addLine(line("1", "1", "100.00", VatRate.EXEMPT))
+            .build();
+    assertThat(invoice.vatBreakdown().getFirst().exemptionReason()).isEqualTo(reason);
+  }
+
+  @Test
+  void computeTotalsHandlesReverseChargeLinesWithoutReasons() {
+    List<InvoiceLine> lines = List.of(line("1", "1", "100.00", VatRate.REVERSE_CHARGE));
+    Totals totals = Invoice.computeTotals(lines, Money.EUR);
+    assertThat(totals.taxTotal()).isEqualTo(Money.zero(Money.EUR));
+    assertThat(totals.netTotal()).isEqualTo(Money.of("100.00", Money.EUR));
   }
 
   @Test

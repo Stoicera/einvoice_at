@@ -5,12 +5,16 @@ import com.stoicera.einvoice.core.money.Money;
 import com.stoicera.einvoice.core.party.Party;
 import com.stoicera.einvoice.core.payment.PaymentMeans;
 import com.stoicera.einvoice.core.tax.VatBreakdownEntry;
+import com.stoicera.einvoice.core.tax.VatCategory;
+import com.stoicera.einvoice.core.tax.VatExemptionReason;
 import com.stoicera.einvoice.core.tax.VatRate;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Currency;
+import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
@@ -19,7 +23,10 @@ import java.util.TreeMap;
  *
  * <p>The VAT breakdown and totals are <em>derived</em> from the lines: {@link Builder#build()}
  * computes them, and the canonical constructor re-verifies them, so an arithmetically inconsistent
- * invoice cannot be constructed — not even by calling the constructor directly.
+ * invoice cannot be constructed — not even by calling the constructor directly. Exemption reasons
+ * (BT-120/BT-121) are the exception: they are caller-supplied data, not derivable from the lines,
+ * so the constructor only structurally validates them (via {@link VatBreakdownEntry}) rather than
+ * recomputing them.
  *
  * <p>{@code orderReference} (Auftragsreferenz) and {@code supplierNumber} (Lieferantennummer) are
  * optional here; the Austrian federal B2G profile requires them via the validation module.
@@ -70,7 +77,16 @@ public record Invoice(
             "Line ids must be unique; duplicate id '%s'".formatted(line.id()));
       }
     }
-    List<VatBreakdownEntry> expectedBreakdown = computeVatBreakdown(lines, currency);
+    Map<VatCategory, VatExemptionReason> suppliedReasons = new EnumMap<>(VatCategory.class);
+    if (vatBreakdown != null) {
+      for (VatBreakdownEntry entry : vatBreakdown) {
+        if (entry.exemptionReason() != null) {
+          suppliedReasons.putIfAbsent(entry.rate().category(), entry.exemptionReason());
+        }
+      }
+    }
+    List<VatBreakdownEntry> expectedBreakdown =
+        computeVatBreakdown(lines, currency, suppliedReasons);
     if (!expectedBreakdown.equals(vatBreakdown)) {
       throw new InvariantViolationException(
           "VAT breakdown %s does not match the breakdown derived from the lines %s"
@@ -87,14 +103,19 @@ public record Invoice(
 
   /** Groups line nets by VAT rate and taxes each category sum (EN 16931 BR-CO-17). */
   public static List<VatBreakdownEntry> computeVatBreakdown(
-      List<InvoiceLine> lines, Currency currency) {
-    TreeMap<VatRate, Money> taxableByRate = new TreeMap<>();
-    for (InvoiceLine line : lines) {
-      taxableByRate.merge(line.vatRate(), line.netAmount(currency), Money::plus);
+      List<InvoiceLine> lines,
+      Currency currency,
+      Map<VatCategory, VatExemptionReason> exemptionReasons) {
+    if (exemptionReasons == null) {
+      throw new InvariantViolationException("Exemption reasons map must not be null");
     }
+    TreeMap<VatRate, Money> taxableByRate = taxableByRate(lines, currency);
     List<VatBreakdownEntry> entries = new ArrayList<>(taxableByRate.size());
     taxableByRate.forEach(
-        (rate, taxable) -> entries.add(new VatBreakdownEntry(rate, taxable, rate.taxOn(taxable))));
+        (rate, taxable) ->
+            entries.add(
+                new VatBreakdownEntry(
+                    rate, taxable, rate.taxOn(taxable), exemptionReasons.get(rate.category()))));
     return List.copyOf(entries);
   }
 
@@ -105,11 +126,19 @@ public record Invoice(
       net = net.plus(line.netAmount(currency));
     }
     Money tax = Money.zero(currency);
-    for (VatBreakdownEntry entry : computeVatBreakdown(lines, currency)) {
-      tax = tax.plus(entry.taxAmount());
+    for (Map.Entry<VatRate, Money> entry : taxableByRate(lines, currency).entrySet()) {
+      tax = tax.plus(entry.getKey().taxOn(entry.getValue()));
     }
     Money gross = net.plus(tax);
     return new Totals(net, tax, gross, gross);
+  }
+
+  private static TreeMap<VatRate, Money> taxableByRate(List<InvoiceLine> lines, Currency currency) {
+    TreeMap<VatRate, Money> taxableByRate = new TreeMap<>();
+    for (InvoiceLine line : lines) {
+      taxableByRate.merge(line.vatRate(), line.netAmount(currency), Money::plus);
+    }
+    return taxableByRate;
   }
 
   public static Builder builder() {
@@ -130,6 +159,8 @@ public record Invoice(
     private final List<InvoiceLine> lines = new ArrayList<>();
     private PaymentMeans paymentMeans;
     private String paymentTerms;
+    private final Map<VatCategory, VatExemptionReason> exemptionReasons =
+        new EnumMap<>(VatCategory.class);
 
     private Builder() {}
 
@@ -191,12 +222,33 @@ public record Invoice(
       return this;
     }
 
+    /**
+     * Exemption reason (BT-120/BT-121) for a VAT category present in the lines. Required for
+     * category E; category AE defaults to {@link VatExemptionReason#REVERSE_CHARGE}.
+     */
+    public Builder exemptionReason(VatCategory category, VatExemptionReason reason) {
+      if (category == null) {
+        throw new InvariantViolationException("VAT category must not be null");
+      }
+      if (reason == null) {
+        throw new InvariantViolationException("Exemption reason must not be null");
+      }
+      this.exemptionReasons.put(category, reason);
+      return this;
+    }
+
     public Invoice build() {
       if (lines.isEmpty()) {
         throw new InvariantViolationException("Invoice must have at least one line");
       }
       if (currency == null) {
         throw new InvariantViolationException("Invoice currency must not be null");
+      }
+      Map<VatCategory, VatExemptionReason> reasons = new EnumMap<>(exemptionReasons);
+      boolean hasReverseCharge =
+          lines.stream().anyMatch(l -> l.vatRate().category() == VatCategory.REVERSE_CHARGE);
+      if (hasReverseCharge) {
+        reasons.putIfAbsent(VatCategory.REVERSE_CHARGE, VatExemptionReason.REVERSE_CHARGE);
       }
       return new Invoice(
           invoiceNumber,
@@ -210,7 +262,7 @@ public record Invoice(
           List.copyOf(lines),
           paymentMeans,
           paymentTerms,
-          computeVatBreakdown(lines, currency),
+          computeVatBreakdown(lines, currency, reasons),
           computeTotals(lines, currency));
     }
   }

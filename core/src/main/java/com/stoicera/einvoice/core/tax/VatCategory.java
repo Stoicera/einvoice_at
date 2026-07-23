@@ -21,4 +21,9 @@ public enum VatCategory {
   public String code() {
     return code;
   }
+
+  /** Whether EN 16931 requires an exemption reason (BT-120/BT-121) for this category. */
+  public boolean requiresExemptionReason() {
+    return this == REVERSE_CHARGE || this == EXEMPT;
+  }
 }
