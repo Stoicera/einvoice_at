@@ -1,0 +1,17 @@
+# Build
+target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# Environment / secrets
+.env
+
+# OS / misc
+.DS_Store
+*.log

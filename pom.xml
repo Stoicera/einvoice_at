@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>4.1.0</version>
+    <relativePath/>
+  </parent>
+
+  <groupId>com.stoicera.einvoice</groupId>
+  <artifactId>einvoice-at</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+
+  <name>einvoice-at</name>
+  <description>Austrian e-invoicing platform: generate, validate and convert ebInterface 6.1 and Peppol BIS Billing 3.0 UBL</description>
+  <url>https://github.com/Stoicera/einvoice_at</url>
+
+  <licenses>
+    <license>
+      <name>Apache-2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+    </license>
+  </licenses>
+
+  <modules>
+    <module>core</module>
+    <module>formats-ebinterface</module>
+    <module>formats-ubl</module>
+    <module>mapping</module>
+    <module>validation</module>
+    <module>rendering</module>
+    <module>ai-assist</module>
+    <module>app</module>
+  </modules>
+
+  <properties>
+    <java.version>25</java.version>
+
+    <!-- e-invoice standards artefacts by Philip Helger (https://github.com/phax).
+         Versions verified against Maven Central on 2026-07-23; this set is mutually
+         compatible: phive-rules-parent-pom 4.4.1 itself builds against
+         ph-ebinterface 8.1.0, ph-ubl 10.2.0 and phive 12.1.0. -->
+    <ph-ebinterface.version>8.1.0</ph-ebinterface.version>
+    <ph-ubl.version>10.2.0</ph-ubl.version>
+    <phive.version>12.1.0</phive.version>
+    <phive-rules.version>4.4.1</phive-rules.version>
+
+    <spotless-maven-plugin.version>3.8.0</spotless-maven-plugin.version>
+    <google-java-format.version>1.35.0</google-java-format.version>
+    <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.helger</groupId>
+        <artifactId>ph-ebinterface</artifactId>
+        <version>${ph-ebinterface.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.helger.ubl</groupId>
+        <artifactId>ph-ubl21</artifactId>
+        <version>${ph-ubl.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.helger.phive</groupId>
+        <artifactId>phive-api</artifactId>
+        <version>${phive.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.helger.phive</groupId>
+        <artifactId>phive-xml</artifactId>
+        <version>${phive.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.helger.phive.rules</groupId>
+        <artifactId>phive-rules-ebinterface</artifactId>
+        <version>${phive-rules.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.helger.phive.rules</groupId>
+        <artifactId>phive-rules-peppol</artifactId>
+        <version>${phive-rules.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>${maven-enforcer-plugin.version}</version>
+        <executions>
+          <execution>
+            <id>enforce-environment</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireJavaVersion>
+                  <version>[25,)</version>
+                </requireJavaVersion>
+                <requireMavenVersion>
+                  <version>[3.9,)</version>
+                </requireMavenVersion>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <version>${spotless-maven-plugin.version}</version>
+        <configuration>
+          <java>
+            <googleJavaFormat>
+              <version>${google-java-format.version}</version>
+            </googleJavaFormat>
+            <removeUnusedImports/>
+          </java>
+        </configuration>
+        <executions>
+          <execution>
+            <id>spotless-check</id>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <phase>validate</phase>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
