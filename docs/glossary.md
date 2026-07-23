@@ -11,4 +11,5 @@ German domain terms stay German in code, docs and messages where they are legall
 | **UID(-Nummer)** | Umsatzsteuer-Identifikationsnummer — VAT identification number (ATU…). |
 | **e-rechnung.gv.at** | The Austrian federal portal/web service that receives B2G e-invoices (ebInterface or Peppol BIS). |
 | **Prüfbericht** | Validation report. The structured, German-first output of the validation pipeline. |
-| **Kennzahl (KZ)** | Figure/total field referenced in Austrian tax contexts; used in total-consistency business rules. |
+| **kaufmännisches Runden** | Commercial rounding: round half away from zero (`HALF_UP`). The rounding mode used throughout `Money`. |
+| **Kleinunternehmer** | Small-business owner exempt from USt per § 6 Abs 1 Z 27 UStG. Modelled as VAT category E (exempt) without a UID. |

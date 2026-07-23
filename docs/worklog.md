@@ -57,7 +57,7 @@
 
 - `./mvnw verify` green (63 core tests after the final-review fix wave: unit + property +
   architecture; JaCoCo measured 100 % line / 100 % branch on core, gate 95/90).
-- CI run 30026798053 green on branch push (both jobs); PR #1.
+- CI run 30026798053 green (pull_request run for PR #1 — push CI covers main only); both jobs.
 
 **Next**
 

@@ -17,7 +17,7 @@ A self-hostable Java 25 / Spring Boot platform built by [Stoicera Software Group
 
 ## Architecture
 
-Modular monolith, Maven multi-module, module boundaries enforced by ArchUnit (from M1). See [ADR-0002](docs/adr/0002-modular-monolith.md).
+Modular monolith, Maven multi-module; boundary rules are enforced by ArchUnit as each module gains code — the `core`-is-JDK-only rule is active since M1, cross-module rules land with M3. See [ADR-0002](docs/adr/0002-modular-monolith.md).
 
 ```
 einvoice-at
@@ -40,6 +40,7 @@ Requires Docker with Compose.
 ```bash
 git clone https://github.com/Stoicera/einvoice_at.git
 cd einvoice_at
+cp .env.example .env   # then set POSTGRES_PASSWORD (e.g. openssl rand -base64 24)
 docker compose up -d
 curl http://localhost:8080/actuator/health
 # {"groups":["liveness","readiness"],"status":"UP"}
