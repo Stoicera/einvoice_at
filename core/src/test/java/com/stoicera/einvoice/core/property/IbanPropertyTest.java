@@ -12,12 +12,12 @@ import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
 
-class IbanProperties {
+class IbanPropertyTest {
 
   /** Generates structurally valid Austrian IBANs (AT + 2 check digits + 16 BBAN digits). */
   @Provide
   Arbitrary<String> validAustrianIbans() {
-    return Arbitraries.strings().numeric().ofLength(16).map(IbanProperties::withCheckDigits);
+    return Arbitraries.strings().numeric().ofLength(16).map(IbanPropertyTest::withCheckDigits);
   }
 
   private static String withCheckDigits(String bban) {

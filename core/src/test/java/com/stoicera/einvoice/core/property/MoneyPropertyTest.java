@@ -9,7 +9,14 @@ import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
 
-class MoneyProperties {
+/**
+ * Arithmetic properties of {@link Money}. Each operation is checked against a plain-{@link
+ * BigDecimal} expectation computed on the raw amounts — never against the same {@code Money} method
+ * on both sides, which would be a same-code-path tautology (finding P1.2). {@link
+ * #compareToIsConsistentWithEquals} is a deliberate cross-contract check (compareTo vs equals), not
+ * arithmetic, and stays as documented.
+ */
+class MoneyPropertyTest {
 
   @Provide
   Arbitrary<BigDecimal> amounts() {
@@ -17,26 +24,26 @@ class MoneyProperties {
   }
 
   @Property
-  void additionIsCommutative(@ForAll("amounts") BigDecimal a, @ForAll("amounts") BigDecimal b) {
-    Money ma = Money.of(a, Money.EUR);
-    Money mb = Money.of(b, Money.EUR);
-    assertThat(ma.plus(mb)).isEqualTo(mb.plus(ma));
+  void additionMatchesBigDecimalSum(
+      @ForAll("amounts") BigDecimal a, @ForAll("amounts") BigDecimal b) {
+    Money sum = Money.of(a, Money.EUR).plus(Money.of(b, Money.EUR));
+    assertThat(sum.amount()).isEqualByComparingTo(a.add(b));
   }
 
   @Property
-  void additionIsAssociative(
+  void chainedAdditionMatchesBigDecimalSum(
       @ForAll("amounts") BigDecimal a,
       @ForAll("amounts") BigDecimal b,
       @ForAll("amounts") BigDecimal c) {
-    Money ma = Money.of(a, Money.EUR);
-    Money mb = Money.of(b, Money.EUR);
-    Money mc = Money.of(c, Money.EUR);
-    assertThat(ma.plus(mb).plus(mc)).isEqualTo(ma.plus(mb.plus(mc)));
+    Money sum = Money.of(a, Money.EUR).plus(Money.of(b, Money.EUR)).plus(Money.of(c, Money.EUR));
+    assertThat(sum.amount()).isEqualByComparingTo(a.add(b).add(c));
   }
 
   @Property
-  void negationIsAdditiveInverse(@ForAll("amounts") BigDecimal a) {
+  void negationMatchesBigDecimalNegate(@ForAll("amounts") BigDecimal a) {
     Money ma = Money.of(a, Money.EUR);
+    assertThat(ma.negated().amount()).isEqualByComparingTo(a.negate());
+    // additive-inverse cross-check: plus(negated) collapses to zero.
     assertThat(ma.plus(ma.negated())).isEqualTo(Money.zero(Money.EUR));
   }
 
