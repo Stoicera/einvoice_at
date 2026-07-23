@@ -26,6 +26,9 @@ class PartyTest {
     assertThatThrownBy(() -> new Party("  ", LINZ, null))
         .isInstanceOf(InvariantViolationException.class)
         .hasMessageContaining("name");
+    assertThatThrownBy(() -> new Party(null, LINZ, null))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("name");
   }
 
   @Test

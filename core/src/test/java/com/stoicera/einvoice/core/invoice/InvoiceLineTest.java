@@ -35,9 +35,26 @@ class InvoiceLineTest {
     assertThatThrownBy(() -> line("0", "1.00"))
         .isInstanceOf(InvariantViolationException.class)
         .hasMessageContaining("quantity");
+    assertThatThrownBy(
+            () ->
+                new InvoiceLine(
+                    "1", "Beratung", null, "HUR", new BigDecimal("1.00"), VatRate.STANDARD_20))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("quantity");
     assertThatThrownBy(() -> line("1", "-0.01"))
         .isInstanceOf(InvariantViolationException.class)
         .hasMessageContaining("price");
+    assertThatThrownBy(
+            () ->
+                new InvoiceLine("1", "Beratung", BigDecimal.ONE, "HUR", null, VatRate.STANDARD_20))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("price");
+    assertThatThrownBy(
+            () ->
+                new InvoiceLine(
+                    null, "x", BigDecimal.ONE, "C62", BigDecimal.ONE, VatRate.STANDARD_20))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("id");
     assertThatThrownBy(() -> line("1.00001", "1.00"))
         .isInstanceOf(InvariantViolationException.class)
         .hasMessageContaining("scale");

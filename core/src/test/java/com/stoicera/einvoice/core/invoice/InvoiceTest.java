@@ -7,6 +7,8 @@ import com.stoicera.einvoice.core.InvariantViolationException;
 import com.stoicera.einvoice.core.money.Money;
 import com.stoicera.einvoice.core.party.Address;
 import com.stoicera.einvoice.core.party.Party;
+import com.stoicera.einvoice.core.payment.Iban;
+import com.stoicera.einvoice.core.payment.PaymentMeans;
 import com.stoicera.einvoice.core.tax.VatBreakdownEntry;
 import com.stoicera.einvoice.core.tax.VatRate;
 import java.math.BigDecimal;
@@ -178,6 +180,106 @@ class InvoiceTest {
     assertThatThrownBy(() -> minimal().addLine(line("1", "1", "1.00", VatRate.STANDARD_20)).build())
         .isInstanceOf(InvariantViolationException.class)
         .hasMessageContaining("unique");
+  }
+
+  @Test
+  void canonicalConstructorEnforcesInvariantsEvenWhenBuilderIsBypassed() {
+    Invoice valid = minimal().build();
+    assertThatThrownBy(
+            () ->
+                new Invoice(
+                    null,
+                    valid.issueDate(),
+                    valid.dueDate(),
+                    valid.currency(),
+                    valid.orderReference(),
+                    valid.supplierNumber(),
+                    valid.seller(),
+                    valid.buyer(),
+                    valid.lines(),
+                    valid.paymentMeans(),
+                    valid.paymentTerms(),
+                    valid.vatBreakdown(),
+                    valid.totals()))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("number");
+    assertThatThrownBy(
+            () ->
+                new Invoice(
+                    valid.invoiceNumber(),
+                    valid.issueDate(),
+                    valid.dueDate(),
+                    null,
+                    valid.orderReference(),
+                    valid.supplierNumber(),
+                    valid.seller(),
+                    valid.buyer(),
+                    valid.lines(),
+                    valid.paymentMeans(),
+                    valid.paymentTerms(),
+                    valid.vatBreakdown(),
+                    valid.totals()))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("currency");
+    assertThatThrownBy(
+            () ->
+                new Invoice(
+                    valid.invoiceNumber(),
+                    valid.issueDate(),
+                    valid.dueDate(),
+                    valid.currency(),
+                    valid.orderReference(),
+                    valid.supplierNumber(),
+                    valid.seller(),
+                    valid.buyer(),
+                    null,
+                    valid.paymentMeans(),
+                    valid.paymentTerms(),
+                    valid.vatBreakdown(),
+                    valid.totals()))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("line");
+    assertThatThrownBy(
+            () ->
+                new Invoice(
+                    valid.invoiceNumber(),
+                    valid.issueDate(),
+                    valid.dueDate(),
+                    valid.currency(),
+                    valid.orderReference(),
+                    valid.supplierNumber(),
+                    valid.seller(),
+                    valid.buyer(),
+                    List.of(),
+                    valid.paymentMeans(),
+                    valid.paymentTerms(),
+                    valid.vatBreakdown(),
+                    valid.totals()))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("line");
+  }
+
+  @Test
+  void builderRejectsNullCurrency() {
+    assertThatThrownBy(() -> minimal().currency(null).build())
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("currency");
+  }
+
+  @Test
+  void buildsOptionalFieldsViaBuilder() {
+    PaymentMeans paymentMeans = new PaymentMeans(new Iban("AT611904300234573201"), "GIBAATWWXXX");
+    Invoice invoice =
+        minimal()
+            .orderReference("AUFTRAG-42")
+            .supplierNumber("LIEF-7")
+            .paymentMeans(paymentMeans)
+            .paymentTerms("30 Tage netto")
+            .build();
+    assertThat(invoice.orderReference()).isEqualTo("AUFTRAG-42");
+    assertThat(invoice.supplierNumber()).isEqualTo("LIEF-7");
+    assertThat(invoice.paymentMeans()).isEqualTo(paymentMeans);
+    assertThat(invoice.paymentTerms()).isEqualTo("30 Tage netto");
   }
 
   @Test

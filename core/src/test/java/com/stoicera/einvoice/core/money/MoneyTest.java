@@ -55,7 +55,9 @@ class MoneyTest {
   @Test
   void predicatesAndZero() {
     assertThat(Money.zero(Money.EUR).isZero()).isTrue();
+    assertThat(Money.of("1.00", Money.EUR).isZero()).isFalse();
     assertThat(Money.of("-0.01", Money.EUR).isNegative()).isTrue();
+    assertThat(Money.of("0.01", Money.EUR).isNegative()).isFalse();
     assertThat(Money.of("0.01", Money.EUR).isPositive()).isTrue();
     assertThat(Money.of("0.00", Money.EUR).isPositive()).isFalse();
   }
@@ -81,6 +83,9 @@ class MoneyTest {
         .isInstanceOf(InvariantViolationException.class);
     assertThatThrownBy(() -> new Money(BigDecimal.ONE, null))
         .isInstanceOf(InvariantViolationException.class);
+    assertThatThrownBy(() -> Money.rounded(null, Money.EUR))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("amount");
   }
 
   // jqwik canary: proves the jqwik engine runs alongside JUnit Platform 6.
