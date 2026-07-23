@@ -28,3 +28,39 @@
 **Next**
 
 - M1 — Kanonisches Rechnungsmodell: EN-16931 core model in `core`, BigDecimal money arithmetic with jqwik property tests, Austrian USt logic, ArchUnit rules active, ADR-0003.
+
+## 2026-07-23 — M1 Kanonisches Rechnungsmodell: complete
+
+**What**
+
+- `core`: Money (scale-2, HALF_UP, single rounding step), Austrian VAT rates (20/13/10/0,
+  reverse charge, exempt — EN 16931 categories S/Z/AE/E), Party/Address, Iban (mod-97) +
+  PaymentMeans, InvoiceLine, Invoice aggregate with builder-derived + constructor-verified
+  VAT breakdown and totals.
+- jqwik property suite: money algebra, invoice arithmetic partition/consistency properties,
+  IBAN checksum properties. ArchUnit: core = JDK-only. JaCoCo gate 95 % line / 90 % branch.
+- ADR-0003 (derive-don't-trust canonical model). Versions verified on Maven Central:
+  jqwik 1.10.1, ArchUnit 1.4.2, JaCoCo 0.8.15.
+
+**Decisions**
+
+- Tax on category sums, not per line (BR-CO-17); pinned by property test.
+- Allowances/charges, prepaid, BT-114 rounding amount deferred until mapping needs them
+  (documented in ADR-0003).
+- ArchUnit used via plain `archunit` artifact inside Jupiter tests (no engine coupling to
+  JUnit Platform 6); cross-module rules follow in M3 when `app` gains module dependencies.
+- `*Properties` test classes are not matched by Surefire's default includes; core/pom.xml
+  lists the four default patterns plus `**/*Properties.java` explicitly so property tests
+  verifiably execute (discovered when 14 properties compiled but silently did not run).
+
+**Verification**
+
+- `./mvnw verify` green (61 core tests: unit + property + architecture; JaCoCo measured
+  100 % line / 100 % branch on core, gate 95/90).
+- CI green on push.
+
+**Next**
+
+- M2 — ebInterface 6.1 erzeugen + validieren: `formats-ebinterface` (ph-ebinterface 8.1.0),
+  `mapping` (canonical → ebInterface), validation stages XSD + Schematron (phive) + first
+  business rules (Auftragsreferenz, IBAN), golden-file corpus.
