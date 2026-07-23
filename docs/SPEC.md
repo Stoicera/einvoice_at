@@ -26,7 +26,7 @@ Status: v1.0 · 2026-07-23 · Language of repo: English (domain terms stay Germa
 
 ## 2. Architecture
 
-**Style: Modular monolith** (Maven multi-module, enforced by ArchUnit). Twelve microservices without a business reason are on our anti-list; a well-modularised monolith is the honest senior choice for this domain. Write ADR-0002 explaining exactly this.
+**Style: Modular monolith** (Maven multi-module; boundary rules ArchUnit-enforced as the modules gain code — see §2 Key rules). Twelve microservices without a business reason are on our anti-list; a well-modularised monolith is the honest senior choice for this domain. Write ADR-0002 explaining exactly this.
 
 ```
 einvoice-at/
