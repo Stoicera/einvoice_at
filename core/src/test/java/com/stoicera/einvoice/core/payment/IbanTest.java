@@ -34,6 +34,23 @@ class IbanTest {
   }
 
   @Test
+  void checksumFailureMessageNeverEchoesTheIban() {
+    // AT_VALID with the last check digit flipped: still shape-valid, fails mod-97.
+    assertThatThrownBy(() -> new Iban("AT611904300234573202"))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessage("IBAN fails the mod-97 checksum")
+        .hasMessageNotContaining("1904");
+  }
+
+  @Test
+  void malformedMessageNeverEchoesTheIban() {
+    assertThatThrownBy(() -> new Iban("1234567890123456"))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessage("IBAN is malformed")
+        .hasMessageNotContaining("1234567890123456");
+  }
+
+  @Test
   void checksumValidIbanWithNonStandardCountryLengthIsAcceptedByCore() {
     // AT IBANs are 20 chars; this 22-char value passes shape + mod-97. Core accepts by design:
     // country-specific length rules are a validation-module concern (see Iban Javadoc).

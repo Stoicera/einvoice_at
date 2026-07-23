@@ -13,6 +13,12 @@ public record VatExemptionReason(String code, String text) {
   public static final VatExemptionReason REVERSE_CHARGE =
       new VatExemptionReason("VATEX-EU-AE", "Reverse charge");
 
+  /** Defensive DoS bound, not a business rule: the VATEX code (BT-121) must stay bounded. */
+  private static final int MAX_CODE_LENGTH = 32;
+
+  /** Defensive DoS bound, not a business rule: the free-text reason (BT-120) must stay bounded. */
+  private static final int MAX_TEXT_LENGTH = 1024;
+
   public VatExemptionReason {
     code = normalize(code);
     text = normalize(text);
@@ -20,6 +26,8 @@ public record VatExemptionReason(String code, String text) {
       throw new InvariantViolationException(
           "VAT exemption reason requires a code (BT-121) or a text (BT-120)");
     }
+    requireMaxLength(code, MAX_CODE_LENGTH, "VAT exemption reason code (BT-121)");
+    requireMaxLength(text, MAX_TEXT_LENGTH, "VAT exemption reason text (BT-120)");
   }
 
   private static String normalize(String value) {
@@ -27,5 +35,11 @@ public record VatExemptionReason(String code, String text) {
       return null;
     }
     return value.trim();
+  }
+
+  private static void requireMaxLength(String value, int max, String field) {
+    if (value != null && value.length() > max) {
+      throw new InvariantViolationException("%s exceeds %d characters".formatted(field, max));
+    }
   }
 }

@@ -48,6 +48,16 @@ class PartyTest {
   }
 
   @Test
+  void malformedVatIdMessageSanitizesControlCharactersAndIsBounded() {
+    String withControlChar = "AT\n2345678901234567890";
+    assertThatThrownBy(() -> new Party("X GmbH", LINZ, withControlChar))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageNotContaining("\n")
+        .hasMessageContaining("?")
+        .satisfies(ex -> assertThat(ex.getMessage().length()).isLessThan(150));
+  }
+
+  @Test
   void addressFieldValidation() {
     assertThatThrownBy(() -> new Address("", "Linz", "4020", "AT"))
         .isInstanceOf(InvariantViolationException.class)
@@ -61,7 +71,56 @@ class PartyTest {
     assertThatThrownBy(() -> new Address("Hauptplatz 1", "Linz", "4020", "Austria"))
         .isInstanceOf(InvariantViolationException.class)
         .hasMessageContaining("country");
-    assertThatThrownBy(() -> new Address("Hauptplatz 1", "Linz", "4020", "at"))
-        .isInstanceOf(InvariantViolationException.class);
+  }
+
+  @Test
+  void countryCodeIsNormalizedToTrimmedUppercase() {
+    assertThat(new Address("Hauptplatz 1", "Linz", "4020", " at ").countryCode()).isEqualTo("AT");
+    assertThat(new Address("Hauptplatz 1", "Linz", "4020", "at").countryCode()).isEqualTo("AT");
+  }
+
+  @Test
+  void partyNameLengthIsCappedAtTwoFiftySixCharacters() {
+    String atLimit = "x".repeat(256);
+    assertThat(new Party(atLimit, LINZ, null).name()).hasSize(256);
+    String overLimit = "x".repeat(257);
+    assertThatThrownBy(() -> new Party(overLimit, LINZ, null))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("name");
+  }
+
+  @Test
+  void addressStreetAndCityLengthAreCappedAtTwoFiftySixCharacters() {
+    String atLimit = "x".repeat(256);
+    Address accepted = new Address(atLimit, atLimit, "4020", "AT");
+    assertThat(accepted.street()).hasSize(256);
+    assertThat(accepted.city()).hasSize(256);
+    String overLimit = "x".repeat(257);
+    assertThatThrownBy(() -> new Address(overLimit, "Linz", "4020", "AT"))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("street");
+    assertThatThrownBy(() -> new Address("Hauptplatz 1", overLimit, "4020", "AT"))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("city");
+  }
+
+  @Test
+  void addressPostalCodeLengthIsCappedAtSixteenCharacters() {
+    String atLimit = "1".repeat(16);
+    assertThat(new Address("Hauptplatz 1", "Linz", atLimit, "AT").postalCode()).hasSize(16);
+    String overLimit = "1".repeat(17);
+    assertThatThrownBy(() -> new Address("Hauptplatz 1", "Linz", overLimit, "AT"))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("postal");
+  }
+
+  @Test
+  void countryCodeRejectionMessageSanitizesAndBoundsTheEcho() {
+    String withControlChar = "A\n" + "x".repeat(80);
+    assertThatThrownBy(() -> new Address("Hauptplatz 1", "Linz", "4020", withControlChar))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("country")
+        .hasMessageNotContaining("\n")
+        .satisfies(ex -> assertThat(ex.getMessage().length()).isLessThan(150));
   }
 }

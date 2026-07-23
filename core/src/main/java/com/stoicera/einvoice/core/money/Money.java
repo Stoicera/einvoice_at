@@ -1,6 +1,7 @@
 package com.stoicera.einvoice.core.money;
 
 import com.stoicera.einvoice.core.InvariantViolationException;
+import com.stoicera.einvoice.core.internal.Texts;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Currency;
@@ -19,7 +20,13 @@ public record Money(BigDecimal amount, Currency currency) implements Comparable<
   public static final RoundingMode ROUNDING = RoundingMode.HALF_UP;
   public static final Currency EUR = Currency.getInstance("EUR");
 
-  /** Defensive ceiling: amounts beyond 15 integer digits are absurd for invoices and can OOM. */
+  /**
+   * Defensive ceiling: amounts beyond 15 integer digits are absurd for invoices and can OOM. This
+   * cap applies to every {@code Money} instance regardless of construction path — {@link
+   * #of(String, Currency)}, {@link #of(BigDecimal, Currency)}, {@link #rounded(BigDecimal,
+   * Currency)}, and arithmetic results ({@link #plus}, {@link #minus}, {@link #times}) all funnel
+   * through the canonical constructor, so none can produce a {@code Money} that exceeds it.
+   */
   public static final int MAX_INTEGER_DIGITS = 15;
 
   public Money {
@@ -34,15 +41,26 @@ public record Money(BigDecimal amount, Currency currency) implements Comparable<
           "Money amount exceeds %d integer digits".formatted(MAX_INTEGER_DIGITS));
     }
     if (amount.scale() > SCALE) {
+      // Never echo amount.toPlainString() here: a value with an astronomical positive scale
+      // (e.g. 1E-1000000000) passes the integer-digit cap above and would materialize a
+      // ~1 GB string before truncation could help. State the two scale numbers instead.
       throw new InvariantViolationException(
-          "Money amount %s exceeds scale %d; round explicitly via Money.rounded()"
-              .formatted(amount.toPlainString(), SCALE));
+          "Money amount scale %d exceeds scale %d; round explicitly via Money.rounded()"
+              .formatted(amount.scale(), SCALE));
     }
     amount = amount.setScale(SCALE);
   }
 
   public static Money of(String amount, Currency currency) {
-    return new Money(new BigDecimal(amount), currency);
+    if (amount == null) {
+      throw new InvariantViolationException("Money amount must not be null");
+    }
+    try {
+      return new Money(new BigDecimal(amount.trim()), currency);
+    } catch (NumberFormatException e) {
+      throw new InvariantViolationException(
+          "Money amount '%s' is not a valid decimal".formatted(Texts.safeEcho(amount)));
+    }
   }
 
   public static Money of(BigDecimal amount, Currency currency) {

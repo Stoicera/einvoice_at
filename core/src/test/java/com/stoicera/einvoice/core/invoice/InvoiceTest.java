@@ -450,6 +450,46 @@ class InvoiceTest {
   }
 
   @Test
+  void invoiceNumberLengthIsCappedAtOneTwentyEightCharacters() {
+    String atLimit = "x".repeat(128);
+    assertThat(minimal().invoiceNumber(atLimit).build().invoiceNumber()).hasSize(128);
+    String overLimit = "x".repeat(129);
+    assertThatThrownBy(() -> minimal().invoiceNumber(overLimit).build())
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("Invoice number");
+  }
+
+  @Test
+  void orderReferenceLengthIsCappedAtOneTwentyEightCharactersWhenPresent() {
+    String atLimit = "x".repeat(128);
+    assertThat(minimal().orderReference(atLimit).build().orderReference()).hasSize(128);
+    String overLimit = "x".repeat(129);
+    assertThatThrownBy(() -> minimal().orderReference(overLimit).build())
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("Order reference");
+  }
+
+  @Test
+  void supplierNumberLengthIsCappedAtOneTwentyEightCharactersWhenPresent() {
+    String atLimit = "x".repeat(128);
+    assertThat(minimal().supplierNumber(atLimit).build().supplierNumber()).hasSize(128);
+    String overLimit = "x".repeat(129);
+    assertThatThrownBy(() -> minimal().supplierNumber(overLimit).build())
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("Supplier number");
+  }
+
+  @Test
+  void paymentTermsLengthIsCappedAtFourThousandNinetySixCharactersWhenPresent() {
+    String atLimit = "x".repeat(4096);
+    assertThat(minimal().paymentTerms(atLimit).build().paymentTerms()).hasSize(4096);
+    String overLimit = "x".repeat(4097);
+    assertThatThrownBy(() -> minimal().paymentTerms(overLimit).build())
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("Payment terms");
+  }
+
+  @Test
   void nullTypeIsRejected() {
     Invoice valid = minimal().build();
     assertThatThrownBy(

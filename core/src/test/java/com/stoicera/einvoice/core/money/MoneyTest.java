@@ -31,6 +31,16 @@ class MoneyTest {
   }
 
   @Test
+  void scaleViolationMessageStatesScaleNumbersNotTheRawValue() {
+    // The message must never echo toPlainString(): a value with an astronomical scale could
+    // materialize a multi-gigabyte string before truncation could help. State the two scale
+    // numbers instead.
+    assertThatThrownBy(() -> Money.of(new BigDecimal("1.005"), Money.EUR))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessage("Money amount scale 3 exceeds scale 2; round explicitly via Money.rounded()");
+  }
+
+  @Test
   void roundedAppliesHalfUp() {
     assertThat(Money.rounded(new BigDecimal("1.005"), Money.EUR))
         .isEqualTo(Money.of("1.01", Money.EUR));
@@ -87,6 +97,21 @@ class MoneyTest {
   }
 
   @Test
+  void ofStringWrapsMalformedDecimalsInsteadOfLeakingNumberFormatException() {
+    assertThatThrownBy(() -> Money.of("abc", Money.EUR))
+        .isInstanceOf(InvariantViolationException.class)
+        .isNotInstanceOf(NumberFormatException.class)
+        .hasMessageContaining("abc");
+  }
+
+  @Test
+  void ofStringRejectsNullAmountAsInvariantViolation() {
+    assertThatThrownBy(() -> Money.of((String) null, Money.EUR))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("must not be null");
+  }
+
+  @Test
   void rejectsNulls() {
     assertThatThrownBy(() -> new Money(null, Money.EUR))
         .isInstanceOf(InvariantViolationException.class);
@@ -114,6 +139,15 @@ class MoneyTest {
     assertThat(Money.of("999999999999999.99", Money.EUR).amount())
         .isEqualByComparingTo("999999999999999.99");
     assertThatThrownBy(() -> Money.of("1000000000000000.00", Money.EUR))
+        .isInstanceOf(InvariantViolationException.class);
+  }
+
+  @Test
+  void arithmeticResultsAreRecappedByTheCanonicalConstructor() {
+    // plus() delegates to `new Money(...)`, so the integer-digit cap applies to the arithmetic
+    // result too, not only to values built via Money.of/rounded.
+    assertThatThrownBy(
+            () -> Money.of("999999999999999.99", Money.EUR).plus(Money.of("1.00", Money.EUR)))
         .isInstanceOf(InvariantViolationException.class);
   }
 

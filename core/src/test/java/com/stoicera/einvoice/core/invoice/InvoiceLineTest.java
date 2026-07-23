@@ -76,6 +76,17 @@ class InvoiceLineTest {
     assertThatThrownBy(() -> line("1", "1.00001"))
         .isInstanceOf(InvariantViolationException.class)
         .hasMessageContaining("scale");
+  }
+
+  @Test
+  void scaleViolationMessagesStateScaleNumbersNotTheRawValue() {
+    // Never toPlainString() an unvalidated value: state the two scale numbers instead.
+    assertThatThrownBy(() -> line("1.00001", "1.00"))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessage("Line quantity scale 5 exceeds scale 4");
+    assertThatThrownBy(() -> line("1", "1.00001"))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessage("Unit price scale 5 exceeds scale 4");
     assertThatThrownBy(
             () ->
                 new InvoiceLine(
@@ -121,6 +132,88 @@ class InvoiceLineTest {
                     new BigDecimal("1E+100000"),
                     VatRate.STANDARD_20))
         .isInstanceOf(InvariantViolationException.class);
+  }
+
+  @Test
+  void nullAndZeroQuantityHaveDistinctMessages() {
+    assertThatThrownBy(
+            () ->
+                new InvoiceLine(
+                    "1", "Beratung", null, "HUR", new BigDecimal("1.00"), VatRate.STANDARD_20))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessage("Line quantity must not be null");
+    assertThatThrownBy(() -> line("0", "1.00"))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessage("Line quantity must be non-zero");
+  }
+
+  @Test
+  void nullAndNegativeUnitPriceHaveDistinctMessages() {
+    assertThatThrownBy(
+            () ->
+                new InvoiceLine("1", "Beratung", BigDecimal.ONE, "HUR", null, VatRate.STANDARD_20))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessage("Unit price must not be null");
+    assertThatThrownBy(() -> line("1", "-0.01"))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessage("Unit price must be non-negative (EN 16931 BR-27)");
+  }
+
+  @Test
+  void idLengthIsCappedAtOneTwentyEightCharacters() {
+    String atLimit = "x".repeat(128);
+    InvoiceLine accepted =
+        new InvoiceLine(
+            atLimit, "Beratung", BigDecimal.ONE, "HUR", BigDecimal.ONE, VatRate.STANDARD_20);
+    assertThat(accepted.id()).hasSize(128);
+    String overLimit = "x".repeat(129);
+    assertThatThrownBy(
+            () ->
+                new InvoiceLine(
+                    overLimit,
+                    "Beratung",
+                    BigDecimal.ONE,
+                    "HUR",
+                    BigDecimal.ONE,
+                    VatRate.STANDARD_20))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("id");
+  }
+
+  @Test
+  void descriptionLengthIsCappedAtFourThousandNinetySixCharacters() {
+    String atLimit = "x".repeat(4096);
+    InvoiceLine accepted =
+        new InvoiceLine("1", atLimit, BigDecimal.ONE, "HUR", BigDecimal.ONE, VatRate.STANDARD_20);
+    assertThat(accepted.description()).hasSize(4096);
+    String overLimit = "x".repeat(4097);
+    assertThatThrownBy(
+            () ->
+                new InvoiceLine(
+                    "1", overLimit, BigDecimal.ONE, "HUR", BigDecimal.ONE, VatRate.STANDARD_20))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("description");
+  }
+
+  @Test
+  void unitCodeLengthIsCappedAtEightCharacters() {
+    String atLimit = "x".repeat(8);
+    InvoiceLine accepted =
+        new InvoiceLine(
+            "1", "Beratung", BigDecimal.ONE, atLimit, BigDecimal.ONE, VatRate.STANDARD_20);
+    assertThat(accepted.unitCode()).hasSize(8);
+    String overLimit = "x".repeat(9);
+    assertThatThrownBy(
+            () ->
+                new InvoiceLine(
+                    "1",
+                    "Beratung",
+                    BigDecimal.ONE,
+                    overLimit,
+                    BigDecimal.ONE,
+                    VatRate.STANDARD_20))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("unit");
   }
 
   @Test

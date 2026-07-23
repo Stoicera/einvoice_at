@@ -35,11 +35,23 @@ public record InvoiceLine(
    */
   private static final int MAX_UNIT_PRICE_INTEGER_DIGITS = 8;
 
+  /** Defensive DoS bound, not a business rule: free-text line fields must stay bounded. */
+  private static final int MAX_ID_LENGTH = 128;
+
+  private static final int MAX_DESCRIPTION_LENGTH = 4096;
+  private static final int MAX_UNIT_CODE_LENGTH = 8;
+
   public InvoiceLine {
     requireNonBlank(id, "line id");
     requireNonBlank(description, "line description");
     requireNonBlank(unitCode, "unit code");
-    if (quantity == null || quantity.signum() == 0) {
+    requireMaxLength(id, MAX_ID_LENGTH, "line id");
+    requireMaxLength(description, MAX_DESCRIPTION_LENGTH, "line description");
+    requireMaxLength(unitCode, MAX_UNIT_CODE_LENGTH, "unit code");
+    if (quantity == null) {
+      throw new InvariantViolationException("Line quantity must not be null");
+    }
+    if (quantity.signum() == 0) {
       throw new InvariantViolationException("Line quantity must be non-zero");
     }
     if (quantity.precision() - quantity.scale() > MAX_QUANTITY_INTEGER_DIGITS) {
@@ -47,10 +59,15 @@ public record InvoiceLine(
           "Line quantity exceeds %d integer digits".formatted(MAX_QUANTITY_INTEGER_DIGITS));
     }
     if (quantity.scale() > MAX_SCALE) {
+      // Never echo toPlainString(): an astronomical scale would materialize a huge string
+      // before truncation could help. State the two scale numbers instead (see Money).
       throw new InvariantViolationException(
-          "Line quantity %s exceeds scale %d".formatted(quantity.toPlainString(), MAX_SCALE));
+          "Line quantity scale %d exceeds scale %d".formatted(quantity.scale(), MAX_SCALE));
     }
-    if (unitPrice == null || unitPrice.signum() < 0) {
+    if (unitPrice == null) {
+      throw new InvariantViolationException("Unit price must not be null");
+    }
+    if (unitPrice.signum() < 0) {
       throw new InvariantViolationException("Unit price must be non-negative (EN 16931 BR-27)");
     }
     if (unitPrice.precision() - unitPrice.scale() > MAX_UNIT_PRICE_INTEGER_DIGITS) {
@@ -59,7 +76,7 @@ public record InvoiceLine(
     }
     if (unitPrice.scale() > MAX_SCALE) {
       throw new InvariantViolationException(
-          "Unit price %s exceeds scale %d".formatted(unitPrice.toPlainString(), MAX_SCALE));
+          "Unit price scale %d exceeds scale %d".formatted(unitPrice.scale(), MAX_SCALE));
     }
     if (vatRate == null) {
       throw new InvariantViolationException("Line VAT rate must not be null");
@@ -74,6 +91,12 @@ public record InvoiceLine(
   private static void requireNonBlank(String value, String field) {
     if (value == null || value.isBlank()) {
       throw new InvariantViolationException("%s must not be blank".formatted(field));
+    }
+  }
+
+  private static void requireMaxLength(String value, int max, String field) {
+    if (value != null && value.length() > max) {
+      throw new InvariantViolationException("%s exceeds %d characters".formatted(field, max));
     }
   }
 }

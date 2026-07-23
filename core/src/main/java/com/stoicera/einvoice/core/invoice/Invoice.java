@@ -47,10 +47,16 @@ public record Invoice(
     List<VatBreakdownEntry> vatBreakdown,
     Totals totals) {
 
+  /** Defensive DoS bound, not a business rule: free-text reference fields must stay bounded. */
+  private static final int MAX_REFERENCE_LENGTH = 128;
+
+  private static final int MAX_PAYMENT_TERMS_LENGTH = 4096;
+
   public Invoice {
     if (invoiceNumber == null || invoiceNumber.isBlank()) {
       throw new InvariantViolationException("Invoice number must not be blank");
     }
+    requireMaxLength(invoiceNumber, MAX_REFERENCE_LENGTH, "Invoice number");
     if (type == null) {
       throw new InvariantViolationException("Invoice type code (BT-3) must not be null");
     }
@@ -66,6 +72,9 @@ public record Invoice(
     if (buyer == null) {
       throw new InvariantViolationException("Invoice buyer must not be null");
     }
+    requireMaxLength(orderReference, MAX_REFERENCE_LENGTH, "Order reference");
+    requireMaxLength(supplierNumber, MAX_REFERENCE_LENGTH, "Supplier number");
+    requireMaxLength(paymentTerms, MAX_PAYMENT_TERMS_LENGTH, "Payment terms");
     if (lines == null || lines.isEmpty()) {
       throw new InvariantViolationException("Invoice must have at least one line");
     }
@@ -148,6 +157,12 @@ public record Invoice(
       taxableByRate.merge(line.vatRate(), line.netAmount(currency), Money::plus);
     }
     return taxableByRate;
+  }
+
+  private static void requireMaxLength(String value, int max, String field) {
+    if (value != null && value.length() > max) {
+      throw new InvariantViolationException("%s exceeds %d characters".formatted(field, max));
+    }
   }
 
   public static Builder builder() {

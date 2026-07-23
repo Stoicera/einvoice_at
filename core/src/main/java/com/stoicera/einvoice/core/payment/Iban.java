@@ -8,6 +8,9 @@ import java.util.regex.Pattern;
 /**
  * IBAN per ISO 13616, validated by shape and mod-97 checksum. Country-specific length rules are a
  * concern of the validation module, not enforced here.
+ *
+ * <p>Exception messages never include the IBAN — it is bank-account PII; callers see which field
+ * failed, logs never see the number.
  */
 public record Iban(String value) {
 
@@ -20,10 +23,10 @@ public record Iban(String value) {
     }
     value = value.replace(" ", "").toUpperCase(Locale.ROOT);
     if (!SHAPE.matcher(value).matches()) {
-      throw new InvariantViolationException("IBAN '%s' is malformed".formatted(value));
+      throw new InvariantViolationException("IBAN is malformed");
     }
     if (!checksumValid(value)) {
-      throw new InvariantViolationException("IBAN '%s' fails the mod-97 checksum".formatted(value));
+      throw new InvariantViolationException("IBAN fails the mod-97 checksum");
     }
   }
 
