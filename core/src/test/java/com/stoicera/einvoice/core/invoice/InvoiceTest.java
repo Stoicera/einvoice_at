@@ -260,6 +260,13 @@ class InvoiceTest {
   }
 
   @Test
+  void builderRejectsNullLine() {
+    assertThatThrownBy(() -> minimal().addLine(null))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("line");
+  }
+
+  @Test
   void builderRejectsNullCurrency() {
     assertThatThrownBy(() -> minimal().currency(null).build())
         .isInstanceOf(InvariantViolationException.class)

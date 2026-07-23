@@ -174,6 +174,9 @@ public record Invoice(
     }
 
     public Builder addLine(InvoiceLine line) {
+      if (line == null) {
+        throw new InvariantViolationException("Invoice line must not be null");
+      }
       this.lines.add(line);
       return this;
     }
