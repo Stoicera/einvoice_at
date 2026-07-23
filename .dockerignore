@@ -8,3 +8,6 @@ docs
 *.log
 .env
 README.md
+.superpowers
+.claude
+.jqwik-database
