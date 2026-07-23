@@ -10,6 +10,11 @@ import java.util.Currency;
  * Invoice line per EN 16931 BG-25 (subset). Quantity may be negative (credit line); the item net
  * price must not be (BR-27). Unit code is a UN/ECE Recommendation 20 code, e.g. C62, HUR, KGM —
  * code-list validation is a concern of the validation module.
+ *
+ * <p>The canonical constructor also enforces bounds that keep the line arithmetic well-defined:
+ * quantity must be non-zero, both quantity and unit price are capped at scale 4, and their integer
+ * digit counts are capped at 7 and 8 respectively so the line-net product always fits within {@link
+ * Money#MAX_INTEGER_DIGITS}.
  */
 public record InvoiceLine(
     String id,

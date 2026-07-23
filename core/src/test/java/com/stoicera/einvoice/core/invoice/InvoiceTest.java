@@ -504,6 +504,40 @@ class InvoiceTest {
   }
 
   @Test
+  void computeVatBreakdownRejectsNullExemptionReasonsMap() {
+    List<InvoiceLine> lines = List.of(line("1", "1", "100.00", VatRate.STANDARD_20));
+    assertThatThrownBy(() -> Invoice.computeVatBreakdown(lines, Money.EUR, null))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("Exemption reasons map must not be null");
+  }
+
+  @Test
+  void constructorRejectsDuplicatedBreakdownEntryForAeCategory() {
+    Invoice valid = base().addLine(line("1", "1", "100.00", VatRate.REVERSE_CHARGE)).build();
+    VatBreakdownEntry aeEntry = valid.vatBreakdown().getFirst();
+    List<VatBreakdownEntry> tampered = List.of(aeEntry, aeEntry);
+    assertThatThrownBy(
+            () ->
+                new Invoice(
+                    valid.invoiceNumber(),
+                    valid.type(),
+                    valid.issueDate(),
+                    valid.dueDate(),
+                    valid.currency(),
+                    valid.orderReference(),
+                    valid.supplierNumber(),
+                    valid.seller(),
+                    valid.buyer(),
+                    valid.lines(),
+                    valid.paymentMeans(),
+                    valid.paymentTerms(),
+                    tampered,
+                    valid.totals()))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("breakdown");
+  }
+
+  @Test
   void nullTypeIsRejected() {
     Invoice valid = minimal().build();
     assertThatThrownBy(

@@ -31,6 +31,11 @@ import java.util.TreeMap;
  *
  * <p>{@code orderReference} (Auftragsreferenz) and {@code supplierNumber} (Lieferantennummer) are
  * optional here; the Austrian federal B2G profile requires them via the validation module.
+ *
+ * <p>{@link #type()} (BT-3) carries the EN 16931 document type code — 380 for a commercial invoice,
+ * 381 for a credit note — and it, not the sign of the amounts, determines the direction of the
+ * document; the canonical constructor additionally requires {@link Totals#payableAmount()} to be
+ * non-negative, so a wholly negative document must be represented as a 381 credit note.
  */
 public record Invoice(
     String invoiceNumber,

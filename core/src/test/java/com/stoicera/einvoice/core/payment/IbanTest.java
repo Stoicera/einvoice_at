@@ -108,4 +108,22 @@ class IbanTest {
         .isInstanceOf(InvariantViolationException.class)
         .hasMessageContaining("IBAN");
   }
+
+  @Test
+  void paymentMeansRejectsOverlongBic() {
+    Iban iban = new Iban(AT_VALID);
+    String overlong = "A".repeat(17);
+    assertThatThrownBy(() -> new PaymentMeans(iban, overlong))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessage("BIC exceeds 16 characters");
+  }
+
+  @Test
+  void malformedBicMessageSanitizesControlCharacters() {
+    Iban iban = new Iban(AT_VALID);
+    assertThatThrownBy(() -> new PaymentMeans(iban, "GIBA\nATWW"))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("?")
+        .hasMessageNotContaining("\n");
+  }
 }
