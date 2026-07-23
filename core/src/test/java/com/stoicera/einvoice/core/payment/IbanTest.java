@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.stoicera.einvoice.core.InvariantViolationException;
+import java.math.BigInteger;
 import java.util.Locale;
 import org.junit.jupiter.api.Test;
 
@@ -30,6 +31,30 @@ class IbanTest {
     assertThatThrownBy(() -> new Iban("AT611904300234573202"))
         .isInstanceOf(InvariantViolationException.class)
         .hasMessageContaining("checksum");
+  }
+
+  @Test
+  void checksumValidIbanWithNonStandardCountryLengthIsAcceptedByCore() {
+    // AT IBANs are 20 chars; this 22-char value passes shape + mod-97. Core accepts by design:
+    // country-specific length rules are a validation-module concern (see Iban Javadoc).
+    // Construct any >20-char mod-97-valid candidate programmatically:
+    String bban = "1904300234573201" + "00"; // 18 digits
+    String candidate = withValidCheckDigits("AT", bban);
+    assertThat(new Iban(candidate).value()).hasSize(22);
+  }
+
+  /**
+   * Computes ISO 13616 mod-97 check digits from scratch, independently of {@link Iban}, so this
+   * test does not validate production logic against itself.
+   */
+  private static String withValidCheckDigits(String countryCode, String bban) {
+    String rearranged = bban + countryCode + "00";
+    StringBuilder digits = new StringBuilder(rearranged.length() * 2);
+    for (char c : rearranged.toCharArray()) {
+      digits.append(Character.isLetter(c) ? String.valueOf(c - 'A' + 10) : c);
+    }
+    int checkDigits = 98 - new BigInteger(digits.toString()).mod(BigInteger.valueOf(97)).intValue();
+    return countryCode + "%02d".formatted(checkDigits) + bban;
   }
 
   @Test

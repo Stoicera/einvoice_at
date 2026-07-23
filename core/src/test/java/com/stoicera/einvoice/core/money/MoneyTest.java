@@ -53,6 +53,14 @@ class MoneyTest {
   }
 
   @Test
+  void timesRoundsMidpointsAwayFromZero() {
+    assertThat(Money.of("0.01", Money.EUR).times(new BigDecimal("0.5")))
+        .isEqualTo(Money.of("0.01", Money.EUR)); // 0.005 -> 0.01, not 0.00 (HALF_EVEN would)
+    assertThat(Money.of("-0.01", Money.EUR).times(new BigDecimal("0.5")))
+        .isEqualTo(Money.of("-0.01", Money.EUR)); // -0.005 -> -0.01 (away from zero)
+  }
+
+  @Test
   void predicatesAndZero() {
     assertThat(Money.zero(Money.EUR).isZero()).isTrue();
     assertThat(Money.of("1.00", Money.EUR).isZero()).isFalse();

@@ -52,6 +52,20 @@ class VatRateTest {
   }
 
   @Test
+  void fractionalAndBoundaryPercentagesAreAccepted() {
+    assertThat(new VatRate(VatCategory.STANDARD, new BigDecimal("2.5")).percentage())
+        .isEqualByComparingTo("2.5");
+    assertThat(new VatRate(VatCategory.STANDARD, new BigDecimal("100")).percentage())
+        .isEqualByComparingTo("100");
+  }
+
+  @Test
+  void percentageAboveOneHundredIsRejected() {
+    assertThatThrownBy(() -> new VatRate(VatCategory.STANDARD, new BigDecimal("100.01")))
+        .isInstanceOf(InvariantViolationException.class);
+  }
+
+  @Test
   void rejectsInvalidRates() {
     assertThatThrownBy(() -> new VatRate(null, BigDecimal.TEN))
         .isInstanceOf(InvariantViolationException.class);

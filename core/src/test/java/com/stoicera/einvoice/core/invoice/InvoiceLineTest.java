@@ -31,6 +31,20 @@ class InvoiceLineTest {
   }
 
   @Test
+  void scaleFourQuantityAndPriceAreAcceptedExactly() {
+    InvoiceLine line =
+        new InvoiceLine(
+            "1",
+            "Feinmenge",
+            new BigDecimal("0.0001"),
+            "KGM",
+            new BigDecimal("1234.5678"),
+            VatRate.STANDARD_20);
+    assertThat(line.quantity()).isEqualByComparingTo("0.0001");
+    assertThat(line.netAmount(Money.EUR)).isEqualTo(Money.of("0.12", Money.EUR)); // 0.12345678
+  }
+
+  @Test
   void rejectsInvalidComponents() {
     assertThatThrownBy(() -> line("0", "1.00"))
         .isInstanceOf(InvariantViolationException.class)
