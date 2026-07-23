@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.stoicera.einvoice.core.InvariantViolationException;
+import java.util.Locale;
 import org.junit.jupiter.api.Test;
 
 class IbanTest {
@@ -38,6 +39,18 @@ class IbanTest {
     assertThatThrownBy(() -> new Iban("AT61")).isInstanceOf(InvariantViolationException.class);
     assertThatThrownBy(() -> new Iban("1234567890123456"))
         .isInstanceOf(InvariantViolationException.class);
+  }
+
+  @Test
+  void normalizationIsLocaleIndependent() {
+    Locale previous = Locale.getDefault();
+    Locale.setDefault(Locale.of("tr", "TR"));
+    try {
+      assertThat(new Iban("at61 1904 3002 3457 3201").value()).isEqualTo(AT_VALID);
+      assertThat(new PaymentMeans(new Iban(AT_VALID), "gibaatww").bic()).isEqualTo("GIBAATWW");
+    } finally {
+      Locale.setDefault(previous);
+    }
   }
 
   @Test

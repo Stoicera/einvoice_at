@@ -1,6 +1,7 @@
 package com.stoicera.einvoice.core.payment;
 
 import com.stoicera.einvoice.core.InvariantViolationException;
+import java.util.Locale;
 import java.util.regex.Pattern;
 
 /** SEPA credit transfer details per EN 16931 BG-17 (subset). */
@@ -13,7 +14,7 @@ public record PaymentMeans(Iban iban, String bic) {
       throw new InvariantViolationException("IBAN must not be null");
     }
     if (bic != null) {
-      bic = bic.trim().toUpperCase();
+      bic = bic.trim().toUpperCase(Locale.ROOT);
       if (!BIC.matcher(bic).matches()) {
         throw new InvariantViolationException("BIC '%s' is malformed".formatted(bic));
       }

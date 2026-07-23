@@ -2,6 +2,7 @@ package com.stoicera.einvoice.core.payment;
 
 import com.stoicera.einvoice.core.InvariantViolationException;
 import java.math.BigInteger;
+import java.util.Locale;
 import java.util.regex.Pattern;
 
 /**
@@ -17,7 +18,7 @@ public record Iban(String value) {
     if (value == null || value.isBlank()) {
       throw new InvariantViolationException("IBAN must not be blank");
     }
-    value = value.replace(" ", "").toUpperCase();
+    value = value.replace(" ", "").toUpperCase(Locale.ROOT);
     if (!SHAPE.matcher(value).matches()) {
       throw new InvariantViolationException("IBAN '%s' is malformed".formatted(value));
     }
