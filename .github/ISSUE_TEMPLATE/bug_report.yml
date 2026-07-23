@@ -1,0 +1,43 @@
+name: Bug report
+description: Something does not work as specified
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Vor dem Anhängen von XML-Dateien:** Bitte echte Rechnungsdaten entfernen oder anonymisieren (Namen, IBANs, UID-Nummern, Adressen).
+        **Before attaching XML files:** please remove or anonymise real invoice data (names, IBANs, VAT IDs, addresses).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Actual behaviour, including error messages or validation findings.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. POST … to /api/v1/…
+        2. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      placeholder: v0.1.0 or commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: OS, JDK, Docker version, deployment (compose/Dokploy)
