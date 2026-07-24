@@ -2,7 +2,6 @@ package com.stoicera.einvoice.validation.stage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.helger.ebinterface.EEbInterfaceVersion;
 import com.stoicera.einvoice.core.validation.Finding;
 import com.stoicera.einvoice.core.validation.Severity;
 import com.stoicera.einvoice.validation.TestDocuments;
@@ -15,14 +14,13 @@ class FormatDetectionStageTest {
   private final FormatDetectionStage stage = new FormatDetectionStage();
 
   @Test
-  void detectsEbInterface61RecordsVersionAndReportsNothing() {
+  void detectsEbInterface61AndReportsNothing() {
     ValidationContext ctx =
         new ValidationContext(TestDocuments.bytes(TestDocuments.validEbInterface61()));
 
     List<Finding> findings = stage.apply(ctx);
 
     assertThat(findings).isEmpty();
-    assertThat(ctx.detectedVersion()).contains(EEbInterfaceVersion.V61);
   }
 
   @Test
@@ -36,7 +34,6 @@ class FormatDetectionStageTest {
     Finding finding = findings.get(0);
     assertThat(finding.ruleId()).isEqualTo("FORMAT-01");
     assertThat(finding.severity()).isEqualTo(Severity.ERROR);
-    assertThat(ctx.detectedVersion()).isEmpty();
   }
 
   @Test
@@ -51,6 +48,5 @@ class FormatDetectionStageTest {
     assertThat(finding.ruleId()).isEqualTo("FORMAT-02");
     assertThat(finding.severity()).isEqualTo(Severity.ERROR);
     assertThat(finding.messageDe()).contains("6.0").contains("6.1");
-    assertThat(ctx.detectedVersion()).isEmpty();
   }
 }

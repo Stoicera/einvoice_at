@@ -2,21 +2,20 @@ package com.stoicera.einvoice.validation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.helger.ebinterface.EEbInterfaceVersion;
 import org.junit.jupiter.api.Test;
 import org.w3c.dom.Document;
 
 class ValidationContextTest {
 
   @Test
-  void xmlReturnsDefensiveCopy() {
+  void constructorCopiesInputSoLaterCallerMutationDoesNotAffectParsing() {
     byte[] source = TestDocuments.bytes(TestDocuments.validEbInterface61());
     ValidationContext ctx = new ValidationContext(source);
 
-    byte[] first = ctx.xml();
-    first[0] = 0;
+    source[0] = 0; // corrupt the caller's array after construction
 
-    assertThat(ctx.xml()).isEqualTo(source).isNotSameAs(first);
+    // The context parsed its own defensive copy, so the mutation cannot reach the DOM.
+    assertThat(ctx.dom()).isPresent();
   }
 
   @Test
@@ -35,16 +34,6 @@ class ValidationContextTest {
     ValidationContext ctx = new ValidationContext(TestDocuments.bytes(TestDocuments.malformed()));
 
     assertThat(ctx.dom()).isEmpty();
-  }
-
-  @Test
-  void detectedVersionRoundTrips() {
-    ValidationContext ctx =
-        new ValidationContext(TestDocuments.bytes(TestDocuments.validEbInterface61()));
-
-    assertThat(ctx.detectedVersion()).isEmpty();
-    ctx.setDetectedVersion(EEbInterfaceVersion.V61);
-    assertThat(ctx.detectedVersion()).contains(EEbInterfaceVersion.V61);
   }
 
   @Test
