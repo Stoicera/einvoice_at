@@ -69,6 +69,20 @@
          pitest-junit5-plugin 1.2.3 requires pitest 1.19.4+, so the pair is compatible. -->
     <pitest.version>1.25.8</pitest.version>
     <pitest-junit5.version>1.2.3</pitest-junit5.version>
+
+    <!-- Reactor-wide defaults for org.codehaus.mojo:exec-maven-plugin's `java` goal (used by the
+         validation module's ValidationRunner CLI): skipped everywhere except where a module opts
+         back in with its own <skip>false</skip>. Both properties are needed, not just exec.skip:
+         `exec:java` invoked bare on the command line (not bound to a lifecycle phase) runs
+         against every project the reactor selects, not just the one that declares the plugin —
+         e.g. `mvn -pl validation -am compile exec:java` also pulls in this root aggregator and
+         validation's other module dependencies. Maven validates the plugin's required
+         `mainClass` parameter before the mojo's own `skip` check ever runs, so `exec.skip` alone
+         is not enough to save those other projects from failing the build; giving every project
+         the same (unused, since skip short-circuits execution) mainClass value up front satisfies
+         that validation. -->
+    <exec.skip>true</exec.skip>
+    <exec.mainClass>com.stoicera.einvoice.validation.cli.ValidationRunner</exec.mainClass>
   </properties>
 
   <dependencyManagement>

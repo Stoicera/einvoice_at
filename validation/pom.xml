@@ -14,6 +14,13 @@
 
   <name>einvoice-at :: validation</name>
 
+  <properties>
+    <!-- CLI runner (ValidationRunner) driven via `exec:java` for fast corpus smoke runs, outside
+         the app module's Spring context. Version verified against Maven Central
+         maven-metadata.xml on 2026-07-24: latest and release both 3.6.3. -->
+    <exec-maven-plugin.version>3.6.3</exec-maven-plugin.version>
+  </properties>
+
   <dependencies>
     <!-- Canonical findings model (source of Severity/Finding/ValidationReport). Project module;
          its version comes from the reactor, never pinned here. -->
@@ -135,6 +142,17 @@
             </configuration>
           </execution>
         </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>${exec-maven-plugin.version}</version>
+        <configuration>
+          <!-- Opts back in to the reactor-wide default (see the root POM's exec.skip property
+               comment): this is the one module where `exec:java` is meant to actually run. -->
+          <skip>false</skip>
+          <mainClass>com.stoicera.einvoice.validation.cli.ValidationRunner</mainClass>
+        </configuration>
       </plugin>
     </plugins>
   </build>
