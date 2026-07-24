@@ -3,6 +3,7 @@ package com.stoicera.einvoice.validation.stage;
 import com.helger.schematron.svrl.SVRLFailedAssert;
 import com.stoicera.einvoice.core.validation.Finding;
 import com.stoicera.einvoice.core.validation.Severity;
+import com.stoicera.einvoice.validation.internal.BoundedText;
 import java.util.Map;
 
 /**
@@ -53,13 +54,15 @@ public final class SchematronRuleCatalog {
    */
   static Finding toFinding(SVRLFailedAssert failedAssert) {
     String ruleId = failedAssert.getID();
-    String location = failedAssert.getLocation();
+    // The SVRL location is a document-derived XPath and could exceed Finding's location cap.
+    String location = BoundedText.cap(failedAssert.getLocation(), BoundedText.MAX_LOCATION);
     BilingualMessage message = CATALOG.get(ruleId);
     if (message != null) {
       return Finding.of(Severity.ERROR, ruleId, location, message.messageDe(), message.messageEn());
     }
-    // Uncatalogued id — never drop it; surface the raw assert text in both languages.
-    String rawText = failedAssert.getText();
+    // Uncatalogued id — never drop it; surface the raw assert text in both languages. Bound it
+    // first: a <value-of> can pull document content into the assert text and overflow Finding.
+    String rawText = BoundedText.cap(failedAssert.getText(), BoundedText.MAX_MESSAGE_DETAIL);
     return Finding.of(Severity.ERROR, ruleId, location, rawText, rawText);
   }
 }

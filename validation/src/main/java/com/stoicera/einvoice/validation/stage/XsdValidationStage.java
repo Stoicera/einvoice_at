@@ -16,6 +16,7 @@ import com.stoicera.einvoice.core.validation.Finding;
 import com.stoicera.einvoice.core.validation.Severity;
 import com.stoicera.einvoice.validation.ValidationContext;
 import com.stoicera.einvoice.validation.ValidationStage;
+import com.stoicera.einvoice.validation.internal.BoundedText;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -101,9 +102,15 @@ public final class XsdValidationStage implements ValidationStage {
    */
   static Finding toFinding(IError germanError, IError englishError) {
     Severity severity = severityOf(germanError.getErrorLevel());
-    String germanDetail = detailText(germanError);
-    String englishDetail = englishError == null ? germanDetail : englishDetailText(englishError);
-    String location = germanError.getErrorLocation().getAsString();
+    // Bound the parser text before it reaches Finding: a cvc-* message echoes the offending value
+    // verbatim, which can exceed Finding's message/location caps and make Finding.of throw.
+    String germanDetail = BoundedText.cap(detailText(germanError), BoundedText.MAX_MESSAGE_DETAIL);
+    String englishDetail =
+        englishError == null
+            ? germanDetail
+            : BoundedText.cap(englishDetailText(englishError), BoundedText.MAX_MESSAGE_DETAIL);
+    String location =
+        BoundedText.cap(germanError.getErrorLocation().getAsString(), BoundedText.MAX_LOCATION);
     return Finding.of(severity, RULE_XSD, location, GERMAN_LEAD_IN + germanDetail, englishDetail);
   }
 

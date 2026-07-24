@@ -3,6 +3,7 @@ package com.stoicera.einvoice.validation.cli;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.stoicera.einvoice.core.validation.Severity;
+import com.stoicera.einvoice.validation.TestDocuments;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -137,6 +138,20 @@ class ValidationRunnerTest {
     assertThat(exitCode).isEqualTo(1);
     assertThat(outText()).contains("minimal.xml");
     assertThat(outText()).contains("at-b2g-01-missing-order-reference.xml");
+  }
+
+  @Test
+  void overlongXsdValueFileExits1WithoutThrowing(@TempDir Path dir) throws IOException {
+    // P1-2 through the CLI: run() has no catch around validate(), so a Finding-cap overflow used to
+    // escape as an uncaught exception and crash the runner with the wrong exit code.
+    Path file = dir.resolve("overlong-xsd-value.xml");
+    Files.writeString(file, TestDocuments.ebInterface61WithOverlongXsdValue());
+
+    int exitCode = ValidationRunner.run(new String[] {file.toString()}, out, err);
+
+    assertThat(exitCode).isEqualTo(1);
+    assertThat(outText()).contains("UNGÜLTIG");
+    assertThat(outText()).contains("EBI61-XSD");
   }
 
   @Test

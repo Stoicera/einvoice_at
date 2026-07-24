@@ -14,14 +14,18 @@ import java.util.List;
  * Validates an ebInterface 6.1 document against the Austrian B2G profile and reports the result as
  * a {@link ValidationReport}.
  *
- * <p>This facade never throws on bad input — malformed bytes, an unknown format or a wrong
- * ebInterface version are the domain, and each becomes a finding. The pipeline runs in a fixed
- * order and stops at the first stage that makes later stages meaningless: secure DOM parse ({@code
- * XML-01}) → format detection ({@code FORMAT-01}/{@code FORMAT-02}) → XSD ({@code EBI61-XSD}; a
- * structurally invalid document cannot be meaningfully checked by Schematron or business rules) →
- * our own AT-B2G Schematron ({@code AT-B2G-nn}; evaluated only on a schema-valid tree) → our
- * hand-written AT-B2G business rules ({@code AT-B2G-nn}; e.g. the IBAN mod-97 check, also on a
- * schema-valid tree). Findings appear in the report in this pipeline order.
+ * <p>This facade never throws on bad input — malformed bytes, an oversized upload, an unknown
+ * format or a wrong ebInterface version are the domain, and each becomes a finding. Foreign
+ * parser/SVRL text (which can echo document content) is bounded before it reaches a finding, so no
+ * document value can overflow a {@code Finding} cap and escape as an exception. The pipeline runs
+ * in a fixed order and stops at the first stage that makes later stages meaningless: input-size
+ * guard ({@code XML-02}; anything above {@value #MAX_INPUT_BYTES} bytes is rejected up front
+ * without parsing) → secure DOM parse ({@code XML-01}) → format detection ({@code FORMAT-01}/{@code
+ * FORMAT-02}) → XSD ({@code EBI61-XSD}; a structurally invalid document cannot be meaningfully
+ * checked by Schematron or business rules) → our own AT-B2G Schematron ({@code AT-B2G-nn};
+ * evaluated only on a schema-valid tree) → our hand-written AT-B2G business rules ({@code
+ * AT-B2G-nn}; e.g. the IBAN mod-97 check, also on a schema-valid tree). Findings appear in the
+ * report in this pipeline order.
  */
 public final class EbInterface61Validator {
 
@@ -30,6 +34,18 @@ public final class EbInterface61Validator {
 
   /** Rule id: the upload is not well-formed XML. */
   public static final String RULE_MALFORMED_XML = "XML-01";
+
+  /** Rule id: the upload exceeds the module's defensive input-size cap. */
+  public static final String RULE_INPUT_TOO_LARGE = "XML-02";
+
+  /**
+   * Defensive input-size cap, in bytes (20 MB): a module-level guard so the validator defends
+   * itself independently of any caller. Larger uploads are rejected as {@code XML-02} before a byte
+   * is parsed, keeping the never-throws contract safe from out-of-memory on hostile input. This is
+   * separate from — and looser than — the stricter 2 MB application-layer cap SPEC §4 places in
+   * front of the HTTP endpoint in M3.
+   */
+  static final int MAX_INPUT_BYTES = 20 * 1024 * 1024;
 
   /** Source-format marker for a document detected as ebInterface 6.1. */
   public static final String SOURCE_EBINTERFACE_61 = "ebinterface-6.1";
@@ -49,7 +65,15 @@ public final class EbInterface61Validator {
    * @return the validation report, never {@code null}
    */
   public ValidationReport validate(byte[] xml) {
-    ValidationContext ctx = new ValidationContext(xml == null ? new byte[0] : xml);
+    byte[] input = xml == null ? new byte[0] : xml;
+
+    // Stage -1 — defensive input-size guard. Reject an oversized upload before any parse so the
+    // validator cannot be OOM'd by hostile input; this stop is terminal with a single XML-02.
+    if (input.length > MAX_INPUT_BYTES) {
+      return report(SOURCE_UNKNOWN, List.of(inputTooLargeFinding()));
+    }
+
+    ValidationContext ctx = new ValidationContext(input);
 
     // Stage 0 — secure DOM parse. Not well-formed XML stops the pipeline with a single XML-01.
     if (ctx.dom().isEmpty()) {
@@ -94,6 +118,15 @@ public final class EbInterface61Validator {
         null,
         "Die Datei ist kein wohlgeformtes XML und konnte nicht gelesen werden.",
         "The file is not well-formed XML and could not be parsed.");
+  }
+
+  private static Finding inputTooLargeFinding() {
+    return Finding.of(
+        Severity.ERROR,
+        RULE_INPUT_TOO_LARGE,
+        null,
+        "Dokument überschreitet die maximale Größe von 20 MB.",
+        "Document exceeds the maximum size of 20 MB.");
   }
 
   private static ValidationReport report(String sourceFormat, List<Finding> findings) {

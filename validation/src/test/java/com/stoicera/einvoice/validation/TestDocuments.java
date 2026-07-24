@@ -89,6 +89,26 @@ public final class TestDocuments {
   }
 
   /**
+   * Length, in characters, of the offending value embedded by {@link
+   * #ebInterface61WithOverlongXsdValue()}. Chosen well above the core {@code Finding}'s
+   * 4096-character message cap so that an <em>unbounded</em> echo of the value into the finding
+   * text would overflow that cap and throw — the P1-2 crash this fixture reproduces.
+   */
+  public static final int OVERLONG_VALUE_LENGTH = 5000;
+
+  /**
+   * A well-formed ebInterface 6.1 document whose {@code InvoiceDate} carries a {@value
+   * #OVERLONG_VALUE_LENGTH}-character value that is not a valid {@code xs:date}. Xerces bakes the
+   * whole offending value into its {@code cvc-datatype-valid} message, so the XSD stage builds a
+   * finding whose detail text is longer than the {@code Finding} message cap unless the foreign
+   * text is bounded first. The namespace is untouched, so the document clears format detection and
+   * reaches the XSD stage.
+   */
+  public static String ebInterface61WithOverlongXsdValue() {
+    return validEbInterface61().replace("2024-03-05", "9".repeat(OVERLONG_VALUE_LENGTH));
+  }
+
+  /**
    * ebInterface 6.1 document that is fully XSD-valid but carries no {@code OrderReference} — the
    * business-rule case the AT-B2G Schematron must catch as {@code AT-B2G-01} (Auftragsreferenz
    * missing). Derived by removing the whole {@code OrderReference} element from the valid document.

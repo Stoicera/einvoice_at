@@ -120,6 +120,57 @@ class EbInterface61ValidatorTest {
   }
 
   @Test
+  void overlongXsdValueDoesNotThrowAndProducesBoundedFinding() {
+    // P1-2: an XSD-invalid value longer than Finding's 4096-char message cap used to make
+    // validate() throw InvariantViolationException out of the documented "never throws" contract.
+    ValidationReport report =
+        validator.validate(TestDocuments.bytes(TestDocuments.ebInterface61WithOverlongXsdValue()));
+
+    assertThat(report.sourceFormat()).isEqualTo("ebinterface-6.1");
+    assertThat(report.isValid()).isFalse();
+    assertThat(report.findingsOf(Severity.ERROR)).isNotEmpty();
+
+    // No finding overflows the core caps, whatever the parser echoed.
+    assertThat(report.findings())
+        .allSatisfy(
+            finding -> {
+              assertThat(finding.messageDe().length()).isLessThanOrEqualTo(4096);
+              assertThat(finding.messageEn().length()).isLessThanOrEqualTo(4096);
+              if (finding.location() != null) {
+                assertThat(finding.location().length()).isLessThanOrEqualTo(1024);
+              }
+            });
+    // At least one XSD finding echoed the overlong value and was therefore truncated with the
+    // ellipsis marker in both languages.
+    assertThat(report.findings())
+        .anySatisfy(
+            finding -> {
+              assertThat(finding.ruleId()).isEqualTo("EBI61-XSD");
+              assertThat(finding.messageDe()).endsWith("…");
+              assertThat(finding.messageEn()).endsWith("…");
+            });
+  }
+
+  @Test
+  void oversizedInputYieldsSingleXml02ErrorAndStops() {
+    // P2-9 (size half): a document one byte above the module's defensive input cap is rejected up
+    // front with a single XML-02 finding, German first, before any parse is attempted.
+    byte[] oversized = new byte[EbInterface61Validator.MAX_INPUT_BYTES + 1];
+
+    ValidationReport report = validator.validate(oversized);
+
+    assertThat(report.sourceFormat()).isEqualTo("unknown");
+    assertThat(report.findings()).hasSize(1);
+    Finding finding = report.findings().get(0);
+    assertThat(finding.ruleId()).isEqualTo("XML-02");
+    assertThat(finding.severity()).isEqualTo(Severity.ERROR);
+    assertThat(finding.messageDe())
+        .isEqualTo("Dokument überschreitet die maximale Größe von 20 MB.");
+    assertThat(finding.messageEn()).isEqualTo("Document exceeds the maximum size of 20 MB.");
+    assertThat(report.isValid()).isFalse();
+  }
+
+  @Test
   void documentViolatingBothAtRulesReportsBothInPipelineOrder() {
     ValidationReport report =
         validator.validate(TestDocuments.bytes(TestDocuments.ebInterface61ViolatingBothAtRules()));

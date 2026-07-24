@@ -44,6 +44,22 @@ class SchematronRuleCatalogTest {
   }
 
   @Test
+  void uncatalogedRuleWithOverlongSvrlTextIsBoundedInsteadOfThrowing() {
+    // P1-2 latent twin: an uncatalogued assert whose SVRL text (possibly document-derived) exceeds
+    // Finding's 4096-char cap must be bounded, not thrown, so the fallback keeps the finding.
+    String overlong = "x".repeat(5000);
+
+    Finding finding =
+        SchematronRuleCatalog.toFinding(failedAssert("AT-B2G-99", "/eb:Invoice", overlong));
+
+    assertThat(finding.ruleId()).isEqualTo("AT-B2G-99");
+    assertThat(finding.messageDe().length()).isLessThanOrEqualTo(4096);
+    assertThat(finding.messageEn().length()).isLessThanOrEqualTo(4096);
+    assertThat(finding.messageDe()).endsWith("…");
+    assertThat(finding.messageEn()).endsWith("…");
+  }
+
+  @Test
   void uncatalogedRuleFallsBackToRawSvrlTextInBothLanguagesKeepingTheId() {
     Finding finding =
         SchematronRuleCatalog.toFinding(
