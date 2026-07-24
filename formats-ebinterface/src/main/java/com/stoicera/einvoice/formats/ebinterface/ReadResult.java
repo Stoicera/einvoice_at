@@ -3,7 +3,8 @@ package com.stoicera.einvoice.formats.ebinterface;
 import java.util.List;
 
 /**
- * Outcome of a lenient {@link EbInterfaceVersionStrategy#read(byte[])}.
+ * Outcome of a lenient {@link EbInterfaceVersionStrategy#read(byte[])} or {@link
+ * EbInterfaceVersionStrategy#read(org.w3c.dom.Node)}.
  *
  * <p>{@code document} is {@code null} on failure. {@code errors} carries the human-readable
  * diagnostics collected while parsing (empty on a clean read); the list is copied defensively and
