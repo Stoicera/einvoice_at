@@ -66,8 +66,8 @@ Formatting is google-java-format, enforced by Spotless in every build and in CI.
 JUnit 5 + AssertJ + Mockito for unit tests, ArchUnit for module-boundary rules, Testcontainers for integration tests, Selenium WebDriver for E2E — built out milestone by milestone per [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md). Currently: `core` domain model at 99.54 % line / 98.09 % branch coverage (JaCoCo gate: 95/90), including
 a [jqwik](https://jqwik.net) property suite for money/VAT arithmetic and an ArchUnit rule
 pinning `core` to JDK-only dependencies. Plus the application smoke test on the health endpoint.
-Mutation testing ([PIT](https://pitest.org)) gates the `core` module in CI, so the coverage number has teeth.
-The M2 modules carry the same JaCoCo discipline — `formats-ebinterface` and `validation` gate at 90 % line / 85 % branch, `mapping` at 95/90 — and `mapping` additionally runs a local PIT gate (85 %, ~12 s); wiring that second PIT gate into CI is tracked as follow-up work (see [docs/worklog.md](docs/worklog.md)).
+Mutation testing ([PIT](https://pitest.org)) gates all four implemented modules in CI — `core` at 90 %, and `mapping`, `validation` and `formats-ebinterface` at 85 % — so the coverage numbers have teeth, not just line reach. The security-critical `validation` module (the untrusted-input boundary) is gated deliberately: its surviving mutants are documented equivalent/defensive ones, not shape-asserting gaps.
+The M2 modules carry the same JaCoCo discipline — `formats-ebinterface` and `validation` gate at 90 % line / 85 % branch, `mapping` at 95/90.
 
 ## Validation pipeline
 
