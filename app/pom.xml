@@ -124,22 +124,24 @@
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
       </plugin>
+      <!-- Test split by naming convention: Surefire (bound to `test`) runs the fast, Docker-free
+           unit tests (`*Test`/`*Tests`); Failsafe (bound to `integration-test`/`verify`) runs the
+           Testcontainers integration tests (`*IT`, the default Failsafe include). So
+           `./mvnw test -pl app` needs no Docker daemon, while `./mvnw verify -pl app` spins up the
+           Postgres and Keycloak containers. The `verify` goal makes the build fail on IT failures
+           (Failsafe defers failures to it), which the reactor `verify` in CI already runs. Abstract
+           bases (AbstractPostgresIT, AbstractKeycloakIT) carry no @Test and are skipped regardless. -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-surefire-plugin</artifactId>
-        <!-- The repo runs its whole suite under Surefire (no Failsafe ceremony). Surefire's default
-             includes match *Test/*Tests only, so the Testcontainers integration tests — named *IT by
-             convention, and the base class every later M3 IT extends — are added explicitly here.
-             This keeps a single test runner while letting `./mvnw verify -pl app` (and plain test)
-             exercise the database ITs. Abstract bases like AbstractPostgresIT carry no @Test and are
-             skipped regardless. -->
-        <configuration>
-          <includes>
-            <include>**/*Test.java</include>
-            <include>**/*Tests.java</include>
-            <include>**/*IT.java</include>
-          </includes>
-        </configuration>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <executions>
+          <execution>
+            <goals>
+              <goal>integration-test</goal>
+              <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>

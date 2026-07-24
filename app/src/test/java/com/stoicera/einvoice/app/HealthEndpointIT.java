@@ -15,7 +15,7 @@ import org.springframework.web.client.RestClient;
  * endpoint reports {@code UP} — is unchanged and now covers the database health contributor too.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class HealthEndpointTest extends AbstractPostgresIT {
+class HealthEndpointIT extends AbstractPostgresIT {
 
   @LocalServerPort private int port;
 
