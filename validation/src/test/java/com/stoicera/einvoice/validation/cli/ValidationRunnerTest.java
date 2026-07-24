@@ -132,6 +132,69 @@ class ValidationRunnerTest {
   }
 
   @Test
+  void directoryWithMixedFilesValidatesOnlyXmlFiles(@TempDir Path dir) throws IOException {
+    // A directory that holds both an .xml and a non-xml file: the recursive walk must validate only
+    // the .xml (by extension), so the run is all-valid and the non-xml file never enters the
+    // report.
+    // Pins the ".xml" filter against a mutant that lets every regular file through.
+    Files.writeString(dir.resolve("invoice.xml"), TestDocuments.validEbInterface61());
+    Files.writeString(dir.resolve("notes.txt"), "not xml");
+
+    int exitCode = ValidationRunner.run(new String[] {dir.toString()}, out, err);
+
+    assertThat(exitCode).isEqualTo(0);
+    assertThat(outText()).contains("invoice.xml");
+    assertThat(outText()).doesNotContain("notes.txt");
+  }
+
+  @Test
+  void subdirectoryNamedLikeXmlIsSkippedByTheRegularFileFilter(@TempDir Path dir)
+      throws IOException {
+    // The walk's regular-file filter must exclude a *directory* whose name ends in ".xml" — feeding
+    // it to the reader would fail. Only the real file is validated, so the run stays all-valid.
+    Files.createDirectory(dir.resolve("nested.xml"));
+    Files.writeString(dir.resolve("real.xml"), TestDocuments.validEbInterface61());
+
+    int exitCode = ValidationRunner.run(new String[] {dir.toString()}, out, err);
+
+    assertThat(exitCode).isEqualTo(0);
+    assertThat(outText()).contains("real.xml");
+    assertThat(outText()).contains("GÜLTIG");
+  }
+
+  @Test
+  void isXmlFileAcceptsOnlyThePlainXmlExtension() {
+    // The directory-walk discovery filter, tested directly so both its true and false outcomes are
+    // pinned (the ".xml" gate that keeps a README or a stray text file out of the report).
+    assertThat(ValidationRunner.isXmlFile(Path.of("corpus/valid/minimal.xml"))).isTrue();
+    assertThat(ValidationRunner.isXmlFile(Path.of("corpus/README.md"))).isFalse();
+    assertThat(ValidationRunner.isXmlFile(Path.of("corpus/notxml"))).isFalse();
+  }
+
+  @Test
+  void reportPrintsFormatAndProfileLineForValidatedFile() {
+    // The per-file report carries a "Format: … · Profil: …" summary line; assert it is actually
+    // emitted so a mutant that drops the println is caught.
+    ValidationRunner.run(new String[] {VALID_FILE}, out, err);
+
+    assertThat(outText()).contains("Format: ebinterface-6.1");
+    assertThat(outText()).contains("Profil: at-b2g");
+  }
+
+  @Test
+  void malformedFileRendersEmptyLocationAsDashNotNull(@TempDir Path dir) throws IOException {
+    // XML-01 carries no location; the report must render the empty location column as "-", never
+    // the literal "null". Pins the null-location ternary in printReport.
+    Path file = dir.resolve("broken.xml");
+    Files.writeString(file, TestDocuments.malformed());
+
+    int exitCode = ValidationRunner.run(new String[] {file.toString()}, out, err);
+
+    assertThat(exitCode).isEqualTo(1);
+    assertThat(outText()).contains("XML-01  -  Die Datei ist kein wohlgeformtes XML");
+  }
+
+  @Test
   void multipleFileArgumentsAreAllValidated() {
     int exitCode = ValidationRunner.run(new String[] {VALID_FILE, INVALID_FILE}, out, err);
 

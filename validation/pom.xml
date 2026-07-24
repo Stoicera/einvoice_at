@@ -156,4 +156,56 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- Mutation testing gives the coverage number teeth; run locally with
+         ./mvnw -pl validation -Pmutation test-compile org.pitest:pitest-maven:mutationCoverage
+         Deliberately NOT "-am": the bare pitest goal runs against every project the reactor
+         selects, so "-am" would drag core (its own profile) and formats-ebinterface into the
+         same reactor. All four gated modules now carry the profile, so the CI job (ci.yml) can
+         list them together, but it still installs the dependency closure first and runs the goal
+         without "-am" — see mapping/pom.xml's reactor-landmine note. This module's PIT reactor
+         also needs mapping (a test-scope dependency) in the local repo; the CI install step and a
+         prior local reactor build both put it there.
+         Kept out of the default verify because PIT re-runs the whole validation suite (XSD +
+         Schematron + business-rule stages, secure-parse) once per mutant, far slower than a plain
+         verify. -->
+    <profile>
+      <id>mutation</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.pitest</groupId>
+            <artifactId>pitest-maven</artifactId>
+            <version>${pitest.version}</version>
+            <dependencies>
+              <dependency>
+                <groupId>org.pitest</groupId>
+                <artifactId>pitest-junit5-plugin</artifactId>
+                <version>${pitest-junit5.version}</version>
+              </dependency>
+            </dependencies>
+            <configuration>
+              <targetClasses>
+                <param>com.stoicera.einvoice.validation.*</param>
+              </targetClasses>
+              <!-- Measured mutation score 104/117 (89%) on 2026-07-24; a full run takes ~30 s. The
+                   13 surviving mutants are documented and left on purpose: six are SecureXml
+                   belt-and-braces hardening features behaviourally dominated by the killed
+                   disallow-doctype-decl guard (no untrusted payload can reach entity resolution to
+                   distinguish them), and the rest are equivalent or defensive-unreachable
+                   (early empty-list returns in BusinessRuleStage, the always-true Schematron
+                   self-check, the never-hit German/English count-mismatch fallback, and the
+                   System.exit/IO-catch seams in the CLI). Gate set to 85 — a few points under the
+                   measured rate, mirroring mapping's PIT wiring — so a genuine regression trips it
+                   without the benign survivors being a tripwire. The validation module runs no
+                   jqwik property tests, so this score is deterministic run to run. -->
+              <mutationThreshold>85</mutationThreshold>
+              <timestampedReports>false</timestampedReports>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

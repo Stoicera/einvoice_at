@@ -139,12 +139,21 @@ public final class ValidationRunner {
   private static List<Path> xmlFilesUnder(Path directory) {
     try (Stream<Path> walk = Files.walk(directory)) {
       return walk.filter(Files::isRegularFile)
-          .filter(path -> path.getFileName().toString().endsWith(".xml"))
+          .filter(ValidationRunner::isXmlFile)
           .sorted(Comparator.comparing(Path::toString))
           .toList();
     } catch (IOException e) {
       throw new UncheckedIOException("Verzeichnis konnte nicht gelesen werden: " + directory, e);
     }
+  }
+
+  /**
+   * Whether {@code path} names an {@code *.xml} file — the extension filter the directory walk
+   * applies. A named method rather than an inline lambda so the discovery rule is directly unit-
+   * and mutation-testable. Package-visible for tests.
+   */
+  static boolean isXmlFile(Path path) {
+    return path.getFileName().toString().endsWith(".xml");
   }
 
   /** Writes one German-first report block for {@code file}'s {@code report} to {@code out}. */

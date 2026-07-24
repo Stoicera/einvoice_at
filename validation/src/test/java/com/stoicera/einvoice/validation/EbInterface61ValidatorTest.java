@@ -171,6 +171,21 @@ class EbInterface61ValidatorTest {
   }
 
   @Test
+  void inputExactlyAtCapIsNotRejectedAsTooLargeAndReachesTheParser() {
+    // Boundary of the defensive size cap: input of exactly MAX_INPUT_BYTES must clear the size
+    // guard (which rejects only strictly larger uploads) and reach the parser, where these non-XML
+    // bytes become a single XML-01 — never an XML-02. Pins the `>` boundary against a `>=` slip
+    // that would reject a legitimately-sized document up front.
+    byte[] atCap = new byte[EbInterface61Validator.MAX_INPUT_BYTES];
+
+    ValidationReport report = validator.validate(atCap);
+
+    assertThat(report.findings()).hasSize(1);
+    assertThat(report.findings().get(0).ruleId()).isEqualTo("XML-01");
+    assertThat(report.isValid()).isFalse();
+  }
+
+  @Test
   void documentViolatingBothAtRulesReportsBothInPipelineOrder() {
     ValidationReport report =
         validator.validate(TestDocuments.bytes(TestDocuments.ebInterface61ViolatingBothAtRules()));
