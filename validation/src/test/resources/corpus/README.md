@@ -48,7 +48,7 @@ exactly one stage.
 | `valid/exempt-invoice.xml` | *(none)* — `isValid()` | tax-exempt (category E) + exemption reason |
 | `invalid/malformed.xml` | `XML-01` | secure DOM parse |
 | `invalid/wrong-namespace-ebi60.xml` | `FORMAT-02` | format detection |
-| `invalid/xsd-missing-invoice-number.xml` | `EBI61-XSD` (≥1) | XSD schema |
+| `invalid/xsd-missing-invoice-number.xml` | `XSD-01` (≥1) | XSD schema |
 | `invalid/at-b2g-01-missing-order-reference.xml` | `AT-B2G-01` | AT-B2G Schematron (OrderReference absent) |
 | `invalid/at-b2g-01-whitespace-order-id.xml` | `AT-B2G-01` | AT-B2G Schematron (OrderID whitespace-only) |
 | `invalid/at-b2g-02-invalid-iban.xml` | `AT-B2G-02` | AT-B2G business rule (IBAN mod-97) |
@@ -77,15 +77,17 @@ by introducing **exactly one** defect, so the difference under test is isolated 
 **Distinguishing feature:** the only credit note in the corpus (`DocumentType="CreditMemo"`) and the
 only reverse-charge document — a single line at category `AE` (Übergang der Steuerschuld, § 19 UStG),
 so `TaxAmount` is 0 and the tax item carries the `"Übergang der Steuerschuld: …"` comment. Auftrags­
-referenz and Lieferantennummer present (AT-B2G-clean); no payment block (an effective Gutschrift).
+referenz and Lieferantennummer present (AT-B2G-clean); a `PaymentMethod/NoPayment` block, because an
+effektive Gutschrift moves no money (finding A10 — a `CREDIT_NOTE` without paymentMeans emits
+`NoPayment` rather than omitting the payment block).
 **Provenance:** pipeline output of the current generation chain
 (`Invoice.builder()` → `InvoiceToEbInterface61Mapper` → `EbInterface61Strategy.write`). Canonical
 input: invoice `2026-CN-0042`, type `CREDIT_NOTE`, issue `2026-07-15`, order ref `BBG-2026-CN-0042`,
 supplier `L-100234`, seller `Bau Süd GmbH`/`ATU33333333`, buyer `Bundesbeschaffung GmbH`/`ATU87654321`,
 one line `Bauleistung (Reverse Charge)` × 1 `C62` @ `5000.00` at `VatRate.REVERSE_CHARGE`, no
-paymentMeans. **Regenerate** by re-running that chain on the same canonical input (see "Regenerating"
-below). *Task-7 note:* finding A10 will make a `CREDIT_NOTE` without paymentMeans emit a `NoPayment`
-element instead of omitting the payment block; when that lands, this file must be regenerated.
+paymentMeans. The `Country` element text is the German display name (`Österreich`) with the ISO code
+on `@CountryCode` (finding A6). **Regenerate** by re-running that chain on the same canonical input
+(see "Regenerating" below).
 
 ### `valid/exempt-invoice.xml`
 **Distinguishing feature:** the only tax-exempt document — a single line at category `E` with an
@@ -95,7 +97,9 @@ item carries the `"Steuerbefreiung: …"` comment. Auftragsreferenz and Lieferan
 type `INVOICE`, issue `2026-07-12`, order ref `BBG-2026-EX-0042`, supplier `L-100777`, seller
 `Export Öl GmbH`/`ATU55555555`, buyer `Abnehmer S.r.l.`/`IT12345670017`, exemption reason
 `VATEX-EU-G` on category `EXEMPT`, one line `Lieferung (steuerfrei)` × 4 `C62` @ `250.00` at
-`VatRate.EXEMPT`. **Regenerate** by re-running that chain on the same canonical input.
+`VatRate.EXEMPT`. The `Country` element text is the German display name (`Österreich` for the seller,
+`Italien` for the `IT` recipient) with the ISO code on `@CountryCode` (finding A6). **Regenerate** by
+re-running that chain on the same canonical input.
 
 ### `invalid/malformed.xml`
 **Defect:** the `InvoiceNumber` end tag is misspelled `</InvoiceNo>`, so the start/end tags do not
@@ -110,7 +114,7 @@ be `FORMAT-01`; that case is covered by the validator's unit tests.
 
 ### `invalid/xsd-missing-invoice-number.xml`
 **Defect:** the required `<InvoiceNumber>` element is removed. The document is well-formed and in the
-right namespace, but structurally invalid against the 6.1 XSD → one or more `EBI61-XSD` findings. This
+right namespace, but structurally invalid against the 6.1 XSD → one or more `XSD-01` findings. This
 file also guards the **stage gate**: because XSD failure short-circuits the pipeline, no `AT-B2G`
 finding may appear even though the (still present) order reference and IBAN would otherwise be checked.
 

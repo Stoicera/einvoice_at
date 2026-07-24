@@ -10,6 +10,7 @@ import com.helger.ebinterface.v61.Ebi61InvoiceRecipientType;
 import com.helger.ebinterface.v61.Ebi61InvoiceType;
 import com.helger.ebinterface.v61.Ebi61ItemListType;
 import com.helger.ebinterface.v61.Ebi61ListLineItemType;
+import com.helger.ebinterface.v61.Ebi61NoPaymentType;
 import com.helger.ebinterface.v61.Ebi61OrderReferenceType;
 import com.helger.ebinterface.v61.Ebi61PaymentConditionsType;
 import com.helger.ebinterface.v61.Ebi61PaymentMethodType;
@@ -21,6 +22,7 @@ import com.helger.ebinterface.v61.Ebi61UnitType;
 import com.helger.ebinterface.v61.Ebi61UniversalBankTransactionType;
 import com.stoicera.einvoice.core.invoice.Invoice;
 import com.stoicera.einvoice.core.invoice.InvoiceLine;
+import com.stoicera.einvoice.core.invoice.InvoiceTypeCode;
 import com.stoicera.einvoice.core.party.Address;
 import com.stoicera.einvoice.core.party.Party;
 import com.stoicera.einvoice.core.payment.PaymentMeans;
@@ -31,6 +33,7 @@ import com.stoicera.einvoice.core.tax.VatRate;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.Currency;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -49,10 +52,10 @@ import java.util.stream.Stream;
  *   <caption>Canonical-to-ebInterface-6.1 field mapping</caption>
  *   <tr><th>Canonical</th><th>ebInterface 6.1</th><th>Notes</th></tr>
  *   <tr><td>{@code invoiceNumber}</td><td>{@code InvoiceNumber}</td><td></td></tr>
- *   <tr><td>{@code type} INVOICE / CREDIT_NOTE</td><td>{@code @DocumentType} =
+ *   <tr><td>{@code type} COMMERCIAL_INVOICE / CREDIT_NOTE</td><td>{@code @DocumentType} =
  *       {@code Invoice} / {@code CreditMemo}</td>
- *       <td>via {@link Ebi61DocumentTypeType#INVOICE}/{@link Ebi61DocumentTypeType#CREDIT_MEMO}
- *       (javap-resolved constant names); attribute is XSD-required.</td></tr>
+ *       <td>via {@link Ebi61DocumentTypeType#INVOICE}/{@link Ebi61DocumentTypeType#CREDIT_MEMO};
+ *       attribute is XSD-required.</td></tr>
  *   <tr><td>{@code issueDate}</td><td>{@code InvoiceDate}</td>
  *       <td>{@code setInvoiceDate(LocalDate)} overload.</td></tr>
  *   <tr><td>{@code currency}</td><td>{@code @InvoiceCurrency}</td>
@@ -76,6 +79,12 @@ import java.util.stream.Stream;
  *   <tr><td>{@code buyer}</td><td>{@code InvoiceRecipient}: {@code VATIdentificationNumber},
  *       {@code Address}</td><td>{@code VATIdentificationNumber} XSD-required; same no-UID convention
  *       ({@code "ATU00000000"}) as the {@code Biller} row.</td></tr>
+ *   <tr><td>{@code address.countryCode} (both parties)</td><td>{@code Address/Country}</td>
+ *       <td><strong>Domain decision:</strong> the {@code @CountryCode} attribute carries the ISO
+ *       3166-1 alpha-2 code, and the element <em>text</em> carries its German display name
+ *       ({@code "AT"} → {@code "Österreich"}) via {@link java.util.Locale} — AUSTRIAPRO's own
+ *       samples render the human-readable name there. An unknown code falls back to the code as its
+ *       own text.</td></tr>
  *   <tr><td>{@code orderReference}</td><td>{@code InvoiceRecipient/OrderReference/OrderID}</td>
  *       <td>Auftragsreferenz; {@code OrderReference} inherited from {@code AbstractPartyType};
  *       omitted when {@code null}.</td></tr>
@@ -101,8 +110,12 @@ import java.util.stream.Stream;
  *       <td>copied, never recomputed.</td></tr>
  *   <tr><td>{@code paymentMeans}</td>
  *       <td>{@code PaymentMethod/UniversalBankTransaction/BeneficiaryAccount[0]}</td>
- *       <td>{@code IBAN} = iban value, {@code BIC} = bic when present; whole
- *       {@code PaymentMethod} omitted when {@code paymentMeans} is {@code null}.</td></tr>
+ *       <td>{@code IBAN} = iban value, {@code BIC} = bic when present. When {@code paymentMeans} is
+ *       {@code null}: a {@code CREDIT_NOTE} emits {@code PaymentMethod/NoPayment} (the
+ *       e-rechnung.gv.at recommendation for an effektive Gutschrift — no refund account), while a
+ *       {@code COMMERCIAL_INVOICE} omits the whole {@code PaymentMethod} (the XSD makes it
+ *       optional). A credit note <em>with</em> {@code paymentMeans} keeps the bank-transfer refund
+ *       account.</td></tr>
  *   <tr><td>{@code dueDate}</td><td>{@code PaymentConditions/DueDate}</td><td></td></tr>
  *   <tr><td>{@code paymentTerms}</td><td>{@code PaymentConditions/Comment}</td>
  *       <td><strong>XSD decision:</strong> {@code PaymentConditionsType} carries an optional
@@ -212,10 +225,20 @@ public final class InvoiceToEbInterface61Mapper {
     target.setZIP(address.postalCode());
 
     Ebi61CountryType country = new Ebi61CountryType();
-    country.setValue(address.countryCode());
+    country.setValue(germanCountryName(address.countryCode()));
     country.setCountryCode(address.countryCode());
     target.setCountry(country);
     return target;
+  }
+
+  /**
+   * The German display name for an ISO 3166-1 alpha-2 country code ({@code "AT"} → {@code
+   * "Österreich"}); the {@code @CountryCode} attribute keeps the code itself. An unrecognised code
+   * has no display name, so {@link Locale#getDisplayCountry(Locale)} returns the code unchanged —
+   * the element text then simply echoes the code rather than being empty.
+   */
+  private static String germanCountryName(String countryCode) {
+    return new Locale.Builder().setRegion(countryCode).build().getDisplayCountry(Locale.GERMAN);
   }
 
   private Ebi61DetailsType mapDetails(Invoice invoice, Currency currency) {
@@ -305,6 +328,12 @@ public final class InvoiceToEbInterface61Mapper {
       transaction.addBeneficiaryAccount(account);
       Ebi61PaymentMethodType paymentMethod = new Ebi61PaymentMethodType();
       paymentMethod.setUniversalBankTransaction(transaction);
+      ebi.setPaymentMethod(paymentMethod);
+    } else if (invoice.type() == InvoiceTypeCode.CREDIT_NOTE) {
+      // e-rechnung.gv.at recommends NoPayment for an effektive Gutschrift (a credit note that moves
+      // no money); a commercial invoice without payment means simply omits the optional block.
+      Ebi61PaymentMethodType paymentMethod = new Ebi61PaymentMethodType();
+      paymentMethod.setNoPayment(new Ebi61NoPaymentType());
       ebi.setPaymentMethod(paymentMethod);
     }
 

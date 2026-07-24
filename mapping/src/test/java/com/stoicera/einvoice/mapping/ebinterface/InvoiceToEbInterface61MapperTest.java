@@ -77,8 +77,27 @@ class InvoiceToEbInterface61MapperTest {
     assertThat(address.getStreet()).isEqualTo("Grünmarktgasse 5");
     assertThat(address.getTown()).isEqualTo("Wien");
     assertThat(address.getZIP()).isEqualTo("1010");
-    assertThat(address.getCountry().getValue()).isEqualTo("AT");
+    // A6: the element text is the German country name; the ISO code stays on @CountryCode.
+    assertThat(address.getCountry().getValue()).isEqualTo("Österreich");
     assertThat(address.getCountry().getCountryCode()).isEqualTo("AT");
+  }
+
+  // --- Country display name (A6) -------------------------------------------------------------
+
+  @Test
+  void mapsCountryElementTextToGermanDisplayNameKeepingIsoCodeAttribute() {
+    // AT -> "Österreich"/@CountryCode "AT" (seller) and IT -> "Italien"/@CountryCode "IT" (the
+    // cross-border recipient), so the human-readable name is in the element content — AUSTRIAPRO's
+    // own convention — while the ISO code stays on the attribute.
+    Ebi61InvoiceType ebi = mapper.map(Fixtures.exemptInvoice());
+
+    var billerCountry = ebi.getBiller().getAddress().getCountry();
+    assertThat(billerCountry.getValue()).isEqualTo("Österreich");
+    assertThat(billerCountry.getCountryCode()).isEqualTo("AT");
+
+    var recipientCountry = ebi.getInvoiceRecipient().getAddress().getCountry();
+    assertThat(recipientCountry.getValue()).isEqualTo("Italien");
+    assertThat(recipientCountry.getCountryCode()).isEqualTo("IT");
   }
 
   @Test
@@ -246,9 +265,54 @@ class InvoiceToEbInterface61MapperTest {
 
   @Test
   void omitsPaymentMethodWhenNoPaymentMeans() {
+    // A commercial invoice without payment means keeps the whole PaymentMethod omitted (the XSD
+    // makes it optional) — A10 only changes the credit-note branch below.
     Ebi61InvoiceType ebi = mapper.map(Fixtures.minimalB2bInvoice());
 
     assertThat(ebi.getPaymentMethod()).isNull();
+  }
+
+  // --- NoPayment for credit notes (A10) ------------------------------------------------------
+
+  @Test
+  void creditNoteWithoutPaymentMeansEmitsNoPayment() {
+    // e-rechnung.gv.at: an effektive Gutschrift (a credit note that moves no money) should carry
+    // PaymentMethod/NoPayment, not an omitted payment block and not a bank transaction.
+    Ebi61InvoiceType ebi = mapper.map(Fixtures.reverseChargeCreditNote());
+
+    assertThat(ebi.getPaymentMethod()).isNotNull();
+    assertThat(ebi.getPaymentMethod().getNoPayment()).isNotNull();
+    assertThat(ebi.getPaymentMethod().getUniversalBankTransaction()).isNull();
+  }
+
+  @Test
+  void creditNoteWithoutPaymentMeansReReadsWithoutSchemaErrors() {
+    // NoPaymentType is an empty element in the 6.1 XSD; re-read with the schema on to prove the
+    // emitted PaymentMethod/NoPayment is schema-clean.
+    String xml = STRATEGY.write(mapper.map(Fixtures.reverseChargeCreditNote()));
+
+    ErrorList errors = new ErrorList();
+    new EbInterface61Marshaller()
+        .setUseSchema(true)
+        .setCollectErrors(errors)
+        .read(xml.getBytes(StandardCharsets.UTF_8));
+
+    assertThat(errors.containsAtLeastOneError())
+        .withFailMessage("expected no schema errors but got: %s%nXML:%n%s", errors, xml)
+        .isFalse();
+  }
+
+  @Test
+  void creditNoteWithPaymentMeansKeepsBankTransaction() {
+    // A credit note that DOES carry payment means (a refund account) keeps its bank transaction —
+    // NoPayment is only for the no-money case.
+    Ebi61InvoiceType ebi = mapper.map(Fixtures.creditNoteWithRefundAccount());
+
+    assertThat(ebi.getPaymentMethod()).isNotNull();
+    assertThat(ebi.getPaymentMethod().getNoPayment()).isNull();
+    var ubt = ebi.getPaymentMethod().getUniversalBankTransaction();
+    assertThat(ubt).isNotNull();
+    assertThat(ubt.getBeneficiaryAccountAtIndex(0).getIBAN()).isEqualTo("AT611904300234573201");
   }
 
   @Test

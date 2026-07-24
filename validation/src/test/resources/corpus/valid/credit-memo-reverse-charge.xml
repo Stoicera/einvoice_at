@@ -9,7 +9,7 @@
       <Street>Mozartweg 3</Street>
       <Town>Salzburg</Town>
       <ZIP>5020</ZIP>
-      <Country CountryCode="AT">AT</Country>
+      <Country CountryCode="AT">Österreich</Country>
     </Address>
     <InvoiceRecipientsBillerID>L-100234</InvoiceRecipientsBillerID>
   </Biller>
@@ -23,7 +23,7 @@
       <Street>Lassallestraße 9b</Street>
       <Town>Wien</Town>
       <ZIP>1020</ZIP>
-      <Country CountryCode="AT">AT</Country>
+      <Country CountryCode="AT">Österreich</Country>
     </Address>
   </InvoiceRecipient>
   <Details>
@@ -51,4 +51,7 @@
   </Tax>
   <TotalGrossAmount>5000.00</TotalGrossAmount>
   <PayableAmount>5000.00</PayableAmount>
+  <PaymentMethod>
+    <NoPayment />
+  </PaymentMethod>
 </Invoice>

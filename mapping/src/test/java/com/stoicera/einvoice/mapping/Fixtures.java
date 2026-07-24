@@ -154,6 +154,37 @@ public final class Fixtures {
   }
 
   /**
+   * A credit note (category AE) that <em>does</em> carry payment means — a refund to the buyer's
+   * account. Exercises the A10 branch where a credit note with {@code paymentMeans} keeps its
+   * {@code UniversalBankTransaction} rather than emitting {@code NoPayment}.
+   */
+  public static Invoice creditNoteWithRefundAccount() {
+    return Invoice.builder()
+        .invoiceNumber("2026-CN-0099")
+        .type(InvoiceTypeCode.CREDIT_NOTE)
+        .issueDate(LocalDate.of(2026, 7, 18))
+        .currency(Money.EUR)
+        .seller(
+            new Party(
+                "Süd Bau GmbH",
+                new Address("Mozartweg 3", "Salzburg", "5020", "AT"),
+                "ATU33333333"))
+        .buyer(
+            new Party(
+                "Nord Bau AG", new Address("Donaukanal 12", "Wien", "1020", "AT"), "ATU44444444"))
+        .addLine(
+            new InvoiceLine(
+                "1",
+                "Bauleistung (Reverse Charge)",
+                new BigDecimal("1"),
+                "C62",
+                new BigDecimal("5000.00"),
+                VatRate.REVERSE_CHARGE))
+        .paymentMeans(new PaymentMeans(new Iban("AT611904300234573201"), "BKAUATWW"))
+        .build();
+  }
+
+  /**
    * The exemption reason (code + text) that {@link #exemptInvoice()} attaches to its EXEMPT line.
    */
   public static VatExemptionReason exemptReason() {
