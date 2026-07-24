@@ -1,6 +1,7 @@
 package com.stoicera.einvoice.app.report;
 
 import com.stoicera.einvoice.core.validation.ValidationReport;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.UUID;
 
 /**
@@ -15,4 +16,12 @@ import java.util.UUID;
  * both, rather than two different envelopes, keeps the contract simple and lets a client probe
  * {@code id != null} to know whether the run was recorded.
  */
-public record ValidateResult(UUID id, ValidationReport report) {}
+public record ValidateResult(
+    @Schema(
+            description =
+                "The persisted report's id, or null for an anonymous caller (nothing is"
+                    + " persisted).",
+            nullable = true)
+        UUID id,
+    @Schema(description = "The validation report produced for the uploaded document.")
+        ValidationReport report) {}

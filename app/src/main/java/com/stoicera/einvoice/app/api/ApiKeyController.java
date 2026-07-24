@@ -7,11 +7,18 @@ import com.stoicera.einvoice.app.persistence.ApiKeyRepository;
 import com.stoicera.einvoice.app.persistence.TenantEntity;
 import com.stoicera.einvoice.app.security.ApiKeys;
 import com.stoicera.einvoice.app.security.CurrentTenant;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.validation.Valid;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ProblemDetail;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -49,6 +56,32 @@ public class ApiKeyController {
   /** Mints a new key for the caller's tenant and returns its plaintext exactly once. */
   @PostMapping
   @ResponseStatus(HttpStatus.CREATED)
+  @Operation(
+      summary = "Create an API key",
+      description =
+          "Mints a new key for the caller's tenant and returns its plaintext exactly once.")
+  @ApiResponse(
+      responseCode = "201",
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_JSON_VALUE,
+              schema = @Schema(implementation = CreatedApiKeyResponse.class)))
+  @ApiResponse(
+      responseCode = "400",
+      description = "The request body fails validation (e.g. a blank or overlong name).",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
+  @ApiResponse(
+      responseCode = "401",
+      description =
+          "Missing or invalid credentials (JWT login required — an API key cannot"
+              + " manage API keys).",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
   public CreatedApiKeyResponse create(
       @Valid @RequestBody CreateApiKeyRequest request, Authentication authentication) {
     TenantEntity tenant = currentTenant.require(authentication);
@@ -63,6 +96,23 @@ public class ApiKeyController {
 
   /** Lists the caller's tenant's keys (active and revoked), newest first, without secrets. */
   @GetMapping
+  @Operation(
+      summary = "List API keys",
+      description =
+          "The caller's tenant's keys (active and revoked), newest first, without secrets.")
+  @ApiResponse(
+      responseCode = "200",
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_JSON_VALUE,
+              array = @ArraySchema(schema = @Schema(implementation = ApiKeyResponse.class))))
+  @ApiResponse(
+      responseCode = "401",
+      description = "Missing or invalid credentials (JWT login required).",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
   public List<ApiKeyResponse> list(Authentication authentication) {
     TenantEntity tenant = currentTenant.require(authentication);
     return apiKeys.findByTenantIdOrderByCreatedAtDesc(tenant.getId()).stream()
@@ -75,6 +125,23 @@ public class ApiKeyController {
    */
   @DeleteMapping("/{id}")
   @ResponseStatus(HttpStatus.NO_CONTENT)
+  @Operation(
+      summary = "Revoke an API key",
+      description = "Soft revoke: revokedAt is stamped, the row is retained.")
+  @ApiResponse(
+      responseCode = "401",
+      description = "Missing or invalid credentials (JWT login required).",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
+  @ApiResponse(
+      responseCode = "404",
+      description = "No API key with the given id exists for this tenant.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
   public void revoke(@PathVariable UUID id, Authentication authentication) {
     TenantEntity tenant = currentTenant.require(authentication);
     ApiKeyEntity key =

@@ -4,10 +4,17 @@ import com.stoicera.einvoice.app.persistence.TenantEntity;
 import com.stoicera.einvoice.app.report.ReportService;
 import com.stoicera.einvoice.app.report.ValidateResult;
 import com.stoicera.einvoice.app.security.CurrentTenant;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import java.io.IOException;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.MediaType;
+import org.springframework.http.ProblemDetail;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -49,8 +56,50 @@ public class ValidationController {
   @PostMapping(
       consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
       produces = MediaType.APPLICATION_JSON_VALUE)
+  @Operation(
+      summary = "Validate an ebInterface 6.1 document",
+      description =
+          "Public — no credential required. An authenticated caller (JWT or API key)"
+              + " additionally gets the report persisted and audited; see the class Javadoc.")
+  // Public endpoint: overrides OpenApiConfig's global bearerAuth/apiKeyAuth requirement with an
+  // empty security array, or the generated doc would wrongly claim a credential is needed here.
+  @SecurityRequirements
+  @ApiResponse(
+      responseCode = "200",
+      description = "Validation ran (a report with findings is still a 200, never an error).",
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_JSON_VALUE,
+              schema = @Schema(implementation = ValidateResult.class)))
+  @ApiResponse(
+      responseCode = "400",
+      description = "The multipart request has no `file` part.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
+  @ApiResponse(
+      responseCode = "413",
+      description = "The upload exceeds the 2 MB application-layer cap.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
+  @ApiResponse(
+      responseCode = "429",
+      description =
+          "Anonymous per-IP rate limit exceeded (authenticated callers are never limited); see"
+              + " the Retry-After header.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
   public ValidateResult validate(
-      @RequestPart("file") MultipartFile file, Authentication authentication) throws IOException {
+      @Parameter(description = "The ebInterface 6.1 document to validate.", required = true)
+          @RequestPart("file")
+          MultipartFile file,
+      Authentication authentication)
+      throws IOException {
     Optional<UUID> tenantId =
         currentTenant.resolveIfAuthenticated(authentication).map(TenantEntity::getId);
     return reports.validate(file.getBytes(), tenantId);

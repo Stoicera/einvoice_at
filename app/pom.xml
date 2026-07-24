@@ -76,6 +76,14 @@
       <groupId>com.bucket4j</groupId>
       <artifactId>bucket4j-core</artifactId>
     </dependency>
+    <!-- OpenAPI document + Swagger UI (OpenApiConfig, T9): generates /v3/api-docs from the
+         controllers below and serves /swagger-ui/**, both permitted anonymously by
+         SecurityConfig. Version parent-managed (see the root POM's springdoc-openapi.version
+         comment for the Maven Central verification and Boot-4.1 compatibility basis). -->
+    <dependency>
+      <groupId>org.springdoc</groupId>
+      <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+    </dependency>
 
     <!-- Library modules the app composes as the milestone's REST layer lands on top of this
          persistence baseline: canonical model + JSON boundary (core, mapping), ebInterface XML

@@ -1,6 +1,7 @@
 package com.stoicera.einvoice.app.invoice;
 
 import com.stoicera.einvoice.core.validation.ValidationReport;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.UUID;
 
 /**
@@ -13,4 +14,7 @@ import java.util.UUID;
  * aiExplanation}) is public API contract from M3 on and is pinned by a dedicated test. A report
  * with findings is still returned with 201: validation is informative here, not gating.
  */
-public record InvoiceCreated(UUID id, ValidationReport report) {}
+public record InvoiceCreated(
+    @Schema(description = "The newly created invoice's id.") UUID id,
+    @Schema(description = "The validation report produced for the invoice.")
+        ValidationReport report) {}

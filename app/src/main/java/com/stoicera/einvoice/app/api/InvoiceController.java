@@ -5,9 +5,16 @@ import com.stoicera.einvoice.app.invoice.InvoicePage;
 import com.stoicera.einvoice.app.invoice.InvoiceService;
 import com.stoicera.einvoice.app.persistence.TenantEntity;
 import com.stoicera.einvoice.app.security.CurrentTenant;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.headers.Header;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import java.net.URI;
 import java.util.UUID;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -53,6 +60,61 @@ public class InvoiceController {
   @PostMapping(
       consumes = MediaType.APPLICATION_JSON_VALUE,
       produces = MediaType.APPLICATION_JSON_VALUE)
+  @Operation(
+      summary = "Create an invoice",
+      description =
+          "Canonical JSON in; creates the invoice and returns its id and validation report. An"
+              + " invoice that validates with findings is still created (validation is"
+              + " informative here, not gating).")
+  // The Spring @RequestBody parameter below is typed byte[], which springdoc would otherwise
+  // document as a base64 string; this overrides that with the actual shape (arbitrary JSON,
+  // parsed by the core/mapping canonical-JSON reader — no fixed DTO backs it).
+  @io.swagger.v3.oas.annotations.parameters.RequestBody(
+      required = true,
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_JSON_VALUE,
+              schema = @Schema(type = "object", description = "The canonical invoice JSON.")))
+  @ApiResponse(
+      responseCode = "201",
+      description = "Invoice created.",
+      headers =
+          @Header(
+              name = HttpHeaders.LOCATION,
+              description = "URI of the created invoice.",
+              schema = @Schema(type = "string")),
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_JSON_VALUE,
+              schema = @Schema(implementation = InvoiceCreated.class)))
+  @ApiResponse(
+      responseCode = "400",
+      description = "Invalid invoice JSON.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
+  @ApiResponse(
+      responseCode = "401",
+      description = "Missing or invalid credentials.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
+  @ApiResponse(
+      responseCode = "409",
+      description = "An invoice with the same invoice number already exists for this tenant.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
+  @ApiResponse(
+      responseCode = "422",
+      description = "The invoice is well-formed JSON but violates a domain rule.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
   public ResponseEntity<InvoiceCreated> create(
       @RequestBody byte[] body, Authentication authentication) {
     TenantEntity tenant = currentTenant.require(authentication);
@@ -62,6 +124,20 @@ public class InvoiceController {
 
   /** Lists the caller's tenant's invoices, newest first. */
   @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
+  @Operation(summary = "List invoices", description = "The caller's tenant's invoices, paginated.")
+  @ApiResponse(
+      responseCode = "200",
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_JSON_VALUE,
+              schema = @Schema(implementation = InvoicePage.class)))
+  @ApiResponse(
+      responseCode = "401",
+      description = "Missing or invalid credentials.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
   public InvoicePage list(
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "" + DEFAULT_PAGE_SIZE) int size,
@@ -72,6 +148,27 @@ public class InvoiceController {
 
   /** Returns the stored canonical JSON for one of the caller's tenant's invoices. */
   @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+  @Operation(
+      summary = "Get an invoice",
+      description = "The stored canonical JSON for one of the caller's tenant's invoices.")
+  @ApiResponse(
+      responseCode = "200",
+      content =
+          @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(type = "object")))
+  @ApiResponse(
+      responseCode = "401",
+      description = "Missing or invalid credentials.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
+  @ApiResponse(
+      responseCode = "404",
+      description = "No invoice with the given id exists for this tenant.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
   public ResponseEntity<String> get(@PathVariable UUID id, Authentication authentication) {
     TenantEntity tenant = currentTenant.require(authentication);
     return ResponseEntity.ok()
@@ -81,6 +178,28 @@ public class InvoiceController {
 
   /** Returns the regenerated ebInterface 6.1 XML for one of the caller's tenant's invoices. */
   @GetMapping(value = "/{id}/ebinterface", produces = MediaType.APPLICATION_XML_VALUE)
+  @Operation(
+      summary = "Get an invoice as ebInterface 6.1 XML",
+      description =
+          "The ebInterface 6.1 XML for one of the caller's tenant's invoices, regenerated on demand.")
+  @ApiResponse(
+      responseCode = "200",
+      content =
+          @Content(mediaType = MediaType.APPLICATION_XML_VALUE, schema = @Schema(type = "string")))
+  @ApiResponse(
+      responseCode = "401",
+      description = "Missing or invalid credentials.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
+  @ApiResponse(
+      responseCode = "404",
+      description = "No invoice with the given id exists for this tenant.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
   public ResponseEntity<String> ebInterface(@PathVariable UUID id, Authentication authentication) {
     TenantEntity tenant = currentTenant.require(authentication);
     return ResponseEntity.ok()
