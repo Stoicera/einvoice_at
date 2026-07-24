@@ -58,6 +58,12 @@ public record Invoice(
 
   private static final int MAX_PAYMENT_TERMS_LENGTH = 4096;
 
+  /**
+   * Defensive DoS bound, not a business rule: a mismatch message must stay bounded even when a
+   * caller supplies (or the derivation produces) an arbitrarily long breakdown list.
+   */
+  private static final int MAX_BREAKDOWN_ECHO_ENTRIES = 3;
+
   public Invoice {
     if (invoiceNumber == null || invoiceNumber.isBlank()) {
       throw new InvariantViolationException("Invoice number must not be blank");
@@ -109,7 +115,9 @@ public record Invoice(
     if (!expectedBreakdown.equals(vatBreakdown)) {
       throw new InvariantViolationException(
           "VAT breakdown %s does not match the breakdown derived from the lines %s"
-              .formatted(vatBreakdown, expectedBreakdown));
+              .formatted(
+                  describeBreakdownForMismatch(vatBreakdown),
+                  describeBreakdownForMismatch(expectedBreakdown)));
     }
     vatBreakdown = List.copyOf(vatBreakdown);
     Totals expectedTotals = computeTotals(lines, currency);
@@ -169,6 +177,24 @@ public record Invoice(
     if (value != null && value.length() > max) {
       throw new InvariantViolationException("%s exceeds %d characters".formatted(field, max));
     }
+  }
+
+  /**
+   * Renders a breakdown list for a mismatch message, bounded to the first {@value
+   * #MAX_BREAKDOWN_ECHO_ENTRIES} entries plus a count suffix — a caller-supplied (or derived)
+   * breakdown can be arbitrarily long, and the exception message must stay bounded regardless.
+   */
+  private static String describeBreakdownForMismatch(List<VatBreakdownEntry> entries) {
+    if (entries == null) {
+      return "null";
+    }
+    if (entries.size() <= MAX_BREAKDOWN_ECHO_ENTRIES) {
+      return entries.toString();
+    }
+    return "%s … (%d weitere)"
+        .formatted(
+            entries.subList(0, MAX_BREAKDOWN_ECHO_ENTRIES),
+            entries.size() - MAX_BREAKDOWN_ECHO_ENTRIES);
   }
 
   public static Builder builder() {

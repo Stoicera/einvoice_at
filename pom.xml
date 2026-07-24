@@ -50,6 +50,12 @@
     <phive.version>12.1.0</phive.version>
     <phive-rules.version>4.4.1</phive-rules.version>
 
+    <!-- The ph-* stack depends on the Jakarta XML Binding API only (jakarta.xml.bind-api,
+         pulled transitively at 4.0.x); a JAXB runtime provider must be supplied by the
+         consuming module. glassfish jaxb-runtime 4.0.5 matches the jakarta.xml.bind-api 4.0.5
+         that ph-jaxb 12.1.0 brings in. -->
+    <jaxb-runtime.version>4.0.5</jaxb-runtime.version>
+
     <spotless-maven-plugin.version>3.8.0</spotless-maven-plugin.version>
     <google-java-format.version>1.35.0</google-java-format.version>
     <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
@@ -63,6 +69,20 @@
          pitest-junit5-plugin 1.2.3 requires pitest 1.19.4+, so the pair is compatible. -->
     <pitest.version>1.25.8</pitest.version>
     <pitest-junit5.version>1.2.3</pitest-junit5.version>
+
+    <!-- Reactor-wide defaults for org.codehaus.mojo:exec-maven-plugin's `java` goal (used by the
+         validation module's ValidationRunner CLI): skipped everywhere except where a module opts
+         back in with its own <skip>false</skip>. Both properties are needed, not just exec.skip:
+         `exec:java` invoked bare on the command line (not bound to a lifecycle phase) runs
+         against every project the reactor selects, not just the one that declares the plugin —
+         e.g. `mvn -pl validation -am compile exec:java` also pulls in this root aggregator and
+         validation's other module dependencies. Maven validates the plugin's required
+         `mainClass` parameter before the mojo's own `skip` check ever runs, so `exec.skip` alone
+         is not enough to save those other projects from failing the build; giving every project
+         the same (unused, since skip short-circuits execution) mainClass value up front satisfies
+         that validation. -->
+    <exec.skip>true</exec.skip>
+    <exec.mainClass>com.stoicera.einvoice.validation.cli.ValidationRunner</exec.mainClass>
   </properties>
 
   <dependencyManagement>
@@ -76,6 +96,12 @@
         <groupId>com.helger.ubl</groupId>
         <artifactId>ph-ubl21</artifactId>
         <version>${ph-ubl.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.glassfish.jaxb</groupId>
+        <artifactId>jaxb-runtime</artifactId>
+        <version>${jaxb-runtime.version}</version>
+        <scope>runtime</scope>
       </dependency>
       <dependency>
         <groupId>com.helger.phive</groupId>

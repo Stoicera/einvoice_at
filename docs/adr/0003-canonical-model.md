@@ -31,9 +31,10 @@ it, and the validation module (M2) compares documents against it.
 5. **Exemption reasons are supplied, not derived.** Categories AE and E require an exemption
    reason (BT-120/BT-121, BR-AE-10/BR-E-10); S and Z must not carry one (BR-S-10/BR-Z-10).
    The reason is business data the model cannot derive, so the builder accepts it per category
-   (`exemptionReason(VatCategory, VatExemptionReason)`); AE defaults to the standard-mandated
-   `VATEX-EU-AE` / "Reverse charge", E has no default and must be explicit. VATEX code-list
-   validation is a validation-module concern, like unit codes.
+   (`exemptionReason(VatCategory, VatExemptionReason)`); AE defaults to `VATEX-EU-AE` /
+   "Reverse charge" — the default per the EN 16931 code list (BR-AE-10 only requires that some
+   reason be present, not this exact value); E has no default and must be explicit. VATEX
+   code-list validation is a validation-module concern, like unit codes.
 6. **Direction by type code, not by sign.** BT-3 is the UNTDID 1001 subset 380/381. Credit
    notes are type 381 with positive amounts (UBL CreditNote / ebInterface CreditMemo practice);
    the payable amount must never be negative. Negative lines (rebates, returns) remain legal as
@@ -61,3 +62,9 @@ it, and the validation module (M2) compares documents against it.
 - Invoices whose *source documents* contain arithmetic we reject (e.g. per-line tax rounding)
   cannot round-trip losslessly — the conversion report (M4) must surface this, and the
   validation module reports it as a finding rather than refusing to parse.
+- Import (M4) must normalize at the boundary: some senders emit a standard-legal type-380
+  commercial invoice with a negative payable amount (a bare storno) instead of a type-381
+  credit note. Core's non-negative `payableAmount` invariant (Entscheidung 6) rejects such a
+  document as constructed, by design — so the M4 import mapping must detect a negative-total
+  380 on the wire and normalize it to a 381 credit note before it reaches the canonical
+  constructor. Documented here now so the M4 mapping design does not rediscover it.

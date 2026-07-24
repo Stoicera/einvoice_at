@@ -13,4 +13,147 @@
   <artifactId>validation</artifactId>
 
   <name>einvoice-at :: validation</name>
+
+  <properties>
+    <!-- CLI runner (ValidationRunner) driven via `exec:java` for fast corpus smoke runs, outside
+         the app module's Spring context. Version verified against Maven Central
+         maven-metadata.xml on 2026-07-24: latest and release both 3.6.3. -->
+    <exec-maven-plugin.version>3.6.3</exec-maven-plugin.version>
+  </properties>
+
+  <dependencies>
+    <!-- Canonical findings model (source of Severity/Finding/ValidationReport). Project module;
+         its version comes from the reactor, never pinned here. -->
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>core</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- ebInterface namespace lookup and the lenient 6.1 reader used by the validation context.
+         Project module; reactor-versioned. -->
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>formats-ebinterface</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <!-- phive: the XSD/Schematron validation engine by Philip Helger. phive-api is the executor
+         model, phive-xml the XML source binding; both parent-managed (12.1.0), never redeclared.
+         The AT-B2G Schematron stage runs on ph-schematron's pure (XPath) engine
+         (com.helger.schematron:ph-schematron-pure) and reads SVRL via ph-schematron-api; both ride
+         in transitively through the phive stack (phive-xml → ph-schematron-pure:10.0.0, phive-api →
+         ph-schematron-api:10.0.0, verified via dependency:tree). We keep them transitive on purpose,
+         mirroring how the XSD stage already consumes ph-diagnostics through phive rather than
+         redeclaring every helger sub-artifact — phive is the single governed entry point for its
+         own stack. -->
+    <dependency>
+      <groupId>com.helger.phive</groupId>
+      <artifactId>phive-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.helger.phive</groupId>
+      <artifactId>phive-xml</artifactId>
+    </dependency>
+    <!-- The bundled ebInterface validation executor sets (VES), including the 6.1 XSD stage.
+         Parent-managed (phive-rules 4.4.1), never redeclared. -->
+    <dependency>
+      <groupId>com.helger.phive.rules</groupId>
+      <artifactId>phive-rules-ebinterface</artifactId>
+    </dependency>
+    <!-- ebInterface 6.1 JAXB types (Ebi61InvoiceType) reached by the validation context's lenient
+         reader. Parent-managed (8.1.0), never redeclared. -->
+    <dependency>
+      <groupId>com.helger</groupId>
+      <artifactId>ph-ebinterface</artifactId>
+    </dependency>
+
+    <!-- TEST SCOPE ONLY: the JSON reader and canonical→ebInterface 6.1 mapper drive the milestone's
+         end-to-end acceptance test (JSON → canonical → ebInterface 6.1 XML → this validator). Main
+         code must never depend on mapping — validation checks a document against its own format and
+         profile, and canonical mapping depends on validation, never the reverse (SPEC §2). The
+         ValidationArchitectureTest imports main classes only (DoNotIncludeTests), so this test-scope
+         edge is allowed by design, not a weakened rule. -->
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>mapping</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>prepare-agent</id>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>report</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>report</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>check-coverage</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <rule>
+                  <element>BUNDLE</element>
+                  <limits>
+                    <limit>
+                      <counter>LINE</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.90</minimum>
+                    </limit>
+                    <limit>
+                      <counter>BRANCH</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.85</minimum>
+                    </limit>
+                  </limits>
+                </rule>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>${exec-maven-plugin.version}</version>
+        <configuration>
+          <!-- Opts back in to the reactor-wide default (see the root POM's exec.skip property
+               comment): this is the one module where `exec:java` is meant to actually run. -->
+          <skip>false</skip>
+          <mainClass>com.stoicera.einvoice.validation.cli.ValidationRunner</mainClass>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>

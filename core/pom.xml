@@ -107,8 +107,10 @@
               <targetClasses>
                 <param>com.stoicera.einvoice.core.*</param>
               </targetClasses>
-              <!-- Measured mutation score was 95% (95/100 mutants killed) on 2026-07-24;
-                   gate set to (measured - 5) to leave headroom for benign survivors. -->
+              <!-- Mutation score varies a little run to run (jqwik-seeded property tests exercise
+                   different values each time); measured runs have consistently landed mid-to-high
+                   90s%, so the gate is set a few points below that band to leave headroom for
+                   benign survivors without being a tripwire. -->
               <mutationThreshold>90</mutationThreshold>
               <timestampedReports>false</timestampedReports>
             </configuration>

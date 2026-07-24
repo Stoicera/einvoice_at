@@ -27,9 +27,9 @@ public record Address(String street, String city, String postalCode, String coun
     requireNonBlank(city, "city");
     requireNonBlank(postalCode, "postal code");
     requireNonBlank(countryCode, "country code");
-    requireMaxLength(street, MAX_STREET_CITY_LENGTH, "street");
-    requireMaxLength(city, MAX_STREET_CITY_LENGTH, "city");
-    requireMaxLength(postalCode, MAX_POSTAL_CODE_LENGTH, "postal code");
+    requireMaxLength(street, MAX_STREET_CITY_LENGTH, "Street");
+    requireMaxLength(city, MAX_STREET_CITY_LENGTH, "City");
+    requireMaxLength(postalCode, MAX_POSTAL_CODE_LENGTH, "Postal code");
     if (countryCode.length() > MAX_COUNTRY_CODE_LENGTH) {
       throw new InvariantViolationException(
           "Address country code exceeds %d characters".formatted(MAX_COUNTRY_CODE_LENGTH));
@@ -37,7 +37,7 @@ public record Address(String street, String city, String postalCode, String coun
     countryCode = countryCode.trim().toUpperCase(Locale.ROOT);
     if (!ISO_3166_ALPHA2.matcher(countryCode).matches()) {
       throw new InvariantViolationException(
-          "country code '%s' is not ISO 3166-1 alpha-2".formatted(Texts.safeEcho(countryCode)));
+          "Country code '%s' is not ISO 3166-1 alpha-2".formatted(Texts.safeEcho(countryCode)));
     }
   }
 

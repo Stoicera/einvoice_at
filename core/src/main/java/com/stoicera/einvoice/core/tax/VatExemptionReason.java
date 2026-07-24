@@ -9,7 +9,11 @@ import com.stoicera.einvoice.core.InvariantViolationException;
  */
 public record VatExemptionReason(String code, String text) {
 
-  /** The reason mandated for category AE by EN 16931 BR-AE-10: "Reverse charge". */
+  /**
+   * The default exemption reason for category AE, per the EN 16931 code list: {@code VATEX-EU-AE} /
+   * "Reverse charge". BR-AE-10 only requires that <em>some</em> reason be present for category AE —
+   * this is the value the builder supplies when the caller does not.
+   */
   public static final VatExemptionReason REVERSE_CHARGE =
       new VatExemptionReason("VATEX-EU-AE", "Reverse charge");
 
@@ -20,14 +24,17 @@ public record VatExemptionReason(String code, String text) {
   private static final int MAX_TEXT_LENGTH = 1024;
 
   public VatExemptionReason {
+    // Length guards run on the raw value before normalize() trims it — same
+    // pre-normalization-guard pattern as countryCode/BIC (Address/PaymentMeans): reject an
+    // arbitrarily long value before trim() materializes a full copy of it.
+    requireMaxLength(code, MAX_CODE_LENGTH, "VAT exemption reason code (BT-121)");
+    requireMaxLength(text, MAX_TEXT_LENGTH, "VAT exemption reason text (BT-120)");
     code = normalize(code);
     text = normalize(text);
     if (code == null && text == null) {
       throw new InvariantViolationException(
           "VAT exemption reason requires a code (BT-121) or a text (BT-120)");
     }
-    requireMaxLength(code, MAX_CODE_LENGTH, "VAT exemption reason code (BT-121)");
-    requireMaxLength(text, MAX_TEXT_LENGTH, "VAT exemption reason text (BT-120)");
   }
 
   private static String normalize(String value) {

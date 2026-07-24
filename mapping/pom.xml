@@ -13,4 +13,146 @@
   <artifactId>mapping</artifactId>
 
   <name>einvoice-at :: mapping</name>
+
+  <dependencies>
+    <!-- Canonical model (source) and the ebInterface 6.1 JAXB adapter (target/writer).
+         Both are project modules; their versions come from the reactor, never pinned here. -->
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>core</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>formats-ebinterface</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- ebInterface 6.1 JAXB types are the mapping target. Version pinned by the parent
+         dependencyManagement (8.1.0); never redeclare it here. The JAXB runtime provider
+         reaches this module transitively (runtime scope) via formats-ebinterface. -->
+    <dependency>
+      <groupId>com.helger</groupId>
+      <artifactId>ph-ebinterface</artifactId>
+    </dependency>
+    <!-- Strict JSON boundary reader (Task 5). Classic Jackson 2 (com.fasterxml.jackson.core), not
+         the Jackson 3 (tools.jackson.core) artifact Spring Boot 4.1 also manages; version comes
+         from the spring-boot-starter-parent BOM (2.21.4 at time of writing), never pinned here. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>net.jqwik</groupId>
+      <artifactId>jqwik</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>prepare-agent</id>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>report</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>report</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>check-coverage</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <rule>
+                  <element>BUNDLE</element>
+                  <limits>
+                    <limit>
+                      <counter>LINE</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.95</minimum>
+                    </limit>
+                    <limit>
+                      <counter>BRANCH</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.90</minimum>
+                    </limit>
+                  </limits>
+                </rule>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <!-- Mutation testing gives the coverage number teeth; run locally with
+         ./mvnw -pl mapping -Pmutation test-compile org.pitest:pitest-maven:mutationCoverage
+         Deliberately NOT "-am": that also runs the bare pitest goal against every upstream reactor
+         module (core, formats-ebinterface), and formats-ebinterface has no "mutation" profile of
+         its own (no pitest-junit5-plugin on its classpath), so it fails outright. Run "-pl mapping"
+         alone once core/formats-ebinterface are in the local repo (any prior reactor build there
+         already put them there); the CI mutation job (ci.yml) applies the same "-am" caveat — it
+         installs core/mapping's dependency closure first, then reruns "-pl core,mapping" without
+         "-am" so formats-ebinterface never enters the pitest reactor.
+         Kept out of the default verify because PIT re-runs the schema-validity property test once
+         per mutant, which is far slower than the ~seconds a plain verify takes. -->
+    <profile>
+      <id>mutation</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.pitest</groupId>
+            <artifactId>pitest-maven</artifactId>
+            <version>${pitest.version}</version>
+            <dependencies>
+              <dependency>
+                <groupId>org.pitest</groupId>
+                <artifactId>pitest-junit5-plugin</artifactId>
+                <version>${pitest-junit5.version}</version>
+              </dependency>
+            </dependencies>
+            <configuration>
+              <targetClasses>
+                <param>com.stoicera.einvoice.mapping.*</param>
+              </targetClasses>
+              <!-- Measured mutation score was 100% (105/105 mutants killed) on 2026-07-24 after
+                   Task 5 added the json package; a full mutation run takes ~11-13 s. Gate set to 85
+                   per the M2 task brief, mirroring core's PIT wiring, leaving generous headroom for
+                   benign survivors. -->
+              <mutationThreshold>85</mutationThreshold>
+              <timestampedReports>false</timestampedReports>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>
