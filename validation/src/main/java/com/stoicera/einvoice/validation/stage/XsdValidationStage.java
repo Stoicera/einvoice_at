@@ -26,11 +26,21 @@ import org.w3c.dom.Document;
  *
  * <p>The phive validation-executor-set registry is expensive to build, so it is initialised exactly
  * once in a lazy holder and shared across runs. Each schema violation becomes an {@code EBI61-XSD}
- * finding: the technical detail is kept exactly as the underlying Xerces parser delivers it (which,
- * asked in {@link Locale#GERMAN}, is German for the built-in messages but may fall back to English
- * for anything not in the parser's message bundle) behind a German lead-in that is always ours —
- * see ADR-0004. The location phive attaches to a DOM-sourced error is the source name ({@code
- * upload.xml}) rather than a line/column, because a DOM carries no positional information.
+ * finding: the technical detail is kept exactly as the underlying Xerces parser delivers it, behind
+ * a German lead-in that is always ours — see ADR-0004.
+ *
+ * <p>Xerces bakes its diagnostic text into the {@code SAXParseException} message at the moment the
+ * document is validated, using whichever {@link Locale} the validation run was asked for; phive
+ * then wraps that already-rendered string in a locale-independent {@link IError}, so calling {@link
+ * IError#getErrorText(Locale)} with a different locale afterwards does <em>not</em> re-render the
+ * text — it returns the same string regardless of the argument. A genuinely bilingual finding
+ * therefore requires validating the document twice, once per {@link Locale}, and pairing up the two
+ * resulting error lists by position: {@link #apply(ValidationContext)} runs the XSD executor with
+ * {@link Locale#GERMAN} for the {@code messageDe} tail and again with {@link Locale#ENGLISH} for
+ * {@code messageEn}. The two runs validate the identical DOM against the identical schema, so they
+ * report the same violations in the same order — only the message text differs. The location phive
+ * attaches to a DOM-sourced error is the source name ({@code upload.xml}) rather than a
+ * line/column, because a DOM carries no positional information.
  */
 public final class XsdValidationStage implements ValidationStage {
 
@@ -39,7 +49,7 @@ public final class XsdValidationStage implements ValidationStage {
 
   private static final String GERMAN_LEAD_IN = "Das Dokument verletzt das ebInterface-6.1-Schema: ";
 
-  /** Last-resort detail when the parser hands back no usable message text. */
+  /** Last-resort detail when the parser hands back no usable message text in either locale. */
   private static final String FALLBACK_DETAIL = "Unbekannter Schemafehler (unknown schema error)";
 
   @Override
@@ -48,28 +58,53 @@ public final class XsdValidationStage implements ValidationStage {
 
     IValidationExecutorSet<IValidationSourceXML> ves =
         RegistryHolder.REGISTRY.getOfID(EbInterfaceValidation.VID_EBI_61);
-    ValidationSourceXML source = ValidationSourceXML.create("upload.xml", dom);
     ValidationExecutionManager<IValidationSourceXML> manager =
         new ValidationExecutionManager<>(
             IValidityDeterminator.createDefault(), ves.getAllExecutors());
 
-    ValidationResultList results = new ValidationResultList(source);
-    manager.executeValidation(source, results, Locale.GERMAN);
+    // Two full runs are required: see the class Javadoc for why a single fetch cannot yield both
+    // locales. Both runs validate the same DOM against the same schema, so their error lists line
+    // up position-for-position; only the rendered message text differs between them.
+    List<IError> germanErrors = validate(dom, manager, Locale.GERMAN);
+    List<IError> englishErrors = validate(dom, manager, Locale.ENGLISH);
 
     List<Finding> findings = new ArrayList<>();
-    for (ValidationResult result : results) {
-      for (IError error : result.getErrorList()) {
-        findings.add(toFinding(error));
-      }
+    for (int i = 0; i < germanErrors.size(); i++) {
+      IError englishError = i < englishErrors.size() ? englishErrors.get(i) : null;
+      findings.add(toFinding(germanErrors.get(i), englishError));
     }
     return findings;
   }
 
-  static Finding toFinding(IError error) {
-    Severity severity = severityOf(error.getErrorLevel());
-    String detail = detailText(error);
-    String location = error.getErrorLocation().getAsString();
-    return Finding.of(severity, RULE_XSD, location, GERMAN_LEAD_IN + detail, detail);
+  private static List<IError> validate(
+      Document dom, ValidationExecutionManager<IValidationSourceXML> manager, Locale locale) {
+    ValidationSourceXML source = ValidationSourceXML.create("upload.xml", dom);
+    ValidationResultList results = new ValidationResultList(source);
+    manager.executeValidation(source, results, locale);
+
+    List<IError> errors = new ArrayList<>();
+    for (ValidationResult result : results) {
+      errors.addAll(result.getErrorList());
+    }
+    return errors;
+  }
+
+  /**
+   * Builds one finding from a German/English error pair produced by the two locale runs in {@link
+   * #apply(ValidationContext)}.
+   *
+   * @param germanError the error from the {@link Locale#GERMAN} run; drives severity and location
+   * @param englishError the positionally-matching error from the {@link Locale#ENGLISH} run, or
+   *     {@code null} if the two runs disagreed on error count — a defensive case that should not
+   *     occur in practice (see class Javadoc), handled by falling back to the German detail so the
+   *     {@code Finding} invariants still hold rather than throwing
+   */
+  static Finding toFinding(IError germanError, IError englishError) {
+    Severity severity = severityOf(germanError.getErrorLevel());
+    String germanDetail = detailText(germanError);
+    String englishDetail = englishError == null ? germanDetail : englishDetailText(englishError);
+    String location = germanError.getErrorLocation().getAsString();
+    return Finding.of(severity, RULE_XSD, location, GERMAN_LEAD_IN + germanDetail, englishDetail);
   }
 
   /**
@@ -81,10 +116,31 @@ public final class XsdValidationStage implements ValidationStage {
     return level.isGE(EErrorLevel.ERROR) ? Severity.ERROR : Severity.WARN;
   }
 
-  /** The parser's own message, or a fixed fallback when it hands back nothing usable. */
+  /**
+   * The parser's own message from a {@link Locale#GERMAN}-run error, or a fixed fallback when it
+   * hands back nothing usable.
+   */
   static String detailText(IError error) {
     String text = error.getErrorText(Locale.GERMAN);
     return text == null || text.isBlank() ? FALLBACK_DETAIL : text;
+  }
+
+  /**
+   * The parser's own message from a {@link Locale#ENGLISH}-run error. Falls back to {@link
+   * IError#getAsStringLocaleIndepdent()} (helger's real, misspelled method name) rather than the
+   * German text when the English fetch is missing or blank — that keeps the fallback honestly
+   * non-German instead of silently reintroducing the bug this method exists to fix — and finally to
+   * the fixed bilingual {@link #FALLBACK_DETAIL} if even that is unusable.
+   */
+  static String englishDetailText(IError error) {
+    String text = error.getErrorText(Locale.ENGLISH);
+    if (text != null && !text.isBlank()) {
+      return text;
+    }
+    String localeIndependent = error.getAsStringLocaleIndepdent();
+    return localeIndependent == null || localeIndependent.isBlank()
+        ? FALLBACK_DETAIL
+        : localeIndependent;
   }
 
   /**

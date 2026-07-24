@@ -35,18 +35,25 @@ diagnostic (e.g. `cvc-complex-type.2.4.a: ...`).
    `profile` is always `at-b2g` — this validator only knows the Austrian B2G profile. The facade
    never throws: `null` input is treated as empty and yields `XML-01`.
 
-3. **XSD finding text is the parser's, verbatim, behind a German lead-in that is ours.** Every
-   `EBI61-XSD` finding reads `messageDe = "Das Dokument verletzt das ebInterface-6.1-Schema: " +
-   <parser text>` and `messageEn = <parser text>`. We honestly do **not** translate the technical
-   detail. Asked in `Locale.GERMAN`, Xerces returns German text for its built-in messages (so the
-   German finding is fully German in the common case), but it may fall back to English for any
-   message outside its German bundle — in which case `messageDe` carries a German lead-in with an
-   English tail. This satisfies the spirit of the "German message" rule (the finding always opens in
-   German and says what is wrong) without pretending to a translation we did not do. When the parser
-   hands back no usable text at all, a fixed German/English fallback is used so the `Finding`
-   non-blank invariants hold. The location phive attaches to a DOM-sourced error is the source name
-   (`upload.xml`), not a line/column, because a DOM carries no positional information; we pass it
-   through unchanged.
+3. **XSD finding text is the parser's, verbatim in each locale, behind a German lead-in that is
+   ours.** Every `EBI61-XSD` finding reads `messageDe = "Das Dokument verletzt das
+   ebInterface-6.1-Schema: " + <German parser text>` and `messageEn = <English parser text>`. We
+   honestly do **not** translate the technical detail; we ask Xerces for its own message in each
+   language. Getting a genuine English message is not a second `getErrorText(Locale.ENGLISH)` call on
+   the same `IError` — empirically, Xerces bakes its diagnostic into the `SAXParseException` message
+   at the moment the document is validated, using the `Locale` that particular validation run was
+   asked for, and phive wraps that already-rendered string in an `IError` whose `getErrorText(Locale)`
+   returns the same text regardless of the locale argument passed *afterwards*. So `XsdValidationStage`
+   runs the XSD executor twice on the same DOM — once with `Locale.GERMAN`, once with
+   `Locale.ENGLISH` — and pairs the two resulting error lists by position; both runs validate the
+   identical DOM against the identical schema, so they report the same violations in the same order
+   and only the message text differs. If the English run's text is missing or blank for some error,
+   the fallback is that error's own `getAsStringLocaleIndepdent()` (helger's real, misspelled method
+   name) — never the German text, so a fallback can never reintroduce the bug this design fixes. When
+   the parser hands back no usable text at all in a given locale, a fixed German/English fallback is
+   used so the `Finding` non-blank invariants hold. The location phive attaches to a DOM-sourced error
+   is the source name (`upload.xml`), not a line/column, because a DOM carries no positional
+   information; we pass it through unchanged (from the German run).
 
 4. **The phive registry is built once, lazily.** `EbInterfaceValidation.initEbInterface` populates a
    `ValidationExecutorSetRegistry` that is expensive to construct; it lives in a lazy holder class so
@@ -58,10 +65,16 @@ diagnostic (e.g. `cvc-complex-type.2.4.a: ...`).
 - Tasks 7–10 consume these as fixed contracts: the stage order, the stop rules, the rule ids
   (`XML-01`, `FORMAT-01`, `FORMAT-02`, `EBI61-XSD`, and the later `AT-B2G-*`), the `sourceFormat`
   values and `PROFILE_AT_B2G`. Changing any of them is a breaking change to those tasks.
-- Findings whose technical detail is English (parser fallback) are a known, accepted gap, not a bug.
-  If product wants fully-German XSD detail later, the fix is a curated German message map keyed by
-  the Xerces error code (e.g. `cvc-complex-type.2.4.a`), added as a separate concern — not by
-  hand-editing parser output at the call site.
+- `messageDe` findings whose technical detail is itself English (Xerces has no German translation for
+  that particular built-in message, so the `Locale.GERMAN` run falls back to its own default) are a
+  known, accepted gap, not a bug. If product wants fully-German XSD detail later, the fix is a curated
+  German message map keyed by the Xerces error code (e.g. `cvc-complex-type.2.4.a`), added as a
+  separate concern — not by hand-editing parser output at the call site. `messageEn` does not have
+  this gap: it is always sourced from a genuine `Locale.ENGLISH` validation run.
+- The XSD stage now validates each document twice (once per locale) instead of once. For an XSD-only
+  VES on typical invoice-sized documents this is cheap; if it ever shows up in profiling, the fix is
+  to cache the German and English `IError` lists per validation-executor pass rather than dropping
+  back to a single-locale fetch (which reintroduces the bug this ADR update fixes).
 - `core` stays the single source of validity: the facade asks the freshly built `ValidationReport`
   whether it `isValid()` to decide whether to stop after XSD, rather than re-implementing the
   ERROR-severity check.

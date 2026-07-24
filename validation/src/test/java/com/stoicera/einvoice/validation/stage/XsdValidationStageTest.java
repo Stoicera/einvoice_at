@@ -75,16 +75,76 @@ class XsdValidationStageTest {
   }
 
   @Test
-  void toFindingWrapsTheParserMessageBehindTheGermanLeadIn() {
-    IError error = SingleError.builderError().errorText("boom").errorLocation("upload.xml").build();
+  void structurallyBrokenDocumentYieldsAGenuinelyEnglishMessageEn() {
+    ValidationContext ctx =
+        new ValidationContext(TestDocuments.bytes(TestDocuments.brokenEbInterface61()));
 
-    Finding finding = XsdValidationStage.toFinding(error);
+    List<Finding> findings = stage.apply(ctx);
+
+    assertThat(findings).isNotEmpty();
+    assertThat(findings)
+        .allSatisfy(
+            finding -> {
+              // Pinned against the bundled Xerces version for cvc-complex-type.2.4.a, empirically
+              // verified: Locale.GERMAN renders "Ungueltiger Content ... gefunden", Locale.ENGLISH
+              // renders "Invalid content was found starting with element". If a JDK/Xerces upgrade
+              // changes the exact phrasing, re-verify both locale renderings empirically (do not
+              // just widen the assertion) and update the pinned phrase together with the ADR note.
+              assertThat(finding.messageEn()).contains("Invalid content was found");
+              assertThat(finding.messageEn()).doesNotContain("Ungültiger");
+              assertThat(finding.messageEn())
+                  .doesNotStartWith("Das Dokument verletzt das ebInterface-6.1-Schema: ");
+              assertThat(finding.messageEn()).isNotEqualTo(finding.messageDe());
+            });
+  }
+
+  @Test
+  void
+      toFindingWrapsTheGermanParserMessageBehindTheGermanLeadInAndUsesTheEnglishParserMessageForMessageEn() {
+    IError germanError =
+        SingleError.builderError()
+            .errorText("Ungueltiger Inhalt")
+            .errorLocation("upload.xml")
+            .build();
+    IError englishError = SingleError.builderError().errorText("Invalid content").build();
+
+    Finding finding = XsdValidationStage.toFinding(germanError, englishError);
 
     assertThat(finding.ruleId()).isEqualTo("EBI61-XSD");
     assertThat(finding.severity()).isEqualTo(Severity.ERROR);
     assertThat(finding.location()).isEqualTo("upload.xml");
     assertThat(finding.messageDe())
-        .isEqualTo("Das Dokument verletzt das ebInterface-6.1-Schema: boom");
-    assertThat(finding.messageEn()).isEqualTo("boom");
+        .isEqualTo("Das Dokument verletzt das ebInterface-6.1-Schema: Ungueltiger Inhalt");
+    assertThat(finding.messageEn()).isEqualTo("Invalid content");
+  }
+
+  @Test
+  void toFindingFallsBackToTheLocaleIndependentTextWhenTheEnglishParserMessageIsMissing() {
+    IError germanError =
+        SingleError.builderError()
+            .errorText("Ungueltiger Inhalt")
+            .errorLocation("upload.xml")
+            .build();
+    IError englishErrorWithoutText = SingleError.builderError().errorLocation("upload.xml").build();
+
+    Finding finding = XsdValidationStage.toFinding(germanError, englishErrorWithoutText);
+
+    assertThat(finding.messageEn()).isEqualTo(englishErrorWithoutText.getAsStringLocaleIndepdent());
+    assertThat(finding.messageEn()).isNotEqualTo("Ungueltiger Inhalt");
+  }
+
+  @Test
+  void toFindingFallsBackToTheGermanDetailWhenNoEnglishCounterpartExists() {
+    IError germanError =
+        SingleError.builderError()
+            .errorText("Ungueltiger Inhalt")
+            .errorLocation("upload.xml")
+            .build();
+
+    Finding finding = XsdValidationStage.toFinding(germanError, null);
+
+    // Defensive last resort only: the two locale runs should always produce matching error
+    // counts for the same document, so this path is not expected to be reached in production.
+    assertThat(finding.messageEn()).isEqualTo("Ungueltiger Inhalt");
   }
 }
