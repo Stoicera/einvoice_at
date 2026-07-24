@@ -8,10 +8,12 @@ import java.nio.charset.StandardCharsets;
  * mapping}, and a hostile reviewer can read exactly what is fed to the pipeline.
  *
  * <p>{@link #validEbInterface61()} is the minimal <em>fully AT-B2G-valid</em> ebInterface 6.1
- * invoice: every required {@code InvoiceType} child and attribute per the bundled 6.1 XSD, plus the
- * {@code OrderReference/OrderID} (Auftragsreferenz) the AT-B2G Schematron ({@code AT-B2G-01})
- * requires — nothing more. The broken, wrong-version and missing/blank-order-reference variants are
- * derived from it so the difference under test is isolated.
+ * invoice: every required {@code InvoiceType} child and attribute per the bundled 6.1 XSD, plus
+ * every field the AT-B2G Schematron requires — the Auftragsreferenz ({@code AT-B2G-01}), the Biller
+ * e-mail address ({@code AT-B2G-03}), the Lieferantennummer ({@code AT-B2G-04}) and a {@code
+ * PaymentMethod} ({@code AT-B2G-05}, satisfied here with the minimal {@code NoPayment} variant) —
+ * nothing more. The broken, wrong-version and missing-field variants are derived from it so the
+ * difference under test is isolated.
  */
 public final class TestDocuments {
 
@@ -32,7 +34,9 @@ public final class TestDocuments {
 
   /**
    * Minimal ebInterface 6.1 document that passes the bundled 6.1 XSD <em>and</em> the AT-B2G
-   * Schematron without a single error — it carries the Auftragsreferenz {@code AT-B2G-01} demands.
+   * Schematron without a single error — it carries the Auftragsreferenz ({@code AT-B2G-01}), the
+   * Biller e-mail address ({@code AT-B2G-03}), the Lieferantennummer ({@code AT-B2G-04}) and a
+   * {@code PaymentMethod} ({@code AT-B2G-05}, here the minimal {@code NoPayment} variant).
    */
   public static String validEbInterface61() {
     return """
@@ -46,6 +50,14 @@ public final class TestDocuments {
           <InvoiceDate>2024-03-05</InvoiceDate>
           <Biller>
             <VATIdentificationNumber>ATU51507409</VATIdentificationNumber>
+            <Address>
+              <Name>Musterfirma GmbH</Name>
+              <Town>Wien</Town>
+              <ZIP>1010</ZIP>
+              <Country CountryCode="AT">Österreich</Country>
+              <Email>buero@musterfirma.at</Email>
+            </Address>
+            <InvoiceRecipientsBillerID>L-100001</InvoiceRecipientsBillerID>
           </Biller>
           <InvoiceRecipient>
             <VATIdentificationNumber>ATU18708634</VATIdentificationNumber>
@@ -76,6 +88,9 @@ public final class TestDocuments {
           </Tax>
           <TotalGrossAmount>120.00</TotalGrossAmount>
           <PayableAmount>120.00</PayableAmount>
+          <PaymentMethod>
+            <NoPayment />
+          </PaymentMethod>
         </Invoice>
         """;
   }
@@ -124,6 +139,37 @@ public final class TestDocuments {
    */
   public static String ebInterface61BlankOrderReference() {
     return validEbInterface61().replace("4021-2024", "   ");
+  }
+
+  /**
+   * ebInterface 6.1 document that is fully XSD-valid but carries no {@code Biller/Address/Email} —
+   * the {@code AT-B2G-03} case (Biller e-mail address missing). Derived by removing just the {@code
+   * Email} element, leaving the rest of {@code Address} (and the required {@code
+   * InvoiceRecipientsBillerID}/{@code PaymentMethod}) intact.
+   */
+  public static String ebInterface61WithoutBillerEmail() {
+    return validEbInterface61().replaceFirst("(?s)\\s*<Email>.*?</Email>", "");
+  }
+
+  /**
+   * ebInterface 6.1 document that is fully XSD-valid but carries no {@code
+   * Biller/InvoiceRecipientsBillerID} (Lieferantennummer) — the {@code AT-B2G-04} case. Derived by
+   * removing the whole element, leaving the Biller {@code Address}/{@code Email} and {@code
+   * PaymentMethod} intact.
+   */
+  public static String ebInterface61WithoutSupplierNumber() {
+    return validEbInterface61()
+        .replaceFirst("(?s)\\s*<InvoiceRecipientsBillerID>.*?</InvoiceRecipientsBillerID>", "");
+  }
+
+  /**
+   * ebInterface 6.1 document that is fully XSD-valid (a {@code PaymentMethod} is optional in the
+   * bundled XSD) but carries no {@code PaymentMethod} at all — the {@code AT-B2G-05} case (neither
+   * {@code UniversalBankTransaction} nor {@code NoPayment} present). Derived by removing the whole
+   * element.
+   */
+  public static String ebInterface61WithoutPaymentMethod() {
+    return validEbInterface61().replaceFirst("(?s)\\s*<PaymentMethod>.*?</PaymentMethod>", "");
   }
 
   /**
@@ -190,7 +236,12 @@ public final class TestDocuments {
   }
 
   private static String withPaymentMethod(String base, String beneficiaryAccounts) {
-    return base.replace(
+    // The base fixture already carries a PaymentMethod (the minimal NoPayment variant, required by
+    // AT-B2G-05); strip it first so the callers below install a single UniversalBankTransaction
+    // block instead of appending a second, XSD-invalid PaymentMethod sibling.
+    String withoutExistingPaymentMethod =
+        base.replaceFirst("(?s)\\s*<PaymentMethod>.*?</PaymentMethod>\n", "\n");
+    return withoutExistingPaymentMethod.replace(
         "  <PayableAmount>120.00</PayableAmount>\n",
         "  <PayableAmount>120.00</PayableAmount>\n"
             + "  <PaymentMethod>\n"

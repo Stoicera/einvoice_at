@@ -28,6 +28,13 @@ package com.stoicera.einvoice.validation;
  *       <td>the Auftragsreferenz ({@code OrderReference/OrderID}) is missing</td></tr>
  *   <tr><td>{@value #AT_B2G_02}</td><td>ERROR</td><td>AT-B2G business rule</td>
  *       <td>a present beneficiary-account IBAN fails the mod-97 checksum</td></tr>
+ *   <tr><td>{@value #AT_B2G_03}</td><td>ERROR</td><td>AT-B2G Schematron</td>
+ *       <td>the Biller e-mail address ({@code Biller/Address/Email}) is missing</td></tr>
+ *   <tr><td>{@value #AT_B2G_04}</td><td>ERROR</td><td>AT-B2G Schematron</td>
+ *       <td>the Lieferantennummer ({@code Biller/InvoiceRecipientsBillerID}) is missing</td></tr>
+ *   <tr><td>{@value #AT_B2G_05}</td><td>ERROR</td><td>AT-B2G Schematron</td>
+ *       <td>no {@code PaymentMethod} ({@code UniversalBankTransaction} or {@code NoPayment}) is
+ *       present</td></tr>
  * </table>
  */
 public final class RuleIds {
@@ -52,6 +59,21 @@ public final class RuleIds {
 
   /** Every present beneficiary-account IBAN must pass the mod-97 checksum. */
   public static final String AT_B2G_02 = "AT-B2G-02";
+
+  /** A B2G invoice must carry a Biller e-mail address ({@code Biller/Address/Email}). */
+  public static final String AT_B2G_03 = "AT-B2G-03";
+
+  /**
+   * A B2G invoice must carry the Biller's Lieferantennummer ({@code
+   * Biller/InvoiceRecipientsBillerID}).
+   */
+  public static final String AT_B2G_04 = "AT-B2G-04";
+
+  /**
+   * A B2G invoice must carry a {@code PaymentMethod} ({@code UniversalBankTransaction} or {@code
+   * NoPayment}).
+   */
+  public static final String AT_B2G_05 = "AT-B2G-05";
 
   private RuleIds() {}
 }

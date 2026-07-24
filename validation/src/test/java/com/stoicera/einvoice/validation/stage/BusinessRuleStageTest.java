@@ -50,8 +50,15 @@ class BusinessRuleStageTest {
   }
 
   @Test
-  void documentWithoutPaymentMethodYieldsNoFinding() {
+  void noPaymentPaymentMethodYieldsNoFinding() {
+    // The base fixture's PaymentMethod is the minimal NoPayment variant (required since AT-B2G-05):
+    // no UniversalBankTransaction, so no beneficiary account/IBAN for this stage to check at all.
     assertThat(run(TestDocuments.validEbInterface61())).isEmpty();
+  }
+
+  @Test
+  void absentPaymentMethodYieldsNoFinding() {
+    assertThat(run(TestDocuments.ebInterface61WithoutPaymentMethod())).isEmpty();
   }
 
   @Test

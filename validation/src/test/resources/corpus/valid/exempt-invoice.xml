@@ -10,6 +10,7 @@
       <Town>Wien</Town>
       <ZIP>1200</ZIP>
       <Country CountryCode="AT">Österreich</Country>
+      <Email>office@export-oel.at</Email>
     </Address>
     <InvoiceRecipientsBillerID>L-100777</InvoiceRecipientsBillerID>
   </Biller>
@@ -51,4 +52,12 @@
   </Tax>
   <TotalGrossAmount>1000.00</TotalGrossAmount>
   <PayableAmount>1000.00</PayableAmount>
+  <PaymentMethod>
+    <UniversalBankTransaction>
+      <BeneficiaryAccount>
+        <BIC>BKAUATWW</BIC>
+        <IBAN>AT611904300234573201</IBAN>
+      </BeneficiaryAccount>
+    </UniversalBankTransaction>
+  </PaymentMethod>
 </Invoice>
