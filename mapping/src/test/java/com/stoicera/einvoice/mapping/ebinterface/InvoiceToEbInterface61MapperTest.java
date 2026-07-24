@@ -2,15 +2,19 @@ package com.stoicera.einvoice.mapping.ebinterface;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.helger.diagnostics.error.list.ErrorList;
+import com.helger.ebinterface.EbInterface61Marshaller;
 import com.helger.ebinterface.v61.Ebi61AccountType;
 import com.helger.ebinterface.v61.Ebi61DocumentTypeType;
 import com.helger.ebinterface.v61.Ebi61InvoiceType;
 import com.helger.ebinterface.v61.Ebi61ListLineItemType;
 import com.helger.ebinterface.v61.Ebi61TaxItemType;
 import com.stoicera.einvoice.core.invoice.Invoice;
+import com.stoicera.einvoice.formats.ebinterface.EbInterface61Strategy;
 import com.stoicera.einvoice.mapping.Fixtures;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -21,6 +25,7 @@ import org.junit.jupiter.api.Test;
 class InvoiceToEbInterface61MapperTest {
 
   private final InvoiceToEbInterface61Mapper mapper = new InvoiceToEbInterface61Mapper();
+  private static final EbInterface61Strategy STRATEGY = new EbInterface61Strategy();
 
   // --- Header --------------------------------------------------------------------------------
 
@@ -103,6 +108,37 @@ class InvoiceToEbInterface61MapperTest {
     assertThat(ebi.getInvoiceRecipient().getOrderReference()).isNull();
   }
 
+  // --- No-UID convention (e-rechnung.gv.at ATU00000000) --------------------------------------
+
+  @Test
+  void mapsAtu00000000ConventionWhenPartiesHaveNoVatId() {
+    // core permits Party.vatId == null (Kleinunternehmer/private buyer); the 6.1 XSD requires
+    // VATIdentificationNumber on both Biller and InvoiceRecipient. e-rechnung.gv.at resolves this
+    // with the placeholder ATU00000000 on each party lacking a UID.
+    Ebi61InvoiceType ebi = mapper.map(Fixtures.invoiceWithoutVatIds());
+
+    assertThat(ebi.getBiller().getVATIdentificationNumber()).isEqualTo("ATU00000000");
+    assertThat(ebi.getInvoiceRecipient().getVATIdentificationNumber()).isEqualTo("ATU00000000");
+  }
+
+  @Test
+  void noUidInvoiceReReadsWithoutSchemaErrors() {
+    // The regression guard for A1: before the convention, a null vatId marshalled to a document
+    // simply MISSING the XSD-required element, and write() reported success. Re-read with the
+    // schema on so the bundled ebInterface 6.1 XSD is the judge.
+    String xml = STRATEGY.write(mapper.map(Fixtures.invoiceWithoutVatIds()));
+
+    ErrorList errors = new ErrorList();
+    new EbInterface61Marshaller()
+        .setUseSchema(true)
+        .setCollectErrors(errors)
+        .read(xml.getBytes(StandardCharsets.UTF_8));
+
+    assertThat(errors.containsAtLeastOneError())
+        .withFailMessage("expected no schema errors but got: %s%nXML:%n%s", errors, xml)
+        .isFalse();
+  }
+
   // --- Details / line items ------------------------------------------------------------------
 
   @Test
@@ -161,8 +197,11 @@ class InvoiceToEbInterface61MapperTest {
 
     Ebi61TaxItemType taxItem = ebi.getTax().getTaxItemAtIndex(0);
     assertThat(taxItem.getTaxPercent().getTaxCategoryCode()).isEqualTo("AE");
-    // Default BR-AE-10 reason: VATEX-EU-AE / "Reverse charge".
+    // Reverse charge is NOT a Steuerbefreiung: § 11 Abs 1a UStG requires the Hinweis auf den
+    // Übergang der Steuerschuld. Default BR-AE-10 reason (VATEX-EU-AE / "Reverse charge") stays
+    // appended in the "|"-joined format.
     assertThat(taxItem.getComment())
+        .startsWith("Übergang der Steuerschuld")
         .contains("AE")
         .contains("VATEX-EU-AE")
         .contains("Reverse charge");
@@ -174,7 +213,9 @@ class InvoiceToEbInterface61MapperTest {
 
     Ebi61TaxItemType taxItem = ebi.getTax().getTaxItemAtIndex(0);
     assertThat(taxItem.getTaxPercent().getTaxCategoryCode()).isEqualTo("E");
+    // Category E is a genuine Steuerbefreiung and keeps that lead-in.
     assertThat(taxItem.getComment())
+        .startsWith("Steuerbefreiung: ")
         .contains("E")
         .contains("VATEX-EU-G")
         .contains("Innergemeinschaftliche Lieferung");
@@ -229,9 +270,9 @@ class InvoiceToEbInterface61MapperTest {
   }
 
   @Test
-  void defaultsMissingUnitCodeToC62() {
-    // The canonical model forbids a blank unit code, so the C62 default is a belt-and-braces
-    // guard; assert the happy path preserves the supplied code instead.
+  void preservesSuppliedUnitCode() {
+    // core's InvoiceLine forbids a blank/null unit code (EN 16931 BT-130 is mandatory), so the
+    // mapper copies the supplied code verbatim — there is no fallback to default.
     Ebi61InvoiceType ebi = mapper.map(Fixtures.minimalB2bInvoice());
 
     var item = ebi.getDetails().getItemListAtIndex(0).getListLineItem().get(0);

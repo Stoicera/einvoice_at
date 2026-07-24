@@ -210,8 +210,18 @@ class MapperSchemaValidityPropertyTest {
     return Combinators.combine(ibans, bics).as(PaymentMeans::new);
   }
 
+  /**
+   * VAT ids, with a null arm: core permits {@code Party.vatId == null} (Kleinunternehmer/private
+   * buyer), and the mapper must map that state to schema-valid XML via the {@code ATU00000000}
+   * convention. Injecting null here keeps the schema-validity property honest about the model's
+   * full state space (finding A1).
+   */
   private Arbitrary<String> vatIds() {
-    return Arbitraries.strings().withCharRange('0', '9').ofLength(8).map(digits -> "ATU" + digits);
+    return Arbitraries.strings()
+        .withCharRange('0', '9')
+        .ofLength(8)
+        .map(digits -> "ATU" + digits)
+        .injectNull(0.2);
   }
 
   /** Bounded date range so {@code plusDays} for the due date can never overflow. */

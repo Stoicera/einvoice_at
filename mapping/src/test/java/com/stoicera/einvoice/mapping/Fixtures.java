@@ -98,6 +98,33 @@ public final class Fixtures {
   }
 
   /**
+   * An invoice whose seller <em>and</em> buyer both lack a UID — the {@code Party.vatId == null}
+   * state core deliberately permits (Kleinunternehmer issuer, private buyer). Drives the mapper's
+   * no-UID convention path: e-rechnung.gv.at requires the placeholder {@code ATU00000000} on both
+   * {@code Biller} and {@code InvoiceRecipient} in this case.
+   */
+  public static Invoice invoiceWithoutVatIds() {
+    return Invoice.builder()
+        .invoiceNumber("2026-000777")
+        .type(InvoiceTypeCode.COMMERCIAL_INVOICE)
+        .issueDate(LocalDate.of(2026, 7, 20))
+        .currency(Money.EUR)
+        .seller(
+            new Party(
+                "Ötztal Handwerk e.U.", new Address("Talstraße 4", "Sölden", "6450", "AT"), null))
+        .buyer(new Party("Privatkunde Groß", new Address("Feldweg 2", "Imst", "6460", "AT"), null))
+        .addLine(
+            new InvoiceLine(
+                "1",
+                "Leistung",
+                new BigDecimal("1"),
+                "C62",
+                new BigDecimal("90.00"),
+                VatRate.STANDARD_20))
+        .build();
+  }
+
+  /**
    * A credit note carrying a reverse-charge line (category AE). The builder supplies the default
    * BR-AE-10 exemption reason; the mapper must echo it into the tax breakdown.
    */
