@@ -9,7 +9,7 @@
       <Street>Hauptplatz 1</Street>
       <Town>Linz</Town>
       <ZIP>4020</ZIP>
-      <Country CountryCode="AT">AT</Country>
+      <Country CountryCode="AT">Österreich</Country>
     </Address>
     <InvoiceRecipientsBillerID>L-100234</InvoiceRecipientsBillerID>
   </Biller>
@@ -23,7 +23,7 @@
       <Street>Lassallestraße 9b</Street>
       <Town>Wien</Town>
       <ZIP>1020</ZIP>
-      <Country CountryCode="AT">AT</Country>
+      <Country CountryCode="AT">Österreich</Country>
     </Address>
   </InvoiceRecipient>
   <Details>

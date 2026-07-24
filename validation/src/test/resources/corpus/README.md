@@ -70,7 +70,7 @@ output of the real generation pipeline for `samples/invoice-b2g-sample.json`
 artifact committed as `samples/invoice-b2g-sample.ebinterface.xml`. `EndToEndGenerationTest` pins the
 samples twin byte-for-byte against the live pipeline output, and separately pins this corpus copy
 byte-for-byte against the samples twin — so all three are provably identical, transitively including
-the live pipeline output. The five `invalid/` files below are each derived from this document
+the live pipeline output. The six `invalid/` files below are each derived from this document
 by introducing **exactly one** defect, so the difference under test is isolated to a single edit.
 
 ### `valid/credit-memo-reverse-charge.xml`
