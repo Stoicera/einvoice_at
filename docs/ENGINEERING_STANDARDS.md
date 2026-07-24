@@ -19,7 +19,7 @@ Ein Feature ist fertig, wenn:
 - **`docs/`**: PRD, SPEC, MILESTONES, ADRs (`docs/adr/NNNN-title.md`, Format: Kontext → Entscheidung → Konsequenzen), Glossar (deutsche Fachbegriffe ↔ englische Erklärung).
 - **Conventional Commits** (`feat:`, `fix:`, `test:`, `docs:`, `refactor:`, `chore:`). Kleine, thematisch geschlossene Commits.
 - **Branching:** trunk-based; kurzlebige Feature-Branches, PRs mit Beschreibung (auch bei Solo-Arbeit — die PR-Historie ist Teil des Portfolios).
-- **Releases:** SemVer, GitHub Releases mit Changelog ab Milestone 2.
+- **Releases:** SemVer, GitHub Releases mit Changelog ab Milestone 6 (erstes getaggtes Release `v0.1.0`, siehe `docs/MILESTONES.md` M6). Entscheidung 2026-07-24: `MILESTONES.md` ist für den Release-Zeitpunkt maßgeblich; diese Zeile war bis dahin im Widerspruch dazu und ist damit korrigiert, nicht neu entschieden.
 - **Lizenz:** Apache-2.0 (business-freundlich, Enterprise-üblich).
 
 ## 3. Testing-Pyramide (verbindlich)

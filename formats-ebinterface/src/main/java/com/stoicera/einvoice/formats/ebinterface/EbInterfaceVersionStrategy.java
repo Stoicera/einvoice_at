@@ -6,10 +6,19 @@ import org.w3c.dom.Node;
  * Read/write strategy for one concrete ebInterface version.
  *
  * <p>SPEC §10: adding ebInterface 7.0 must not touch {@code core} — a new version is a new strategy
- * implementation, nothing more. Implementations wrap the ph-ebinterface JAXB marshallers and are
- * intentionally <em>lenient</em>: they do not perform XSD/Schematron validation (that is the
- * validation module's responsibility). The {@code read} overloads therefore collect, rather than
- * throw, the diagnostics the underlying parser reports.
+ * implementation. Implementations wrap the ph-ebinterface JAXB marshallers and are intentionally
+ * <em>lenient</em>: they do not perform XSD/Schematron validation (that is the validation module's
+ * responsibility). The {@code read} overloads therefore collect, rather than throw, the diagnostics
+ * the underlying parser reports.
+ *
+ * <p><strong>Honest scope of this seam (M2).</strong> This interface exists and {@code core} never
+ * imports it — that half of the claim above holds. It is not yet wired for runtime polymorphism:
+ * with exactly one implementation ({@code EbInterface61Strategy}), every current caller (the {@code
+ * validation} module's {@code ValidationContext}, the {@code mapping} module's mapper) references
+ * the concrete 6.1 type or strategy directly rather than going through this interface. That is the
+ * correct amount of seam for a single implementation; a namespace-keyed, genuinely polymorphic
+ * lookup is deferred until a second implementation exists to be polymorphic over it, which lands
+ * with the second ebInterface/UBL format in M4 (see ADR-0004 Entscheidung 10).
  *
  * @param <T> the version-specific JAXB document type (e.g. {@code Ebi61InvoiceType})
  */

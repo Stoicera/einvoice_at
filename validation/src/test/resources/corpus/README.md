@@ -135,6 +135,12 @@ that a *blank* Auftragsreferenz is no better than a missing one.
 shape and length (so it clears the XSD, which only bounds length) but failing the mod-97 checksum →
 single `AT-B2G-02` from the hand-written business-rule stage.
 
+**IBAN/BIC provenance (all files above that carry a payment block).** `AT611904300234573201` and its
+Bank-Austria-format BIC `BKAUATWW` — the value this file mutates by one digit — are canonical
+ebInterface test values shared by every corpus file with a payment block, checksum-valid so the
+`AT-B2G-02` happy path is exercised deliberately rather than by accident. Neither is a real account
+or a real bank customer; see `samples/README.md` for the same note against the JSON sample.
+
 ## Regenerating the pipeline-derived files
 
 **`valid/b2g-full.xml`** — do not hand-edit it. On an intentional mapper/writer change, rerun

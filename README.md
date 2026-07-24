@@ -25,13 +25,15 @@ Modular monolith, Maven multi-module; boundary rules are enforced by ArchUnit as
 einvoice-at
 ├── core                  canonical invoice model (EN 16931 core subset), pure Java, zero Spring
 ├── formats-ebinterface   ebInterface 6.1 read/write/validate (wraps ph-ebinterface)
-├── formats-ubl           Peppol BIS 3.0 / UBL 2.1 read/write/validate (wraps ph-ubl)
+├── formats-ubl           Peppol BIS 3.0 / UBL 2.1 read/write/validate (wraps ph-ubl) — planned M4
 ├── mapping               canonical ↔ formats, golden-file tested
 ├── validation            XSD (phive) + own AT-B2G Schematron + Austrian business rules → ValidationReport
-├── rendering             invoice → PDF / HTML print view
-├── ai-assist             LlmClient port + OpenRouter adapter, feature-flagged, degradable
-└── app                   Spring Boot app: REST API, web UI, security, persistence, audit
+├── rendering             invoice → PDF / HTML print view — planned M4
+├── ai-assist             LlmClient port + OpenRouter adapter, feature-flagged, degradable — planned M5
+└── app                   Spring Boot app: REST API, web UI, security, persistence, audit — health endpoint only today; the rest lands M3+
 ```
+
+`core`, `formats-ebinterface`, `mapping` and `validation` are built and tested as of M2; the other four rows are `package-info.java`-only stubs today (see the status note above).
 
 Stack: Java 25, Spring Boot 4.1, PostgreSQL 17 + Flyway, Thymeleaf + htmx, Keycloak, Testcontainers, Selenium. Rationale in [ADR-0001](docs/adr/0001-java-spring-boot-stack.md).
 
@@ -73,18 +75,22 @@ The M2 modules carry the same JaCoCo discipline — `formats-ebinterface` and `v
 
 `EbInterface61Validator` (module `validation`) validates an uploaded ebInterface 6.1 document against the Austrian B2G profile and returns a `ValidationReport` of German-first `Finding`s. The pipeline is staged with hard gating — a document must clear one stage before the next runs, and each stage stops the pipeline when continuing would be meaningless:
 
+0. **Size guard** — an upload over 20 MB is rejected as `XML-02` before a single byte is parsed: a defensive, module-level cap that protects the validator independently of any caller. This is separate from — and looser than — the stricter 2 MB application-layer cap SPEC §4 places in front of the HTTP endpoint once M3 exposes it.
 1. **Secure parse** — `SecureXml` parses the upload with an XXE-hardened, namespace-aware `DocumentBuilderFactory` (`disallow-doctype-decl`, external entities/DTD off). Not well-formed XML or a bare `DOCTYPE` → `XML-01`, pipeline stops.
 2. **Format detection** — the root namespace is resolved against known ebInterface versions. An unrecognised namespace → `FORMAT-01`; a recognised but unsupported version (e.g. ebInterface 6.0) → `FORMAT-02`. Either stops the pipeline.
-3. **XSD** — the bundled ebInterface 6.1 validation-executor-set (`VID_EBI_61`) runs via [phive](https://github.com/phax/phive). This VES is **XSD-only** — AUSTRIAPRO publishes no Schematron for ebInterface — so schema violations become `EBI61-XSD` findings, each genuinely bilingual (the stage validates the document twice, once per `Locale`, because the underlying Xerces diagnostic text is baked in at validation time; see [ADR-0004](docs/adr/0004-validation-pipeline-and-xsd-messages.md)). An XSD-invalid document stops the pipeline: Schematron and business rules assume a structurally valid tree.
+3. **XSD** — the bundled ebInterface 6.1 validation-executor-set (`VID_EBI_61`) runs via [phive](https://github.com/phax/phive). This VES is **XSD-only** — AUSTRIAPRO publishes no Schematron for ebInterface — so schema violations become `XSD-01` findings, each genuinely bilingual (the stage validates the document twice, once per `Locale`, because the underlying Xerces diagnostic text is baked in at validation time; see [ADR-0004](docs/adr/0004-validation-pipeline-and-xsd-messages.md)). An XSD-invalid document stops the pipeline: Schematron and business rules assume a structurally valid tree.
 4. **Own AT-B2G Schematron** — runs only once the document is XSD-valid. `AT-B2G-01` checks the Auftragsreferenz is present, required for invoices to Austrian federal bodies.
 5. **Java business rule** — runs alongside Schematron gating. `AT-B2G-02` checks every `IBAN` present under the payment method against the core `Iban` mod-97 checksum (the XSD only bounds an IBAN's length). The finding never echoes the IBAN itself — only its 1-based position in the document.
+
+Every rule id the pipeline can produce is centralised in `RuleIds` (module `validation`) — the single registry the corpus and the CLI both assert against, so the id scheme (`PREFIX-NN`) stays uniform as new rules land:
 
 | Rule id | Stage | Meaning |
 |---|---|---|
 | `XML-01` | secure parse | upload is not well-formed XML |
+| `XML-02` | size guard | upload exceeds the 20 MB defensive input-size cap |
 | `FORMAT-01` | format detection | namespace matches no supported format |
 | `FORMAT-02` | format detection | recognised ebInterface, unsupported version |
-| `EBI61-XSD` | XSD | document violates the ebInterface 6.1 schema |
+| `XSD-01` | XSD | document violates the ebInterface 6.1 schema |
 | `AT-B2G-01` | own Schematron | Auftragsreferenz missing |
 | `AT-B2G-02` | Java business rule | an IBAN present fails the mod-97 checksum |
 

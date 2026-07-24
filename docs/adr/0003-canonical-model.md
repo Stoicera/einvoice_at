@@ -51,6 +51,19 @@ it, and the validation module (M2) compares documents against it.
    arrive with the mapping layer); `Address` is deliberately stricter than BG-5 (EN mandates
    only the country code; Austrian B2G practice needs street/city/postal code, so core requires
    them). Added when mapping (M2/M4) demonstrates the need, with property tests in the same PR.
+   Two further gaps, both surfaced by the 2026-07-24 M2 hostile-review (findings A2, A5) and
+   added to this list rather than silently left undocumented:
+   - **Delivery date / service period** (BT-72/BG-14). § 11 Abs 1 Z 4 UStG makes the day of
+     delivery or the service period a mandatory element on full invoices > €400; `Invoice`
+     carries neither field today, so the mapper cannot write ebInterface `Delivery`. Lands in
+     **M3**, before the JSON/REST contract freezes — a plain data field with no arithmetic
+     impact, so it does not require a canonical-model redesign.
+   - **Biller e-mail / contact.** `Party` has no email field at all (only `name`, `address`,
+     `vatId`); e-rechnung.gv.at requires at least one `Biller/Address/Email` for a document to
+     be accepted under the AT-B2G profile. Lands in **M3** alongside the delivery-date field,
+     for the same reason: the canonical JSON shape should not need a second breaking change
+     right after M3 freezes it. See [ADR-0004](0004-validation-pipeline-and-xsd-messages.md)
+     for the corresponding AT-B2G-profile-completeness gap on the validation side.
 
 ## Konsequenzen
 
