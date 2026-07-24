@@ -88,7 +88,9 @@
   - `validation`: 66 tests; JaCoCo 94.67 % / 92.59 % (gate 90/85).
   - `app`: 1 test (health smoke), `formats-ubl`/`rendering`/`ai-assist` still `package-info.java`
     only.
-  - (CI run id to be appended here by the finish task after push.)
+  - CI run 30072775385 green on PR #3 (pull_request run — push CI covers main only): build/
+    lint/test, mutation job (core 97 %, mapping 100 % — first run with mapping wired in),
+    Docker image build; 1 m 38 s total.
 
 **Next**
 
