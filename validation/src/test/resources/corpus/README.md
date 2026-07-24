@@ -64,7 +64,8 @@ valid) so the corpus documents the *floor* of validity, not just the fully-popul
 
 ### `valid/b2g-full.xml`
 The fully-populated B2G invoice: two taxed lines (20 % and 10 %), Auftragsreferenz, Lieferantennummer,
-SEPA payment details, due date and payment terms. **Provenance:** this file is the byte-for-byte
+a delivery date (BT-72, `Delivery/Date`), a Biller contact email (`Address/Email`), SEPA payment
+details, due date and payment terms. **Provenance:** this file is the byte-for-byte
 output of the real generation pipeline for `samples/invoice-b2g-sample.json`
 (`InvoiceJsonReader` → `InvoiceToEbInterface61Mapper` → `EbInterface61Strategy.write`); it is the same
 artifact committed as `samples/invoice-b2g-sample.ebinterface.xml`. `EndToEndGenerationTest` pins the

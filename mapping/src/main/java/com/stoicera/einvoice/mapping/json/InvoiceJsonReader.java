@@ -12,6 +12,7 @@ import com.stoicera.einvoice.core.internal.Texts;
 import com.stoicera.einvoice.core.invoice.Invoice;
 import com.stoicera.einvoice.core.invoice.InvoiceLine;
 import com.stoicera.einvoice.core.invoice.InvoiceTypeCode;
+import com.stoicera.einvoice.core.invoice.ServicePeriod;
 import com.stoicera.einvoice.core.party.Address;
 import com.stoicera.einvoice.core.party.Party;
 import com.stoicera.einvoice.core.payment.Iban;
@@ -27,6 +28,7 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Currency;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Strict JSON reader for the canonical-invoice document shape documented in {@code
@@ -65,13 +67,19 @@ import java.util.List;
  *   <tr><td>{@code issueDate}, {@code dueDate}</td><td>{@code Invoice.issueDate/dueDate}</td>
  *       <td>ISO-8601 ({@code yyyy-MM-dd}) via {@link LocalDate#parse(CharSequence)};
  *       {@code dueDate} optional.</td></tr>
+ *   <tr><td>{@code deliveryDate}</td><td>{@code Invoice.deliveryDate} (BT-72)</td>
+ *       <td>ISO-8601, optional; mutually exclusive with {@code servicePeriod} — {@code core}
+ *       rejects a document carrying both, and this reader does not pre-empt that check.</td></tr>
+ *   <tr><td>{@code servicePeriod}</td><td>{@code Invoice.servicePeriod} (BG-14)</td>
+ *       <td>{@code {from, to}}, both ISO-8601; optional, mutually exclusive with
+ *       {@code deliveryDate}.</td></tr>
  *   <tr><td>{@code currency}</td><td>{@code Invoice.currency}</td>
  *       <td>ISO 4217 code via {@link Currency#getInstance(String)}.</td></tr>
  *   <tr><td>{@code orderReference}, {@code supplierNumber}</td>
  *       <td>{@code Invoice.orderReference/supplierNumber}</td><td>optional, copied verbatim.</td></tr>
  *   <tr><td>{@code seller}, {@code buyer}</td><td>{@code Invoice.seller/buyer}</td>
- *       <td>{@code name}/{@code vatId}/{@code address} → {@link Party}; nested {@code address.*} →
- *       {@link Address}.</td></tr>
+ *       <td>{@code name}/{@code vatId}/{@code address}/{@code email} → {@link Party}; nested
+ *       {@code address.*} → {@link Address}; {@code email} optional.</td></tr>
  *   <tr><td>{@code lines[]}</td><td>{@code Invoice.lines}</td>
  *       <td>{@code quantity}/{@code unitPrice} (JSON strings) → {@link BigDecimal};
  *       {@code vatCategory}+{@code vatPercent} → {@code new VatRate(VatCategory.<cat>, percent)}.
@@ -167,6 +175,8 @@ public final class InvoiceJsonReader {
             .type(toTypeCode(dto.type()))
             .issueDate(toDate(dto.issueDate(), "issueDate"))
             .dueDate(toDate(dto.dueDate(), "dueDate"))
+            .deliveryDate(toDate(dto.deliveryDate(), "deliveryDate"))
+            .servicePeriod(toServicePeriod(dto.servicePeriod()))
             .currency(toCurrency(dto.currency()))
             .orderReference(dto.orderReference())
             .supplierNumber(dto.supplierNumber())
@@ -225,7 +235,26 @@ public final class InvoiceJsonReader {
     if (party == null) {
       return null;
     }
-    return new Party(party.name(), toAddress(party.address()), party.vatId());
+    return new Party(
+        party.name(),
+        toAddress(party.address()),
+        party.vatId(),
+        Optional.ofNullable(party.email()));
+  }
+
+  /**
+   * {@code null} when {@code servicePeriod} is absent from the document; a missing {@code from}/
+   * {@code to} inside a present object is deliberately passed through as {@code null} to {@link
+   * ServicePeriod}'s canonical constructor, which produces {@code core}'s own message (the "missing
+   * values pass through as null" idiom shared with the rest of this reader).
+   */
+  private ServicePeriod toServicePeriod(ServicePeriodDto servicePeriod) {
+    if (servicePeriod == null) {
+      return null;
+    }
+    return new ServicePeriod(
+        toDate(servicePeriod.from(), "servicePeriod.from"),
+        toDate(servicePeriod.to(), "servicePeriod.to"));
   }
 
   private Address toAddress(AddressDto address) {
@@ -305,6 +334,8 @@ public final class InvoiceJsonReader {
       String type,
       String issueDate,
       String dueDate,
+      String deliveryDate,
+      ServicePeriodDto servicePeriod,
       String currency,
       String orderReference,
       String supplierNumber,
@@ -315,9 +346,11 @@ public final class InvoiceJsonReader {
       String paymentTerms,
       List<ExemptionReasonDto> exemptionReasons) {}
 
-  private record PartyDto(String name, String vatId, AddressDto address) {}
+  private record PartyDto(String name, String vatId, AddressDto address, String email) {}
 
   private record AddressDto(String street, String city, String postalCode, String countryCode) {}
+
+  private record ServicePeriodDto(String from, String to) {}
 
   private record LineDto(
       String id,

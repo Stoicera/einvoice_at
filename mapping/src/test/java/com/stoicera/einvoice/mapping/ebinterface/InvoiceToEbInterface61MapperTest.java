@@ -15,6 +15,7 @@ import com.stoicera.einvoice.mapping.Fixtures;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -331,6 +332,101 @@ class InvoiceToEbInterface61MapperTest {
     Ebi61InvoiceType ebi = mapper.map(Fixtures.minimalB2bInvoice());
 
     assertThat(ebi.getPaymentConditions()).isNull();
+  }
+
+  // --- Delivery (BT-72 / BG-14) -------------------------------------------------------------
+
+  @Test
+  void mapsDeliveryDateToDeliveryDateElement() {
+    Ebi61InvoiceType ebi = mapper.map(Fixtures.invoiceWithDeliveryDate());
+
+    assertThat(ebi.getDelivery()).isNotNull();
+    assertThat(ebi.getDelivery().getDateLocal()).isEqualTo(LocalDate.of(2026, 7, 20));
+    assertThat(ebi.getDelivery().getPeriod()).isNull();
+  }
+
+  @Test
+  void mapsServicePeriodToDeliveryPeriodElement() {
+    Ebi61InvoiceType ebi = mapper.map(Fixtures.invoiceWithServicePeriod());
+
+    assertThat(ebi.getDelivery()).isNotNull();
+    assertThat(ebi.getDelivery().getDate()).isNull();
+    var period = ebi.getDelivery().getPeriod();
+    assertThat(period).isNotNull();
+    assertThat(period.getFromDateLocal()).isEqualTo(LocalDate.of(2026, 7, 1));
+    assertThat(period.getToDateLocal()).isEqualTo(LocalDate.of(2026, 7, 31));
+  }
+
+  @Test
+  void omitsDeliveryWhenNeitherDeliveryDateNorServicePeriodPresent() {
+    Ebi61InvoiceType ebi = mapper.map(Fixtures.minimalB2bInvoice());
+
+    assertThat(ebi.getDelivery()).isNull();
+  }
+
+  @Test
+  void deliveryDateInvoiceReReadsWithoutSchemaErrors() {
+    String xml = STRATEGY.write(mapper.map(Fixtures.invoiceWithDeliveryDate()));
+
+    ErrorList errors = new ErrorList();
+    new EbInterface61Marshaller()
+        .setUseSchema(true)
+        .setCollectErrors(errors)
+        .read(xml.getBytes(StandardCharsets.UTF_8));
+
+    assertThat(errors.containsAtLeastOneError())
+        .withFailMessage("expected no schema errors but got: %s%nXML:%n%s", errors, xml)
+        .isFalse();
+  }
+
+  @Test
+  void servicePeriodInvoiceReReadsWithoutSchemaErrors() {
+    String xml = STRATEGY.write(mapper.map(Fixtures.invoiceWithServicePeriod()));
+
+    ErrorList errors = new ErrorList();
+    new EbInterface61Marshaller()
+        .setUseSchema(true)
+        .setCollectErrors(errors)
+        .read(xml.getBytes(StandardCharsets.UTF_8));
+
+    assertThat(errors.containsAtLeastOneError())
+        .withFailMessage("expected no schema errors but got: %s%nXML:%n%s", errors, xml)
+        .isFalse();
+  }
+
+  // --- Address/Email (party contact) --------------------------------------------------------
+
+  @Test
+  void mapsPartyEmailsToAddressEmail() {
+    Ebi61InvoiceType ebi = mapper.map(Fixtures.invoiceWithPartyEmails());
+
+    assertThat(ebi.getBiller().getAddress().getEmail())
+        .containsExactly("rechnung@kontakt-software.at");
+    assertThat(ebi.getInvoiceRecipient().getAddress().getEmail())
+        .containsExactly("einkauf@amt-vergabe.gv.at");
+  }
+
+  @Test
+  void omitsAddressEmailWhenAbsent() {
+    Ebi61InvoiceType ebi = mapper.map(Fixtures.minimalB2bInvoice());
+
+    assertThat(ebi.getBiller().getAddress().hasNoEmailEntries()).isTrue();
+    assertThat(ebi.getInvoiceRecipient().getAddress().hasNoEmailEntries()).isTrue();
+  }
+
+  @Test
+  void partyEmailInvoiceReReadsWithoutSchemaErrors() {
+    String xml = STRATEGY.write(mapper.map(Fixtures.invoiceWithPartyEmails()));
+
+    ErrorList errors = new ErrorList();
+    new EbInterface61Marshaller()
+        .setUseSchema(true)
+        .setCollectErrors(errors)
+        .read(xml.getBytes(StandardCharsets.UTF_8));
+
+    assertThat(errors.containsAtLeastOneError())
+        .withFailMessage("expected no schema errors but got: %s%nXML:%n%s", errors, xml)
+        .isFalse();
   }
 
   @Test

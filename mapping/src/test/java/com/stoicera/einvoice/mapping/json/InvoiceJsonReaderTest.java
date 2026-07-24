@@ -7,6 +7,7 @@ import com.stoicera.einvoice.core.InvariantViolationException;
 import com.stoicera.einvoice.core.invoice.Invoice;
 import com.stoicera.einvoice.core.invoice.InvoiceLine;
 import com.stoicera.einvoice.core.invoice.InvoiceTypeCode;
+import com.stoicera.einvoice.core.invoice.ServicePeriod;
 import com.stoicera.einvoice.core.money.Money;
 import com.stoicera.einvoice.core.party.Address;
 import com.stoicera.einvoice.core.party.Party;
@@ -105,6 +106,53 @@ class InvoiceJsonReaderTest {
     Invoice invoice = reader.read(toStream(json));
 
     assertThat(invoice.type()).isEqualTo(InvoiceTypeCode.CREDIT_NOTE);
+  }
+
+  @Test
+  void parsesDeliveryDateOntoTheInvoice() {
+    String json =
+        MINIMAL_JSON.substring(0, MINIMAL_JSON.lastIndexOf('}'))
+            + ",\n  \"deliveryDate\": \"2026-07-20\"\n}\n";
+
+    Invoice invoice = reader.read(toStream(json));
+
+    assertThat(invoice.deliveryDate()).contains(LocalDate.of(2026, 7, 20));
+    assertThat(invoice.servicePeriod()).isEmpty();
+  }
+
+  @Test
+  void parsesServicePeriodOntoTheInvoice() {
+    String json =
+        MINIMAL_JSON.substring(0, MINIMAL_JSON.lastIndexOf('}'))
+            + ",\n  \"servicePeriod\": { \"from\": \"2026-07-01\", \"to\": \"2026-07-31\" }\n}\n";
+
+    Invoice invoice = reader.read(toStream(json));
+
+    assertThat(invoice.servicePeriod())
+        .contains(new ServicePeriod(LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 31)));
+    assertThat(invoice.deliveryDate()).isEmpty();
+  }
+
+  @Test
+  void deliveryDateAndServicePeriodAreAbsentByDefault() {
+    Invoice invoice = reader.read(toStream(MINIMAL_JSON));
+
+    assertThat(invoice.deliveryDate()).isEmpty();
+    assertThat(invoice.servicePeriod()).isEmpty();
+  }
+
+  @Test
+  void parsesSellerEmailOntoTheParty() {
+    String json =
+        MINIMAL_JSON.replace(
+            "\"seller\": { \"name\": \"Seller GmbH\", \"vatId\": \"ATU11111111\",",
+            "\"seller\": { \"name\": \"Seller GmbH\", \"vatId\": \"ATU11111111\","
+                + " \"email\": \"buchhaltung@seller.example\",");
+
+    Invoice invoice = reader.read(toStream(json));
+
+    assertThat(invoice.seller().email()).contains("buchhaltung@seller.example");
+    assertThat(invoice.buyer().email()).isEmpty();
   }
 
   @Test
@@ -254,6 +302,53 @@ class InvoiceJsonReaderTest {
   }
 
   @Test
+  void malformedDeliveryDateThrowsInvoiceJsonException() {
+    String json =
+        MINIMAL_JSON.substring(0, MINIMAL_JSON.lastIndexOf('}'))
+            + ",\n  \"deliveryDate\": \"2026-13-40\"\n}\n";
+
+    assertThatThrownBy(() -> reader.read(toStream(json)))
+        .isInstanceOf(InvoiceJsonException.class)
+        .hasMessageContaining("deliveryDate");
+  }
+
+  @Test
+  void numericDeliveryDateThrowsInvoiceJsonExceptionConsistentlyWithOtherDateFields() {
+    // Boundary strictness is a mapper-wide policy (CoercionConfig for LogicalType.Textual, not a
+    // per-field allowlist), so a numeric node must be rejected here exactly as it is for issueDate.
+    String json =
+        MINIMAL_JSON.substring(0, MINIMAL_JSON.lastIndexOf('}'))
+            + ",\n  \"deliveryDate\": 20260720\n}\n";
+
+    assertThatThrownBy(() -> reader.read(toStream(json)))
+        .isInstanceOf(InvoiceJsonException.class)
+        .hasMessageContaining("deliveryDate");
+  }
+
+  @Test
+  void malformedServicePeriodFromDateThrowsInvoiceJsonException() {
+    String json =
+        MINIMAL_JSON.substring(0, MINIMAL_JSON.lastIndexOf('}'))
+            + ",\n  \"servicePeriod\": { \"from\": \"not-a-date\", \"to\": \"2026-07-31\" }\n}\n";
+
+    assertThatThrownBy(() -> reader.read(toStream(json)))
+        .isInstanceOf(InvoiceJsonException.class)
+        .hasMessageContaining("servicePeriod.from");
+  }
+
+  @Test
+  void unknownPropertyInsideServicePeriodThrowsInvoiceJsonException() {
+    String json =
+        MINIMAL_JSON.substring(0, MINIMAL_JSON.lastIndexOf('}'))
+            + ",\n  \"servicePeriod\": { \"from\": \"2026-07-01\", \"to\": \"2026-07-31\","
+            + " \"bogus\": \"x\" }\n}\n";
+
+    assertThatThrownBy(() -> reader.read(toStream(json)))
+        .isInstanceOf(InvoiceJsonException.class)
+        .hasMessageContaining("bogus");
+  }
+
+  @Test
   void malformedQuantityStringThrowsInvoiceJsonException() {
     String json = MINIMAL_JSON.replace("\"quantity\": \"1\"", "\"quantity\": \"abc\"");
 
@@ -385,6 +480,34 @@ class InvoiceJsonReaderTest {
     assertThatThrownBy(() -> reader.read(toStream(json)))
         .isExactlyInstanceOf(InvariantViolationException.class)
         .hasMessageContaining("VAT category");
+  }
+
+  @Test
+  void deliveryDateAndServicePeriodBothPresentThrowsInvariantViolationExceptionUnwrapped() {
+    // core enforces mutual exclusion (§ 11 Abs 1 Z 4 UStG); the reader does not pre-empt it — the
+    // well-formed-but-domain-invalid document passes through to core untouched.
+    String json =
+        MINIMAL_JSON.substring(0, MINIMAL_JSON.lastIndexOf('}'))
+            + ",\n  \"deliveryDate\": \"2026-07-20\",\n"
+            + "  \"servicePeriod\": { \"from\": \"2026-07-01\", \"to\": \"2026-07-31\" }\n}\n";
+
+    assertThatThrownBy(() -> reader.read(toStream(json)))
+        .isExactlyInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("delivery date and a service period");
+  }
+
+  @Test
+  void missingServicePeriodFromDateThrowsInvariantViolationException() {
+    // "from" absent from a well-formed servicePeriod object: the reader passes null through to
+    // ServicePeriod's canonical constructor, which produces core's own message (the "missing
+    // values pass through as null" idiom).
+    String json =
+        MINIMAL_JSON.substring(0, MINIMAL_JSON.lastIndexOf('}'))
+            + ",\n  \"servicePeriod\": { \"to\": \"2026-07-31\" }\n}\n";
+
+    assertThatThrownBy(() -> reader.read(toStream(json)))
+        .isExactlyInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("Service period start date");
   }
 
   @Test

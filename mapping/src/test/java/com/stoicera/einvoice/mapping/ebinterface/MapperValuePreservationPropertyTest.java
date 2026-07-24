@@ -2,11 +2,14 @@ package com.stoicera.einvoice.mapping.ebinterface;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.helger.ebinterface.v61.Ebi61AddressType;
 import com.helger.ebinterface.v61.Ebi61InvoiceType;
 import com.helger.ebinterface.v61.Ebi61ListLineItemType;
 import com.helger.ebinterface.v61.Ebi61TaxItemType;
 import com.stoicera.einvoice.core.invoice.Invoice;
 import com.stoicera.einvoice.core.invoice.InvoiceLine;
+import com.stoicera.einvoice.core.invoice.ServicePeriod;
+import com.stoicera.einvoice.core.party.Party;
 import com.stoicera.einvoice.core.tax.VatBreakdownEntry;
 import java.util.List;
 import net.jqwik.api.Arbitrary;
@@ -109,6 +112,56 @@ class MapperValuePreservationPropertyTest {
   /** The canonical VAT id verbatim, or the no-UID convention when the party carries none. */
   private static String expectedVatId(String canonicalVatId) {
     return canonicalVatId != null ? canonicalVatId : NO_UID_CONVENTION;
+  }
+
+  @Property(tries = 300)
+  void deliveryInfoMapsVerbatim(@ForAll("canonicalInvoices") Invoice invoice) {
+    Ebi61InvoiceType ebi = MAPPER.map(invoice);
+
+    if (invoice.deliveryDate().isPresent()) {
+      assertThat(ebi.getDelivery()).as("Delivery present for a deliveryDate invoice").isNotNull();
+      assertThat(ebi.getDelivery().getDateLocal())
+          .as("Delivery/Date")
+          .isEqualTo(invoice.deliveryDate().get());
+      assertThat(ebi.getDelivery().getPeriod())
+          .as("Delivery/Period absent when Date is present")
+          .isNull();
+    } else if (invoice.servicePeriod().isPresent()) {
+      ServicePeriod period = invoice.servicePeriod().get();
+      assertThat(ebi.getDelivery()).as("Delivery present for a servicePeriod invoice").isNotNull();
+      assertThat(ebi.getDelivery().getDate())
+          .as("Delivery/Date absent when Period is present")
+          .isNull();
+      assertThat(ebi.getDelivery().getPeriod()).as("Delivery/Period").isNotNull();
+      assertThat(ebi.getDelivery().getPeriod().getFromDateLocal())
+          .as("Delivery/Period/FromDate")
+          .isEqualTo(period.from());
+      assertThat(ebi.getDelivery().getPeriod().getToDateLocal())
+          .as("Delivery/Period/ToDate")
+          .isEqualTo(period.to());
+    } else {
+      assertThat(ebi.getDelivery()).as("Delivery absent when neither is present").isNull();
+    }
+  }
+
+  @Property(tries = 300)
+  void partyEmailsMapVerbatim(@ForAll("canonicalInvoices") Invoice invoice) {
+    Ebi61InvoiceType ebi = MAPPER.map(invoice);
+
+    assertPartyEmail(invoice.seller(), ebi.getBiller().getAddress(), "Biller");
+    assertPartyEmail(invoice.buyer(), ebi.getInvoiceRecipient().getAddress(), "InvoiceRecipient");
+  }
+
+  private static void assertPartyEmail(Party party, Ebi61AddressType address, String label) {
+    if (party.email().isPresent()) {
+      assertThat(address.getEmail())
+          .as("%s Address/Email", label)
+          .containsExactly(party.email().get());
+    } else {
+      assertThat(address.hasNoEmailEntries())
+          .as("%s Address/Email absent when the party carries none", label)
+          .isTrue();
+    }
   }
 
   @Provide

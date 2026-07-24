@@ -2,6 +2,9 @@
 <Invoice xmlns="http://www.ebinterface.at/schema/6p1/" GeneratingSystem="einvoice-at" DocumentType="Invoice" InvoiceCurrency="EUR" Language="de">
   <InvoiceNumber>RE-2026-0042</InvoiceNumber>
   <InvoiceDate>2026-07-24</InvoiceDate>
+  <Delivery>
+    <Date>2026-07-24</Date>
+  </Delivery>
   <Biller>
     <VATIdentificationNumber>ATU12345678</VATIdentificationNumber>
     <Address>
@@ -10,6 +13,7 @@
       <Town>Linz</Town>
       <ZIP>4020</ZIP>
       <Country CountryCode="AT">Österreich</Country>
+      <Email>office@stoicera-software.at</Email>
     </Address>
     <InvoiceRecipientsBillerID>L-100234</InvoiceRecipientsBillerID>
   </Biller>

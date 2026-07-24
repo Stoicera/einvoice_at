@@ -3,6 +3,7 @@ package com.stoicera.einvoice.mapping.ebinterface;
 import com.stoicera.einvoice.core.invoice.Invoice;
 import com.stoicera.einvoice.core.invoice.InvoiceLine;
 import com.stoicera.einvoice.core.invoice.InvoiceTypeCode;
+import com.stoicera.einvoice.core.invoice.ServicePeriod;
 import com.stoicera.einvoice.core.money.Money;
 import com.stoicera.einvoice.core.party.Address;
 import com.stoicera.einvoice.core.party.Party;
@@ -14,6 +15,7 @@ import com.stoicera.einvoice.core.tax.VatRate;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import net.jqwik.api.Arbitraries;
 import net.jqwik.api.Arbitrary;
 import net.jqwik.api.Combinators;
@@ -30,6 +32,12 @@ import net.jqwik.api.Combinators;
  * carries a null arm (finding A1) so the no-UID convention is covered. Magnitudes stay well inside
  * the core integer-digit caps so a generated invoice is always constructible and always maps to
  * schema-valid ebInterface 6.1.
+ *
+ * <p>M3 Task 2 added two further arms: each party independently carries an absent-or-present {@code
+ * email} ({@link #parties()}), and the invoice as a whole draws one of the three legal delivery
+ * states — neither, a {@code deliveryDate}, or a {@code servicePeriod} ({@link #deliveryArms()},
+ * mirroring {@code core}'s own {@code Generators.deliveryArms()} so the two test suites cover the
+ * same mutual-exclusion invariant without generating the illegal "both present" combination).
  */
 final class CanonicalInvoiceArbitraries {
 
@@ -107,6 +115,8 @@ final class CanonicalInvoiceArbitraries {
     if (optionals.paymentTerms() != null) {
       builder.paymentTerms(optionals.paymentTerms());
     }
+    optionals.deliveryArm().deliveryDate().ifPresent(builder::deliveryDate);
+    optionals.deliveryArm().servicePeriod().ifPresent(builder::servicePeriod);
     return builder.build();
   }
 
@@ -116,8 +126,55 @@ final class CanonicalInvoiceArbitraries {
             references().injectNull(0.4),
             paymentMeans().injectNull(0.4),
             Arbitraries.integers().between(0, 120).injectNull(0.4),
-            safeText().injectNull(0.4))
+            safeText().injectNull(0.4),
+            deliveryArms())
         .as(Optionals::new);
+  }
+
+  /**
+   * Bounded date range so a generated delivery date/service-period start never drifts far from the
+   * fixed {@link #issueDates()} range this suite uses elsewhere.
+   */
+  private static Arbitrary<LocalDate> deliveryDates() {
+    return Arbitraries.integers()
+        .between(0, 7000)
+        .map(offset -> LocalDate.of(2015, 1, 1).plusDays(offset));
+  }
+
+  private static Arbitrary<ServicePeriod> servicePeriods() {
+    return Combinators.combine(deliveryDates(), Arbitraries.integers().between(0, 90))
+        .as((from, spanDays) -> new ServicePeriod(from, from.plusDays(spanDays)));
+  }
+
+  /**
+   * Delivery date and service period are mutually exclusive on {@link Invoice} (§ 11 Abs 1 Z 4
+   * UStG); this arbitrary picks one of the three legal arms — neither, a delivery date, or a
+   * service period — rather than generating the two independently, which could accidentally produce
+   * the illegal "both present" combination.
+   */
+  private static Arbitrary<DeliveryArm> deliveryArms() {
+    Arbitrary<DeliveryArm> none =
+        Arbitraries.just(new DeliveryArm(Optional.empty(), Optional.empty()));
+    Arbitrary<DeliveryArm> dateOnly =
+        deliveryDates().map(date -> new DeliveryArm(Optional.of(date), Optional.empty()));
+    Arbitrary<DeliveryArm> periodOnly =
+        servicePeriods().map(period -> new DeliveryArm(Optional.empty(), Optional.of(period)));
+    return Arbitraries.oneOf(none, dateOnly, periodOnly);
+  }
+
+  private static Arbitrary<String> emails() {
+    Arbitrary<String> token =
+        Arbitraries.strings().withCharRange('a', 'z').ofMinLength(1).ofMaxLength(12);
+    Arbitrary<String> tld = Arbitraries.of("at", "com", "org", "eu");
+    return Combinators.combine(token, token, tld)
+        .as((local, domain, t) -> local + "@" + domain + "." + t);
+  }
+
+  /** Absent or present arm for {@link Party#email()}. */
+  private static Arbitrary<Optional<String>> optionalEmails() {
+    Arbitrary<Optional<String>> absent = Arbitraries.just(Optional.empty());
+    Arbitrary<Optional<String>> present = emails().map(Optional::of);
+    return Arbitraries.oneOf(absent, present);
   }
 
   private static Arbitrary<List<LineData>> lines() {
@@ -168,8 +225,7 @@ final class CanonicalInvoiceArbitraries {
   }
 
   private static Arbitrary<Party> parties() {
-    return Combinators.combine(names(), addresses(), vatIds())
-        .as((name, address, vatId) -> new Party(name, address, vatId));
+    return Combinators.combine(names(), addresses(), vatIds(), optionalEmails()).as(Party::new);
   }
 
   private static Arbitrary<Address> addresses() {
@@ -249,5 +305,9 @@ final class CanonicalInvoiceArbitraries {
       String supplierNumber,
       PaymentMeans paymentMeans,
       Integer dueInDays,
-      String paymentTerms) {}
+      String paymentTerms,
+      DeliveryArm deliveryArm) {}
+
+  /** One of the three legal delivery-info arms; see {@link #deliveryArms()}. */
+  record DeliveryArm(Optional<LocalDate> deliveryDate, Optional<ServicePeriod> servicePeriod) {}
 }

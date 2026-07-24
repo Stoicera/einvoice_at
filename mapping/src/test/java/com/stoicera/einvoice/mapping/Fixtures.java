@@ -3,6 +3,7 @@ package com.stoicera.einvoice.mapping;
 import com.stoicera.einvoice.core.invoice.Invoice;
 import com.stoicera.einvoice.core.invoice.InvoiceLine;
 import com.stoicera.einvoice.core.invoice.InvoiceTypeCode;
+import com.stoicera.einvoice.core.invoice.ServicePeriod;
 import com.stoicera.einvoice.core.money.Money;
 import com.stoicera.einvoice.core.party.Address;
 import com.stoicera.einvoice.core.party.Party;
@@ -13,6 +14,7 @@ import com.stoicera.einvoice.core.tax.VatExemptionReason;
 import com.stoicera.einvoice.core.tax.VatRate;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Optional;
 
 /**
  * Hand-built canonical invoices for the ebInterface 6.1 mapper tests. The German umlauts in party
@@ -93,6 +95,104 @@ public final class Fixtures {
                 new BigDecimal("10"),
                 "KGM",
                 new BigDecimal("12.50"),
+                VatRate.STANDARD_20))
+        .build();
+  }
+
+  /**
+   * A single-line invoice carrying a day of delivery (BT-72, mutually exclusive with {@link
+   * #invoiceWithServicePeriod()}) — exercises the mapper's {@code Delivery/Date} branch.
+   */
+  public static Invoice invoiceWithDeliveryDate() {
+    return Invoice.builder()
+        .invoiceNumber("2026-000556")
+        .type(InvoiceTypeCode.COMMERCIAL_INVOICE)
+        .issueDate(LocalDate.of(2026, 7, 22))
+        .deliveryDate(LocalDate.of(2026, 7, 20))
+        .currency(Money.EUR)
+        .seller(
+            new Party(
+                "Lieferservice Ost GmbH",
+                new Address("Bahnhofstraße 2", "Wien", "1030", "AT"),
+                "ATU55511111"))
+        .buyer(
+            new Party(
+                "Amt für Beschaffung",
+                new Address("Marktplatz 5", "Wien", "1010", "AT"),
+                "ATU55522222"))
+        .addLine(
+            new InvoiceLine(
+                "1",
+                "Büromaterial",
+                new BigDecimal("5"),
+                "C62",
+                new BigDecimal("20.00"),
+                VatRate.STANDARD_20))
+        .build();
+  }
+
+  /**
+   * A single-line invoice carrying a service period (BG-14, mutually exclusive with {@link
+   * #invoiceWithDeliveryDate()}) — exercises the mapper's {@code Delivery/Period} branch.
+   */
+  public static Invoice invoiceWithServicePeriod() {
+    return Invoice.builder()
+        .invoiceNumber("2026-000557")
+        .type(InvoiceTypeCode.COMMERCIAL_INVOICE)
+        .issueDate(LocalDate.of(2026, 8, 1))
+        .servicePeriod(new ServicePeriod(LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 31)))
+        .currency(Money.EUR)
+        .seller(
+            new Party(
+                "Wartungsdienst Süd GmbH",
+                new Address("Industriestraße 8", "Graz", "8020", "AT"),
+                "ATU55533333"))
+        .buyer(
+            new Party(
+                "Landesamt für Technik",
+                new Address("Herrengasse 3", "Graz", "8010", "AT"),
+                "ATU55544444"))
+        .addLine(
+            new InvoiceLine(
+                "1",
+                "Wartungsvertrag Juli 2026",
+                new BigDecimal("1"),
+                "C62",
+                new BigDecimal("300.00"),
+                VatRate.STANDARD_20))
+        .build();
+  }
+
+  /**
+   * An invoice whose seller <em>and</em> buyer both carry a business email (BG-14/e-rechnung.gv.at
+   * contact) — exercises the mapper's {@code Address/Email} branch on both {@code Biller} and
+   * {@code InvoiceRecipient}.
+   */
+  public static Invoice invoiceWithPartyEmails() {
+    return Invoice.builder()
+        .invoiceNumber("2026-000558")
+        .type(InvoiceTypeCode.COMMERCIAL_INVOICE)
+        .issueDate(LocalDate.of(2026, 7, 21))
+        .currency(Money.EUR)
+        .seller(
+            new Party(
+                "Kontakt Software GmbH",
+                new Address("Feldgasse 3", "Graz", "8010", "AT"),
+                "ATU66666666",
+                Optional.of("rechnung@kontakt-software.at")))
+        .buyer(
+            new Party(
+                "Amt für Vergabe",
+                new Address("Rathausplatz 1", "Graz", "8010", "AT"),
+                "ATU77777777",
+                Optional.of("einkauf@amt-vergabe.gv.at")))
+        .addLine(
+            new InvoiceLine(
+                "1",
+                "Wartungsvertrag",
+                new BigDecimal("1"),
+                "C62",
+                new BigDecimal("500.00"),
                 VatRate.STANDARD_20))
         .build();
   }
@@ -203,6 +303,7 @@ public final class Fixtures {
         .type(InvoiceTypeCode.COMMERCIAL_INVOICE)
         .issueDate(LocalDate.of(2026, 7, 24))
         .dueDate(LocalDate.of(2026, 8, 23))
+        .deliveryDate(LocalDate.of(2026, 7, 24))
         .currency(Money.EUR)
         .orderReference("BBG-2026-4711")
         .supplierNumber("L-100234")
@@ -210,7 +311,8 @@ public final class Fixtures {
             new Party(
                 "Stoicera Software GesbR",
                 new Address("Hauptplatz 1", "Linz", "4020", "AT"),
-                "ATU12345678"))
+                "ATU12345678",
+                Optional.of("office@stoicera-software.at")))
         .buyer(
             new Party(
                 "Bundesbeschaffung GmbH",

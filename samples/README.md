@@ -11,8 +11,10 @@ representation of the `core` domain model (`com.stoicera.einvoice.core.invoice.I
 `com.stoicera.einvoice.mapping.json.InvoiceJsonReader` (module `mapping`, Milestone 2 / Task 5).
 
 It describes a fully populated Austrian B2G invoice — two taxed lines (20 % and 10 %), an
-Auftragsreferenz, a Lieferantennummer, SEPA payment details and payment terms — so that every field
-the reader supports appears at least once. `mapping/src/test/java/.../mapping/Fixtures.java`'s
+Auftragsreferenz, a Lieferantennummer, a delivery date (BT-72), a Biller contact email, SEPA payment
+details and payment terms — so that every field the reader supports appears at least once (except
+`servicePeriod`, mutually exclusive with the `deliveryDate` already present here; Task 3's fixtures
+exercise that arm). `mapping/src/test/java/.../mapping/Fixtures.java`'s
 `jsonSampleB2gInvoice()` builds the identical invoice by hand via `Invoice.builder()`;
 `InvoiceJsonReaderTest.parsesSampleFileIntoExpectedInvoice()` asserts the two are record-equal, so
 this file and that fixture must be kept in lockstep if either ever changes.
@@ -41,15 +43,20 @@ The portal check **passed** on 2026-07-24: *"Diese Datei ist gültig gemäß ebI
 ebInterface 6.1"* (see `docs/worklog.md`, M2 hostile-review fix wave entry, for the full quote and
 date).
 
-**IMPORTANT — re-confirmation advisable.** The Abnahme above ran against the pre-fix-wave bytes of
-this file. The M2 hostile-review fix wave's Country-display-name change (finding A6 — the `Country`
-element text now reads the German display name, e.g. `Österreich`, instead of echoing the ISO code)
-regenerated this twin, so the exact bytes the portal validated are no longer the exact bytes committed
-here. The change is schema-valid and, if anything, more standard-conformant than before (AUSTRIAPRO's
-own samples use the display name too) — but it means today's committed twin has not itself been run
-through the official portal a second time. Re-running the portal check on the current bytes is a cheap
-owner action worth doing before relying on the Abnahme claim for the current file, even though no
-regression is expected.
+**IMPORTANT — re-confirmation advisable.** The Abnahme above ran against bytes that have since changed
+twice and has not itself been re-run against either change:
+
+1. The M2 hostile-review fix wave's Country-display-name change (finding A6 — the `Country` element
+   text now reads the German display name, e.g. `Österreich`, instead of echoing the ISO code).
+2. **M3 Task 2** (this task): the JSON sample gained a `deliveryDate` (BT-72) and a `Biller` contact
+   `email`, so the twin now also carries a `Delivery/Date` element (right after `InvoiceDate`) and a
+   `Biller/Address/Email` element (after `Country`) — both schema-valid, additive changes; nothing
+   else in the document moved.
+
+Both changes are schema-valid and neither is expected to regress the portal check, but the exact bytes
+the portal validated on 2026-07-24 are no longer the exact bytes committed here. Re-running the portal
+check on the current bytes is a cheap owner action worth doing before relying on the Abnahme claim for
+the current file.
 
 **Regeneration.** Do not hand-edit this file. On an *intentional* mapper or writer change,
 `EndToEndGenerationTest.committedTwinMatchesTheFreshlyGeneratedXml` fails and reports the fresh
@@ -66,12 +73,15 @@ the single source of the expected bytes.
 | `type` | string | yes | `Invoice.type` (BT-3) | `"INVOICE"` or `"CREDIT_NOTE"` — any other value is rejected. |
 | `issueDate` | string | yes | `Invoice.issueDate` (BT-2) | ISO-8601, `yyyy-MM-dd`. |
 | `dueDate` | string | no | `Invoice.dueDate` (BT-9) | ISO-8601, `yyyy-MM-dd`. |
+| `deliveryDate` | string | no | `Invoice.deliveryDate` (BT-72) | ISO-8601, `yyyy-MM-dd`. Mutually exclusive with `servicePeriod` (§ 11 Abs 1 Z 4 UStG: day of delivery *or* service period, never both); `core` rejects a document carrying both. |
+| `servicePeriod` | object | no | `Invoice.servicePeriod` (BG-14) | `{"from": "...", "to": "..."}`, both ISO-8601. Mutually exclusive with `deliveryDate` (see above). |
 | `currency` | string | yes | `Invoice.currency` (BT-5) | ISO 4217, e.g. `"EUR"`. |
 | `orderReference` | string | no | `Invoice.orderReference` (BT-13, Auftragsreferenz) | Required by the Austrian federal B2G profile (enforced by the `validation` module, not here). |
 | `supplierNumber` | string | no | `Invoice.supplierNumber` (Lieferantennummer) | |
-| `seller` | object | yes | `Invoice.seller` (BG-4) | `name`, `vatId`, `address`. |
-| `buyer` | object | yes | `Invoice.buyer` (BG-7) | `name`, `vatId`, `address`. |
+| `seller` | object | yes | `Invoice.seller` (BG-4) | `name`, `vatId`, `address`, `email`. |
+| `buyer` | object | yes | `Invoice.buyer` (BG-7) | `name`, `vatId`, `address`, `email`. |
 | `seller.address` / `buyer.address` | object | yes | `Address` (BG-5 / BG-8) | `street`, `city`, `postalCode`, `countryCode` (ISO 3166-1 alpha-2). |
+| `seller.email` / `buyer.email` | string | no | `Party.email` | Business contact email; maps to `Address/Email` in the ebInterface 6.1 output. Omitted (no `Email` element) when the party carries none. |
 | `lines` | array | yes, ≥1 entry | `Invoice.lines` (BG-25) | See below. |
 | `lines[].id` | string | yes | `InvoiceLine.id` | |
 | `lines[].description` | string | yes | `InvoiceLine.description` | |
