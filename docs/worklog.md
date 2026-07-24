@@ -114,9 +114,9 @@
   change (A6) subsequently regenerated that same file's bytes (Country element text), so the exact
   bytes validated are no longer byte-identical to what is committed now — see `samples/README.md`
   for the full note and the re-confirmation recommendation.
-- CI run id for this branch's own PR: not recorded here — the branch had not been pushed at the time
-  of this entry; the finish task appends the real run id after push and CI goes green, per the
-  standing "no fabricated CI id" rule.
+- CI run 30088300600 green on PR #4 (pull_request run — push CI covers main only): build/lint/test,
+  the now four-module mutation job (core, mapping, validation, formats-ebinterface), and Docker image
+  build; 2 m 18 s for the mutation job.
 
 **Next**
 
