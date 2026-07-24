@@ -5,16 +5,27 @@ import static org.assertj.core.api.Assertions.assertThat;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.stoicera.einvoice.app.http.RequestBodyTooLargeException;
 import com.stoicera.einvoice.app.problem.Problems;
 import com.stoicera.einvoice.app.security.ApiKeyNotFoundException;
 import com.stoicera.einvoice.app.security.TooManyApiKeysException;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.mock.http.MockHttpInputMessage;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.web.context.request.ServletWebRequest;
+import org.springframework.web.context.request.WebRequest;
 
 /**
  * The catch-all 500's two-sided contract: the caller learns nothing, the operator learns
@@ -90,6 +101,87 @@ class ApiExceptionHandlerTest {
   }
 
   @Test
+  void aFrameworkProblemWithoutATypeGetsTheProjectNamespaceStamped() {
+    // Spring MVC's own exceptions (415, 405, a missing multipart part, …) arrive with the RFC's
+    // default about:blank type. Left alone, the API would speak two vocabularies at once.
+    ProblemDetail framework =
+        ProblemDetail.forStatusAndDetail(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "nope");
+
+    ProblemDetail stamped = stampInternal(framework, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+
+    assertThat(stamped.getType()).isEqualTo(Problems.type("unsupported-media-type"));
+    // A title is filled in from the status when the framework left none.
+    assertThat(stamped.getTitle()).isEqualTo(HttpStatus.UNSUPPORTED_MEDIA_TYPE.getReasonPhrase());
+    // The framework's own status and detail survive untouched.
+    assertThat(stamped.getStatus()).isEqualTo(415);
+    assertThat(stamped.getDetail()).isEqualTo("nope");
+  }
+
+  @Test
+  void aProblemThatAlreadyCarriesATypeIsLeftAlone() {
+    ProblemDetail alreadyTyped = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+    alreadyTyped.setType(Problems.type("duplicate-invoice"));
+    alreadyTyped.setTitle("Duplicate invoice number");
+
+    ProblemDetail result = stampInternal(alreadyTyped, HttpStatus.CONFLICT);
+
+    assertThat(result.getType()).isEqualTo(Problems.type("duplicate-invoice"));
+    assertThat(result.getTitle()).isEqualTo("Duplicate invoice number");
+  }
+
+  @Test
+  void theSlugFollowsTheStatusEnumNameNotTheNumber() {
+    // 413 resolves to CONTENT_TOO_LARGE in Spring Framework 7 (the successor to the deprecated
+    // PAYLOAD_TOO_LARGE name), which is what the body-size cap and the multipart cap both produce.
+    assertThat(stampInternal(ProblemDetail.forStatus(413), HttpStatus.CONTENT_TOO_LARGE).getType())
+        .isEqualTo(Problems.type("content-too-large"));
+  }
+
+  @Test
+  void anUnknownStatusCodeFallsBackToTheGenericErrorSlug() {
+    // A status outside the HttpStatus enum has no reason phrase to derive a slug from; it must
+    // still land inside the project namespace rather than staying about:blank.
+    HttpStatusCode nonStandard = HttpStatusCode.valueOf(499);
+
+    assertThat(stampInternal(ProblemDetail.forStatus(499), nonStandard).getType())
+        .isEqualTo(Problems.type("error"));
+  }
+
+  @Test
+  void anOversizedChunkedBodyIsRecoveredAsA413FromDeepInTheCauseChain() {
+    // The counting stream's failure is wrapped by Spring's message converters, so the handler has
+    // to walk the chain; only the immediate cause would miss it and report a generic 400.
+    HttpMessageNotReadableException wrapped =
+        new HttpMessageNotReadableException(
+            "I/O error while reading input message",
+            new java.io.IOException("outer", new RequestBodyTooLargeException(2_097_152)),
+            new MockHttpInputMessage(new byte[0]));
+
+    ResponseEntity<Object> response =
+        handler.handleHttpMessageNotReadable(
+            wrapped, new HttpHeaders(), HttpStatus.BAD_REQUEST, webRequest());
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONTENT_TOO_LARGE);
+    ProblemDetail problem = (ProblemDetail) response.getBody();
+    assertThat(problem.getType()).isEqualTo(Problems.type("content-too-large"));
+    assertThat(problem.getDetail()).contains("2097152");
+  }
+
+  @Test
+  void aGenuinelyUnreadableBodyKeepsItsBadRequest() {
+    // The other side of the same branch: a malformed body is still a 400, not a mis-reported 413.
+    HttpMessageNotReadableException malformed =
+        new HttpMessageNotReadableException(
+            "malformed", new MockHttpInputMessage("{ nope".getBytes(StandardCharsets.UTF_8)));
+
+    ResponseEntity<Object> response =
+        handler.handleHttpMessageNotReadable(
+            malformed, new HttpHeaders(), HttpStatus.BAD_REQUEST, webRequest());
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+  }
+
+  @Test
   void theSameExceptionIsLoggedInFullWithItsStackTraceForTheOperator() {
     IllegalStateException cause = new IllegalStateException(SECRET_DETAIL);
 
@@ -103,5 +195,19 @@ class ApiExceptionHandlerTest {
     assertThat(event.getThrowableProxy()).isNotNull();
     assertThat(event.getThrowableProxy().getMessage()).isEqualTo(SECRET_DETAIL);
     assertThat(event.getThrowableProxy().getStackTraceElementProxyArray()).isNotEmpty();
+  }
+
+  // --- helpers -----------------------------------------------------------------------------------
+
+  /** Runs a framework-produced problem through the handler's type/title stamping. */
+  private ProblemDetail stampInternal(ProblemDetail body, HttpStatusCode status) {
+    ResponseEntity<Object> response =
+        handler.handleExceptionInternal(
+            new IllegalStateException("framework"), body, new HttpHeaders(), status, webRequest());
+    return (ProblemDetail) response.getBody();
+  }
+
+  private static WebRequest webRequest() {
+    return new ServletWebRequest(new MockHttpServletRequest(), new MockHttpServletResponse());
   }
 }
