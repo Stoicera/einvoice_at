@@ -1,5 +1,7 @@
 package com.stoicera.einvoice.formats.ebinterface;
 
+import org.w3c.dom.Node;
+
 /**
  * Read/write strategy for one concrete ebInterface version.
  *
@@ -38,7 +40,7 @@ public interface EbInterfaceVersionStrategy<T> {
    * @return a {@link ReadResult} whose {@code document} is {@code null} when the node could not be
    *     unmarshalled into a usable document, with the collected diagnostics in {@code errors}
    */
-  ReadResult<T> read(org.w3c.dom.Node node);
+  ReadResult<T> read(Node node);
 
   /**
    * Serialises {@code invoice} to formatted UTF-8 XML.

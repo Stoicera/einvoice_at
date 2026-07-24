@@ -2,6 +2,7 @@ package com.stoicera.einvoice.mapping.architecture;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
@@ -10,9 +11,11 @@ import org.junit.jupiter.api.Test;
 
 /**
  * SPEC §2: {@code mapping} translates between the canonical {@code core} model and the standards
- * adapters. It is a plain-Java module — no Spring, no JPA — and may depend only on {@code core},
- * the ebInterface adapter ({@code formats-ebinterface} + ph-ebinterface), Jackson (Task 5) and the
- * JDK. Never weaken these rules to make a build pass; fix the design instead.
+ * adapters. It is a plain-Java module — no Spring, no JPA — and its main code may depend only on
+ * {@code core}, the ph-ebinterface JAXB types it maps into, Jackson (the JSON boundary) and the
+ * JDK. The {@code formats-ebinterface} adapter is a test-scope dependency (used only to marshal
+ * mapped trees back for the schema-validity property), so it is not on the main whitelist (finding
+ * A9). Never weaken these rules to make a build pass; fix the design instead.
  */
 class MappingArchitectureTest {
 
@@ -20,6 +23,13 @@ class MappingArchitectureTest {
       new ClassFileImporter()
           .withImportOption(new ImportOption.DoNotIncludeTests())
           .importPackages("com.stoicera.einvoice.mapping");
+
+  @Test
+  void moduleClassesAreImported() {
+    // A mistyped package string would import zero classes and make each rule below pass vacuously;
+    // asserting a non-empty import makes that failure loud (finding A8).
+    assertThat(MODULE_CLASSES).isNotEmpty();
+  }
 
   @Test
   void doesNotDependOnSpring() {
@@ -49,7 +59,6 @@ class MappingArchitectureTest {
         .resideInAnyPackage(
             "com.stoicera.einvoice.mapping..",
             "com.stoicera.einvoice.core..",
-            "com.stoicera.einvoice.formats.ebinterface..",
             "com.helger..",
             "com.fasterxml.jackson..",
             "java..")

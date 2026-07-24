@@ -80,9 +80,7 @@ public final class EbInterface61Strategy implements EbInterfaceVersionStrategy<E
             .setCharset(StandardCharsets.UTF_8)
             .getAsString(invoice);
     if (xml == null) {
-      throw new IllegalStateException(
-          "ebInterface 6.1 Dokument konnte nicht serialisiert werden."
-              + " (ebInterface 6.1 document could not be marshalled.)");
+      throw new IllegalStateException("ebInterface 6.1 document could not be marshalled.");
     }
     return xml;
   }

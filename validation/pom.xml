@@ -19,6 +19,10 @@
          the app module's Spring context. Version verified against Maven Central
          maven-metadata.xml on 2026-07-24: latest and release both 3.6.3. -->
     <exec-maven-plugin.version>3.6.3</exec-maven-plugin.version>
+    <!-- The real exec.mainClass lives here, in the one module that owns the CLI, overriding the
+         root POM's no-op placeholder (finding A9). This is the only project where `exec:java`
+         actually runs. -->
+    <exec.mainClass>com.stoicera.einvoice.validation.cli.ValidationRunner</exec.mainClass>
   </properties>
 
   <dependencies>
@@ -149,9 +153,10 @@
         <version>${exec-maven-plugin.version}</version>
         <configuration>
           <!-- Opts back in to the reactor-wide default (see the root POM's exec.skip property
-               comment): this is the one module where `exec:java` is meant to actually run. -->
+               comment): this is the one module where `exec:java` is meant to actually run. The
+               mainClass comes from this module's own exec.mainClass property (finding A9). -->
           <skip>false</skip>
-          <mainClass>com.stoicera.einvoice.validation.cli.ValidationRunner</mainClass>
+          <mainClass>${exec.mainClass}</mainClass>
         </configuration>
       </plugin>
     </plugins>

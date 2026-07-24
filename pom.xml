@@ -79,10 +79,13 @@
          validation's other module dependencies. Maven validates the plugin's required
          `mainClass` parameter before the mojo's own `skip` check ever runs, so `exec.skip` alone
          is not enough to save those other projects from failing the build; giving every project
-         the same (unused, since skip short-circuits execution) mainClass value up front satisfies
-         that validation. -->
+         a mainClass value up front satisfies that validation. The value here is a deliberate
+         no-op placeholder — those projects never execute it, because exec.skip short-circuits — so
+         the parent no longer names the validation-internal CLI class (finding A9); the real
+         `exec.mainClass` lives in validation/pom.xml, which overrides this for the one project that
+         actually runs the goal. -->
     <exec.skip>true</exec.skip>
-    <exec.mainClass>com.stoicera.einvoice.validation.cli.ValidationRunner</exec.mainClass>
+    <exec.mainClass>none.Skip</exec.mainClass>
   </properties>
 
   <dependencyManagement>

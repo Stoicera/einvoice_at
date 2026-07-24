@@ -1,6 +1,7 @@
 package com.stoicera.einvoice.formats.ebinterface.architecture;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
@@ -19,6 +20,13 @@ class FormatsEbInterfaceArchitectureTest {
       new ClassFileImporter()
           .withImportOption(new ImportOption.DoNotIncludeTests())
           .importPackages("com.stoicera.einvoice.formats.ebinterface");
+
+  @Test
+  void moduleClassesAreImported() {
+    // A mistyped package string would import zero classes and make each rule below pass vacuously;
+    // asserting a non-empty import makes that failure loud (finding A8).
+    assertThat(MODULE_CLASSES).isNotEmpty();
+  }
 
   @Test
   void doesNotDependOnSpring() {
