@@ -1,0 +1,19 @@
+{
+  "invoiceNumber": "RE-2026-0042",
+  "type": "INVOICE",
+  "issueDate": "2026-07-24",
+  "dueDate": "2026-08-23",
+  "currency": "EUR",
+  "orderReference": "BBG-2026-4711",
+  "supplierNumber": "L-100234",
+  "seller": { "name": "Stoicera Software GesbR", "vatId": "ATU12345678",
+    "address": { "street": "Hauptplatz 1", "city": "Linz", "postalCode": "4020", "countryCode": "AT" } },
+  "buyer": { "name": "Bundesbeschaffung GmbH", "vatId": "ATU87654321",
+    "address": { "street": "Lassallestraße 9b", "city": "Wien", "postalCode": "1020", "countryCode": "AT" } },
+  "lines": [
+    { "id": "1", "description": "Softwareentwicklung Juli 2026", "quantity": "80", "unitCode": "HUR", "unitPrice": "120.00", "vatCategory": "STANDARD", "vatPercent": "20" },
+    { "id": "2", "description": "Fachliteratur", "quantity": "3", "unitCode": "C62", "unitPrice": "45.50", "vatCategory": "STANDARD", "vatPercent": "10" }
+  ],
+  "paymentMeans": { "iban": "AT611904300234573201", "bic": "BKAUATWW" },
+  "paymentTerms": "Zahlbar innerhalb von 30 Tagen ohne Abzug"
+}

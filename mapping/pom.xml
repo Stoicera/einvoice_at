@@ -34,6 +34,13 @@
       <groupId>com.helger</groupId>
       <artifactId>ph-ebinterface</artifactId>
     </dependency>
+    <!-- Strict JSON boundary reader (Task 5). Classic Jackson 2 (com.fasterxml.jackson.core), not
+         the Jackson 3 (tools.jackson.core) artifact Spring Boot 4.1 also manages; version comes
+         from the spring-boot-starter-parent BOM (2.21.4 at time of writing), never pinned here. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
 
     <dependency>
       <groupId>org.junit.jupiter</groupId>
@@ -106,8 +113,14 @@
   </build>
 
   <profiles>
-    <!-- Mutation testing gives the coverage number teeth; run via CI job or
-         ./mvnw -pl mapping -am -Pmutation test-compile org.pitest:pitest-maven:mutationCoverage
+    <!-- Mutation testing gives the coverage number teeth; run locally with
+         ./mvnw -pl mapping -Pmutation test-compile org.pitest:pitest-maven:mutationCoverage
+         Deliberately NOT "-am": that also runs the bare pitest goal against every upstream reactor
+         module (core, formats-ebinterface), and formats-ebinterface has no "mutation" profile of
+         its own (no pitest-junit5-plugin on its classpath), so it fails outright. Run "-pl mapping"
+         alone once core/formats-ebinterface are in the local repo (any prior reactor build there
+         already put them there); core has its own PIT wiring and CI job (ci.yml) — mapping's is not
+         yet wired into CI, matching the gap left by Task 4.
          Kept out of the default verify because PIT re-runs the schema-validity property test once
          per mutant, which is far slower than the ~seconds a plain verify takes. -->
     <profile>
@@ -129,9 +142,10 @@
               <targetClasses>
                 <param>com.stoicera.einvoice.mapping.*</param>
               </targetClasses>
-              <!-- Measured mutation score was 100% (74/74 mutants killed) on 2026-07-24; a full
-                   mutation run takes ~11 s. Gate set to 85 per the M2 task brief, mirroring core's
-                   PIT wiring, leaving generous headroom for benign survivors. -->
+              <!-- Measured mutation score was 100% (105/105 mutants killed) on 2026-07-24 after
+                   Task 5 added the json package; a full mutation run takes ~11-13 s. Gate set to 85
+                   per the M2 task brief, mirroring core's PIT wiring, leaving generous headroom for
+                   benign survivors. -->
               <mutationThreshold>85</mutationThreshold>
               <timestampedReports>false</timestampedReports>
             </configuration>

@@ -134,6 +134,52 @@ public final class Fixtures {
     return new VatExemptionReason("VATEX-EU-G", "Innergemeinschaftliche Lieferung");
   }
 
+  /**
+   * The canonical invoice described field-for-field by {@code samples/invoice-b2g-sample.json}
+   * (repo root). {@link com.stoicera.einvoice.mapping.json.InvoiceJsonReaderTest} parses that file
+   * and asserts record equality against this fixture — keep the two in lockstep by construction if
+   * either ever changes.
+   */
+  public static Invoice jsonSampleB2gInvoice() {
+    return Invoice.builder()
+        .invoiceNumber("RE-2026-0042")
+        .type(InvoiceTypeCode.COMMERCIAL_INVOICE)
+        .issueDate(LocalDate.of(2026, 7, 24))
+        .dueDate(LocalDate.of(2026, 8, 23))
+        .currency(Money.EUR)
+        .orderReference("BBG-2026-4711")
+        .supplierNumber("L-100234")
+        .seller(
+            new Party(
+                "Stoicera Software GesbR",
+                new Address("Hauptplatz 1", "Linz", "4020", "AT"),
+                "ATU12345678"))
+        .buyer(
+            new Party(
+                "Bundesbeschaffung GmbH",
+                new Address("Lassallestraße 9b", "Wien", "1020", "AT"),
+                "ATU87654321"))
+        .addLine(
+            new InvoiceLine(
+                "1",
+                "Softwareentwicklung Juli 2026",
+                new BigDecimal("80"),
+                "HUR",
+                new BigDecimal("120.00"),
+                VatRate.STANDARD_20))
+        .addLine(
+            new InvoiceLine(
+                "2",
+                "Fachliteratur",
+                new BigDecimal("3"),
+                "C62",
+                new BigDecimal("45.50"),
+                VatRate.REDUCED_10))
+        .paymentMeans(new PaymentMeans(new Iban("AT611904300234573201"), "BKAUATWW"))
+        .paymentTerms("Zahlbar innerhalb von 30 Tagen ohne Abzug")
+        .build();
+  }
+
   public static Invoice exemptInvoice() {
     return Invoice.builder()
         .invoiceNumber("2026-EX-0042")

@@ -1,0 +1,73 @@
+# samples/
+
+Reference documents for `einvoice-at`, committed at the repository root (not inside any Maven
+module) so they can be read, linked, and consumed by more than one module without a source/test
+dependency between them.
+
+## `invoice-b2g-sample.json`
+
+The canonical example of the **canonical-invoice JSON** shape: a strict, boundary-facing JSON
+representation of the `core` domain model (`com.stoicera.einvoice.core.invoice.Invoice`), read by
+`com.stoicera.einvoice.mapping.json.InvoiceJsonReader` (module `mapping`, Milestone 2 / Task 5).
+
+It describes a fully populated Austrian B2G invoice — two taxed lines (20 % and 10 %), an
+Auftragsreferenz, a Lieferantennummer, SEPA payment details and payment terms — so that every field
+the reader supports appears at least once. `mapping/src/test/java/.../mapping/Fixtures.java`'s
+`jsonSampleB2gInvoice()` builds the identical invoice by hand via `Invoice.builder()`;
+`InvoiceJsonReaderTest.parsesSampleFileIntoExpectedInvoice()` asserts the two are record-equal, so
+this file and that fixture must be kept in lockstep if either ever changes.
+
+An ebInterface 6.1 XML twin of this same invoice (`invoice-b2g-sample.ebinterface.xml`) is added by
+the golden-file corpus task (M2 Task 9): `InvoiceJsonReader` → `InvoiceToEbInterface61Mapper` →
+`EbInterface61Strategy.write` is asserted to reproduce that committed XML byte-for-byte
+(line-ending-normalized), so the JSON sample is also the input fixture for the milestone's
+end-to-end acceptance test.
+
+### JSON field reference
+
+| Field | Type | Required | Canonical target | Notes |
+|---|---|---|---|---|
+| `invoiceNumber` | string | yes | `Invoice.invoiceNumber` (BT-1) | |
+| `type` | string | yes | `Invoice.type` (BT-3) | `"INVOICE"` or `"CREDIT_NOTE"` — any other value is rejected. |
+| `issueDate` | string | yes | `Invoice.issueDate` (BT-2) | ISO-8601, `yyyy-MM-dd`. |
+| `dueDate` | string | no | `Invoice.dueDate` (BT-9) | ISO-8601, `yyyy-MM-dd`. |
+| `currency` | string | yes | `Invoice.currency` (BT-5) | ISO 4217, e.g. `"EUR"`. |
+| `orderReference` | string | no | `Invoice.orderReference` (BT-13, Auftragsreferenz) | Required by the Austrian federal B2G profile (enforced by the `validation` module, not here). |
+| `supplierNumber` | string | no | `Invoice.supplierNumber` (Lieferantennummer) | |
+| `seller` | object | yes | `Invoice.seller` (BG-4) | `name`, `vatId`, `address`. |
+| `buyer` | object | yes | `Invoice.buyer` (BG-7) | `name`, `vatId`, `address`. |
+| `seller.address` / `buyer.address` | object | yes | `Address` (BG-5 / BG-8) | `street`, `city`, `postalCode`, `countryCode` (ISO 3166-1 alpha-2). |
+| `lines` | array | yes, ≥1 entry | `Invoice.lines` (BG-25) | See below. |
+| `lines[].id` | string | yes | `InvoiceLine.id` | |
+| `lines[].description` | string | yes | `InvoiceLine.description` | |
+| `lines[].quantity` | **string** | yes | `InvoiceLine.quantity` | Decimal; see "amounts are strings" below. |
+| `lines[].unitCode` | string | yes | `InvoiceLine.unitCode` | UN/ECE Recommendation 20, e.g. `HUR`, `C62`. |
+| `lines[].unitPrice` | **string** | yes | `InvoiceLine.unitPrice` | Decimal. |
+| `lines[].vatCategory` | string | yes | `VatRate.category` (part of BG-30) | One of `STANDARD`, `ZERO_RATED`, `REVERSE_CHARGE`, `EXEMPT`. |
+| `lines[].vatPercent` | **string** | yes | `VatRate.percentage` | Decimal, e.g. `"20"`. |
+| `paymentMeans` | object | no | `Invoice.paymentMeans` (BG-17) | `iban` (checksum-validated), `bic` (optional). Whole object omitted when there is no SEPA payment info. |
+| `paymentTerms` | string | no | `Invoice.paymentTerms` (BT-20) | Free text. |
+| `exemptionReasons` | array | no | wired via `Invoice.Builder#exemptionReason` (BT-120/BT-121) | `category` (`VatCategory`), `code` and/or `text`. One entry per VAT category that needs a reason (`REVERSE_CHARGE`, `EXEMPT`); `REVERSE_CHARGE` gets a default reason from the builder when omitted. |
+
+### Amounts and quantities are JSON strings — always
+
+`lines[].quantity`, `lines[].unitPrice` and `lines[].vatPercent` are **JSON strings**, not JSON
+numbers, e.g. `"unitPrice": "120.00"`, never `"unitPrice": 120.00`. This is deliberate boundary
+strictness, not an oversight:
+
+- A JSON number literal is an IEEE-754-adjacent construct with no fixed decimal semantics; parsing
+  it straight into `BigDecimal` risks silently accepting a value the source system never intended
+  (trailing-zero loss, scientific notation, etc.).
+- A quoted decimal string has exactly the textual shape the sender wrote, parsed by
+  `new BigDecimal(String)` with no intermediate floating-point representation.
+
+`InvoiceJsonReader` enforces this: a numeric JSON node in any of these three fields is **rejected**
+with an `InvoiceJsonException` naming the offending field (`lines[<index>].unitPrice`, etc.), not
+silently coerced. All other fields in the shape above are ordinary JSON strings/objects/arrays;
+`InvoiceJsonReader` also rejects unknown properties anywhere in the document
+(`FAIL_ON_UNKNOWN_PROPERTIES`).
+
+A JSON document that is well-formed per this shape but describes an invoice that violates a domain
+invariant (a checksum-invalid IBAN, a blank invoice number, mismatched VAT breakdown) is rejected by
+`core` itself with `InvariantViolationException` — `InvoiceJsonReader` lets that propagate untouched;
+see its Javadoc for the full "two voices" rationale.
