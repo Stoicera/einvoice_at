@@ -51,19 +51,32 @@ it, and the validation module (M2) compares documents against it.
    arrive with the mapping layer); `Address` is deliberately stricter than BG-5 (EN mandates
    only the country code; Austrian B2G practice needs street/city/postal code, so core requires
    them). Added when mapping (M2/M4) demonstrates the need, with property tests in the same PR.
-   Two further gaps, both surfaced by the 2026-07-24 M2 hostile-review (findings A2, A5) and
-   added to this list rather than silently left undocumented:
-   - **Delivery date / service period** (BT-72/BG-14). § 11 Abs 1 Z 4 UStG makes the day of
-     delivery or the service period a mandatory element on full invoices > €400; `Invoice`
-     carries neither field today, so the mapper cannot write ebInterface `Delivery`. Lands in
-     **M3**, before the JSON/REST contract freezes — a plain data field with no arithmetic
-     impact, so it does not require a canonical-model redesign.
-   - **Biller e-mail / contact.** `Party` has no email field at all (only `name`, `address`,
-     `vatId`); e-rechnung.gv.at requires at least one `Biller/Address/Email` for a document to
-     be accepted under the AT-B2G profile. Lands in **M3** alongside the delivery-date field,
-     for the same reason: the canonical JSON shape should not need a second breaking change
-     right after M3 freezes it. See [ADR-0004](0004-validation-pipeline-and-xsd-messages.md)
-     for the corresponding AT-B2G-profile-completeness gap on the validation side.
+   Two further gaps were tracked here after the 2026-07-24 M2 hostile-review (findings A2, A5)
+   and have since landed — see Entscheidung 8.
+8. **Delivery date / service period, and biller e-mail — landed 2026-07-24 (M3).** Both gaps
+   were tracked under Entscheidung 7 (deliberately absent) after the 2026-07-24 M2
+   hostile-review surfaced them (findings A2, A5); both landed here, before the JSON/REST
+   contract freezes, as plain carried-over data fields with no arithmetic impact:
+   - **Delivery date / service period** (BT-72/BG-14; § 11 Abs 1 Z 4 UStG requires the day of
+     delivery *or* the service period on a full invoice > €400). `Invoice` gains optional
+     `deliveryDate` (`LocalDate`) and `servicePeriod` (new record `ServicePeriod(LocalDate from,
+     LocalDate to)`, invariant `from <= to`); the two are mutually exclusive — the canonical
+     constructor rejects an `Invoice` carrying both. In *our* model both stay optional (this
+     model does not structurally enforce the § 11 UStG mandatory-one-of-two rule; that remains a
+     validation-module business rule, per Entscheidung 4).
+   - **Biller e-mail.** `Party` gains optional `email` (`Optional<String>`): trimmed,
+     length-capped, and shape-checked (contains `@`, non-empty local/domain parts, no
+     whitespace) — deliberately not RFC 5322 validation. e-rechnung.gv.at's AT-B2G requirement
+     that a biller carry one remains a validation-module business rule (Entscheidung 4, and see
+     [ADR-0004](0004-validation-pipeline-and-xsd-messages.md) for the corresponding
+     profile-completeness gap on the validation side), not a core invariant.
+
+   Both accessors return `Optional` — a deliberate departure from the raw-nullable style used
+   for pre-M3 optional fields (`dueDate`, `orderReference`, `vatId`, …): a record accessor's
+   return type must match its component's declared type exactly, so an `Optional`-returning
+   accessor requires an `Optional`-typed component. Both fields default to absent, and existing
+   callers are unaffected via a compatibility constructor on `Invoice` and `Party` (mirroring the
+   3-arg/4-arg overload pattern `VatBreakdownEntry` already uses for `exemptionReason`).
 
 ## Konsequenzen
 

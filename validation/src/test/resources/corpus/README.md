@@ -52,25 +52,34 @@ exactly one stage.
 | `invalid/at-b2g-01-missing-order-reference.xml` | `AT-B2G-01` | AT-B2G Schematron (OrderReference absent) |
 | `invalid/at-b2g-01-whitespace-order-id.xml` | `AT-B2G-01` | AT-B2G Schematron (OrderID whitespace-only) |
 | `invalid/at-b2g-02-invalid-iban.xml` | `AT-B2G-02` | AT-B2G business rule (IBAN mod-97) |
+| `invalid/at-b2g-03-missing-biller-email.xml` | `AT-B2G-03` | AT-B2G Schematron (Biller/Address/Email absent) |
+| `invalid/at-b2g-04-missing-suppliernumber.xml` | `AT-B2G-04` | AT-B2G Schematron (Biller/InvoiceRecipientsBillerID absent) |
+| `invalid/at-b2g-05-missing-payment-method.xml` | `AT-B2G-05` | AT-B2G Schematron (PaymentMethod absent) |
 
 ## File-by-file
 
 ### `valid/minimal.xml`
 The smallest document that clears the whole pipeline: every element and attribute the bundled
-ebInterface 6.1 XSD requires, plus the `OrderReference/OrderID` (Auftragsreferenz) the Austrian B2G
-Schematron demands — and nothing else (no payment block, single line, single tax item). Hand-authored
-(it mirrors `TestDocuments.validEbInterface61()`, which the validator's unit tests independently prove
-valid) so the corpus documents the *floor* of validity, not just the fully-populated sample.
+ebInterface 6.1 XSD requires, plus every field the AT-B2G Schematron demands — the
+`OrderReference/OrderID` (Auftragsreferenz, `AT-B2G-01`), a Biller `Address/Email` (`AT-B2G-03`), the
+`InvoiceRecipientsBillerID` (Lieferantennummer, `AT-B2G-04`) and a `PaymentMethod` (`AT-B2G-05`) — and
+nothing else (single line, single tax item). Hand-authored (it mirrors
+`TestDocuments.validEbInterface61()`, which the validator's unit tests independently prove valid) so
+the corpus documents the *floor* of validity, not just the fully-populated sample. **M3:** extended
+with `Address/Email`, `InvoiceRecipientsBillerID` and the minimal `PaymentMethod/NoPayment` variant so
+it stays valid under the new `AT-B2G-03`/`04`/`05` rules; `TestDocuments.validEbInterface61()` was
+extended identically so the two stay mirrors of each other.
 
 ### `valid/b2g-full.xml`
 The fully-populated B2G invoice: two taxed lines (20 % and 10 %), Auftragsreferenz, Lieferantennummer,
-SEPA payment details, due date and payment terms. **Provenance:** this file is the byte-for-byte
+a delivery date (BT-72, `Delivery/Date`), a Biller contact email (`Address/Email`), SEPA payment
+details, due date and payment terms. **Provenance:** this file is the byte-for-byte
 output of the real generation pipeline for `samples/invoice-b2g-sample.json`
 (`InvoiceJsonReader` → `InvoiceToEbInterface61Mapper` → `EbInterface61Strategy.write`); it is the same
 artifact committed as `samples/invoice-b2g-sample.ebinterface.xml`. `EndToEndGenerationTest` pins the
 samples twin byte-for-byte against the live pipeline output, and separately pins this corpus copy
 byte-for-byte against the samples twin — so all three are provably identical, transitively including
-the live pipeline output. The six `invalid/` files below are each derived from this document
+the live pipeline output. The nine `invalid/` files below are each derived from this document
 by introducing **exactly one** defect, so the difference under test is isolated to a single edit.
 
 ### `valid/credit-memo-reverse-charge.xml`
@@ -87,7 +96,10 @@ supplier `L-100234`, seller `Bau Süd GmbH`/`ATU33333333`, buyer `Bundesbeschaff
 one line `Bauleistung (Reverse Charge)` × 1 `C62` @ `5000.00` at `VatRate.REVERSE_CHARGE`, no
 paymentMeans. The `Country` element text is the German display name (`Österreich`) with the ISO code
 on `@CountryCode` (finding A6). **Regenerate** by re-running that chain on the same canonical input
-(see "Regenerating" below).
+(see "Regenerating" below). **M3:** `Address/Email` added (`office@bau-sued.at`) so it stays valid
+under the new `AT-B2G-03` rule; not reflected in the canonical-input list above because the current
+mapper/canonical model already carries a Biller e-mail (M3 Tasks 1–2, earlier in this same milestone)
+— the addition only catches this hand-provenanced file up to what the pipeline now actually emits.
 
 ### `valid/exempt-invoice.xml`
 **Distinguishing feature:** the only tax-exempt document — a single line at category `E` with an
@@ -99,7 +111,10 @@ type `INVOICE`, issue `2026-07-12`, order ref `BBG-2026-EX-0042`, supplier `L-10
 `VATEX-EU-G` on category `EXEMPT`, one line `Lieferung (steuerfrei)` × 4 `C62` @ `250.00` at
 `VatRate.EXEMPT`. The `Country` element text is the German display name (`Österreich` for the seller,
 `Italien` for the `IT` recipient) with the ISO code on `@CountryCode` (finding A6). **Regenerate** by
-re-running that chain on the same canonical input.
+re-running that chain on the same canonical input. **M3:** `Address/Email` (`office@export-oel.at`)
+and a `PaymentMethod/UniversalBankTransaction` (the same canonical IBAN/BIC as `b2g-full.xml`) added so
+it stays valid under the new `AT-B2G-03`/`AT-B2G-05` rules, for the same reason as the credit-memo file
+above.
 
 ### `invalid/malformed.xml`
 **Defect:** the `InvoiceNumber` end tag is misspelled `</InvoiceNo>`, so the start/end tags do not
@@ -135,11 +150,30 @@ that a *blank* Auftragsreferenz is no better than a missing one.
 shape and length (so it clears the XSD, which only bounds length) but failing the mod-97 checksum →
 single `AT-B2G-02` from the hand-written business-rule stage.
 
-**IBAN/BIC provenance (all files above that carry a payment block).** `AT611904300234573201` and its
-Bank-Austria-format BIC `BKAUATWW` — the value this file mutates by one digit — are canonical
-ebInterface test values shared by every corpus file with a payment block, checksum-valid so the
-`AT-B2G-02` happy path is exercised deliberately rather than by accident. Neither is a real account
-or a real bank customer; see `samples/README.md` for the same note against the JSON sample.
+### `invalid/at-b2g-03-missing-biller-email.xml`
+**Defect:** the `<Email>` element is removed from `Biller/Address`, leaving the rest of `Address`
+(`Name`/`Town`/`ZIP`/`Country`) and the sibling `InvoiceRecipientsBillerID` intact. The document is
+XSD-valid (`Email` is optional in `AddressType`) but violates the Austrian federal B2G requirement for
+a Biller contact e-mail address → single `AT-B2G-03` from the Schematron stage.
+
+### `invalid/at-b2g-04-missing-suppliernumber.xml`
+**Defect:** the whole `<InvoiceRecipientsBillerID>` element is removed from `Biller`, leaving its
+`Address`/`Email` intact. The document is XSD-valid (`InvoiceRecipientsBillerID` is optional in
+`BillerType`) but violates the Austrian federal B2G requirement for a Lieferantennummer → single
+`AT-B2G-04` from the Schematron stage.
+
+### `invalid/at-b2g-05-missing-payment-method.xml`
+**Defect:** the whole `<PaymentMethod>` element (and its `UniversalBankTransaction`/`BeneficiaryAccount`
+content) is removed. The document is XSD-valid (`PaymentMethod` is optional on `InvoiceType`) but
+violates the Austrian federal B2G requirement for a payment method (neither `UniversalBankTransaction`
+nor `NoPayment` present) → single `AT-B2G-05` from the Schematron stage.
+
+**IBAN/BIC provenance (all files above whose payment block carries a `UniversalBankTransaction`).**
+`AT611904300234573201` and its Bank-Austria-format BIC `BKAUATWW` — the value
+`at-b2g-02-invalid-iban.xml` mutates by one digit — are canonical ebInterface test values shared by
+every such corpus file, checksum-valid so the `AT-B2G-02` happy path is exercised deliberately rather
+than by accident. Neither is a real account or a real bank customer; see `samples/README.md` for the
+same note against the JSON sample.
 
 ## Regenerating the pipeline-derived files
 
@@ -162,3 +196,11 @@ with **exactly one** documented defect re-applied — re-derive them by hand aft
 ## Maintenance caveat
 
 XSD-stage tests pin exact Xerces message phrasing (a JDK/Xerces-upgrade landmine); the mapper's schema-validity fixtures live in multiple locations (Fixtures, TestDocuments, corpus) that must be kept consistent when validation documents change.
+
+**M3 note.** The `AT-B2G-03`/`04`/`05` rules closed three federal-MUST gaps ADR-0004 Entscheidung 9
+named as documented-but-unimplemented (Biller e-mail, Lieferantennummer, payment-method presence). All
+four `valid/` files now carry the three previously-optional fields (`Biller/Address/Email`,
+`Biller/InvoiceRecipientsBillerID`, `PaymentMethod`); `TestDocuments.validEbInterface61()` in the
+validator's unit tests was extended identically so the two stay mirrors of each other. Any *new*
+`valid/` fixture added after M3 must carry all three fields from the start, or it will fail
+`CorpusTest` the moment it is added.

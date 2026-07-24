@@ -18,6 +18,12 @@
     <rule context="/eb:Invoice">
       <assert id="AT-B2G-01" test="normalize-space(eb:InvoiceRecipient/eb:OrderReference/eb:OrderID) != ''"
         >Auftragsreferenz fehlt: Rechnungen an Bundesdienststellen müssen eine Auftragsreferenz (OrderReference/OrderID) enthalten.</assert>
+      <assert id="AT-B2G-03" test="normalize-space(eb:Biller/eb:Address/eb:Email) != ''"
+        >Für Bundesdienststellen ist eine E-Mail-Adresse des Rechnungsstellers erforderlich (Biller/Address/Email).</assert>
+      <assert id="AT-B2G-04" test="normalize-space(eb:Biller/eb:InvoiceRecipientsBillerID) != ''"
+        >Für Bundesdienststellen ist die Lieferantennummer erforderlich (Biller/InvoiceRecipientsBillerID).</assert>
+      <assert id="AT-B2G-05" test="eb:PaymentMethod/eb:UniversalBankTransaction or eb:PaymentMethod/eb:NoPayment"
+        >Eine Zahlungsmethode ist erforderlich (PaymentMethod: UniversalBankTransaction oder NoPayment).</assert>
     </rule>
   </pattern>
 </schema>

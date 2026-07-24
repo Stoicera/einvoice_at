@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.stoicera.einvoice.core.InvariantViolationException;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class PartyTest {
@@ -19,6 +20,109 @@ class PartyTest {
   @Test
   void vatIdIsOptional() {
     assertThat(new Party("Kleinunternehmer GmbH", LINZ, null).vatId()).isNull();
+  }
+
+  @Test
+  void threeArgConstructorLeavesEmailAbsent() {
+    assertThat(new Party("Kleinunternehmer GmbH", LINZ, null).email()).isEmpty();
+  }
+
+  @Test
+  void emailIsOptionalAndAbsentWhenNotSupplied() {
+    Party p = new Party("Stoicera Software Group", LINZ, "ATU12345678", Optional.empty());
+    assertThat(p.email()).isEmpty();
+  }
+
+  @Test
+  void validEmailIsAcceptedAndTrimmed() {
+    Party p =
+        new Party(
+            "Stoicera Software Group", LINZ, "ATU12345678", Optional.of("  info@stoicera.at  "));
+    assertThat(p.email()).contains("info@stoicera.at");
+  }
+
+  @Test
+  void nullEmailOptionalIsRejected() {
+    assertThatThrownBy(() -> new Party("Stoicera Software Group", LINZ, "ATU12345678", null))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("email");
+  }
+
+  @Test
+  void rejectsEmailWithoutAtSign() {
+    assertThatThrownBy(
+            () ->
+                new Party(
+                    "Stoicera Software Group",
+                    LINZ,
+                    "ATU12345678",
+                    Optional.of("info-at-stoicera.at")))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("email");
+  }
+
+  @Test
+  void rejectsEmailWithEmptyLocalPart() {
+    assertThatThrownBy(
+            () ->
+                new Party(
+                    "Stoicera Software Group", LINZ, "ATU12345678", Optional.of("@stoicera.at")))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("email");
+  }
+
+  @Test
+  void rejectsEmailWithEmptyDomainPart() {
+    assertThatThrownBy(
+            () -> new Party("Stoicera Software Group", LINZ, "ATU12345678", Optional.of("info@")))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("email");
+  }
+
+  @Test
+  void rejectsEmailContainingWhitespace() {
+    assertThatThrownBy(
+            () ->
+                new Party(
+                    "Stoicera Software Group",
+                    LINZ,
+                    "ATU12345678",
+                    Optional.of("info office@stoicera.at")))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("email");
+  }
+
+  @Test
+  void rejectsBlankEmail() {
+    assertThatThrownBy(
+            () -> new Party("Stoicera Software Group", LINZ, "ATU12345678", Optional.of("   ")))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("email");
+  }
+
+  @Test
+  void emailLengthIsCappedAtTwoFiftySixCharacters() {
+    String atLimit = "a".repeat(250) + "@ab.at"; // 256 chars total, valid shape
+    assertThat(atLimit).hasSize(256);
+    Party p = new Party("Stoicera Software Group", LINZ, "ATU12345678", Optional.of(atLimit));
+    assertThat(p.email()).contains(atLimit);
+    String overLimit = "a".repeat(251) + "@ab.at";
+    assertThatThrownBy(
+            () -> new Party("Stoicera Software Group", LINZ, "ATU12345678", Optional.of(overLimit)))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("email");
+  }
+
+  @Test
+  void malformedEmailMessageSanitizesControlCharactersAndIsBounded() {
+    String withControlChar = "info\n" + "x".repeat(80) + "@stoicera.at";
+    assertThatThrownBy(
+            () ->
+                new Party(
+                    "Stoicera Software Group", LINZ, "ATU12345678", Optional.of(withControlChar)))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageNotContaining("\n")
+        .satisfies(ex -> assertThat(ex.getMessage().length()).isLessThan(200));
   }
 
   @Test

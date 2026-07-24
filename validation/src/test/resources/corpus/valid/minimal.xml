@@ -8,6 +8,14 @@
   <InvoiceDate>2024-03-05</InvoiceDate>
   <Biller>
     <VATIdentificationNumber>ATU51507409</VATIdentificationNumber>
+    <Address>
+      <Name>Musterfirma GmbH</Name>
+      <Town>Wien</Town>
+      <ZIP>1010</ZIP>
+      <Country CountryCode="AT">Österreich</Country>
+      <Email>buero@musterfirma.at</Email>
+    </Address>
+    <InvoiceRecipientsBillerID>L-100001</InvoiceRecipientsBillerID>
   </Biller>
   <InvoiceRecipient>
     <VATIdentificationNumber>ATU18708634</VATIdentificationNumber>
@@ -38,4 +46,7 @@
   </Tax>
   <TotalGrossAmount>120.00</TotalGrossAmount>
   <PayableAmount>120.00</PayableAmount>
+  <PaymentMethod>
+    <NoPayment />
+  </PaymentMethod>
 </Invoice>

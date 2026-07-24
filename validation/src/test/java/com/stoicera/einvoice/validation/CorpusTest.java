@@ -56,7 +56,10 @@ class CorpusTest {
         Arguments.of("corpus/invalid/xsd-missing-invoice-number.xml", Set.of("XSD-01")),
         Arguments.of("corpus/invalid/at-b2g-01-missing-order-reference.xml", Set.of("AT-B2G-01")),
         Arguments.of("corpus/invalid/at-b2g-01-whitespace-order-id.xml", Set.of("AT-B2G-01")),
-        Arguments.of("corpus/invalid/at-b2g-02-invalid-iban.xml", Set.of("AT-B2G-02")));
+        Arguments.of("corpus/invalid/at-b2g-02-invalid-iban.xml", Set.of("AT-B2G-02")),
+        Arguments.of("corpus/invalid/at-b2g-03-missing-biller-email.xml", Set.of("AT-B2G-03")),
+        Arguments.of("corpus/invalid/at-b2g-04-missing-suppliernumber.xml", Set.of("AT-B2G-04")),
+        Arguments.of("corpus/invalid/at-b2g-05-missing-payment-method.xml", Set.of("AT-B2G-05")));
   }
 
   @ParameterizedTest(name = "{0} → {1}")

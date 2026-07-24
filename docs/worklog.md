@@ -1,5 +1,108 @@
 # Worklog — einvoice-at
 
+## 2026-07-24 — M3: REST API + persistence + security: complete
+
+**What**
+
+- Milestone M3 delivered across 20 commits on `feat/m3-rest-api` (`72b9014..e1118e6`), executed as a
+  twelve-task subagent-driven plan (`.superpowers/sdd/m3/PLAN.md`, session-local) with a per-task
+  spec+quality review gate and a final whole-branch review. `app` grew from a health-only skeleton
+  into a secured, persistent REST API.
+- **Carried model work landed before the contract froze.** `core` gained delivery date /
+  service period (BT-72 / BG-14, mutually exclusive, both optional) and an optional `Party` email
+  (BT-43/BT-58 — corrected from an initial BG-14 mis-citation caught in review); `mapping` flows all
+  three through to ebInterface `Delivery` and `Address/Email`; the `samples` twin and the byte-identical
+  validation corpus `b2g-full.xml` were regenerated through the real chain, invalid corpus files
+  re-synced as one-defect diffs.
+- **Three AT-B2G federal-MUST Schematron rules** (`AT-B2G-03` biller e-mail, `AT-B2G-04`
+  Lieferantennummer, `AT-B2G-05` payment-method completeness) close the gaps ADR-0004 Entscheidung 9
+  had named as documented-but-unimplemented; German-first messages, `RuleIds` registry entries,
+  three new invalid corpus cases.
+- **Persistence:** Flyway `V1` baseline (tenant, invoice, report, api_key, audit_event), JPA entities
+  with application-assigned UUIDs and `@JdbcTypeCode(SqlTypes.JSON)` JSONB (no third-party
+  hibernate-types), `ddl-auto: validate`, tenant-scoped repositories; Testcontainers Postgres IT base.
+  The app module moved to a Failsafe `*IT` split so `./mvnw test -pl app` is Docker-free and ITs run
+  at `verify`.
+- **Security:** OAuth2 resource server (Keycloak) or `X-Api-Key`; API keys are `eiv_`-prefixed,
+  SHA-256-at-rest, plaintext-once, revocable, and OAuth2-only to mint/revoke (enforced in the security
+  layer via `ROLE_USER` vs `ROLE_API_KEY`, not controller logic); tenant auto-provisioning keyed on the
+  JWT `sub` with unique-constraint race handling; the anonymous-authentication trap is avoided by an
+  explicit `instanceof` allow-list everywhere it matters. Compose gained Keycloak (dev-realm import,
+  pinned tag+digest) and Mailpit.
+- **APIs:** `POST /api/v1/invoices` (create → persist canonical JSONB + generate & validate ebInterface
+  + audit, report attached but non-gating), `GET` list/detail/`{id}/ebinterface`; `POST /api/v1/validate`
+  (public multipart, 2 MB cap, anonymous persists **zero** rows — GDPR — authenticated persists report +
+  audit); `GET /api/v1/reports` list/detail; `/api/v1/api-keys` CRUD. RFC 9457 problem+json throughout,
+  cross-tenant reads collapse to an identical 404 (no existence oracle), pagination clamped.
+- **Rate limiting:** per-IP bucket4j token bucket on anonymous `/validate` only, 429 + problem+json +
+  `Retry-After`; single-instance in-memory, honestly documented.
+- **OpenAPI** via springdoc (Swagger UI reachable anonymously — the Abnahme item), **first cross-module
+  ArchUnit rules** (libs never depend on `app`; DB tech confined to `..app.persistence..` with a
+  type-based, precisely-whitelisted rule set; forced the extraction of `ApiKeyService` so controllers
+  never touch repositories), and a full documentation wave (new ADR-0006 auth/security with an honest
+  known-limits section, ADR-0005 touch-ups, README REST-API section with fact-checked curl examples,
+  SPEC/glossary sync).
+
+**Decisions**
+
+- **Failsafe `*IT` split, not Surefire-widened includes.** The T4 persistence work first ran ITs under
+  Surefire; on review this was migrated to maven-failsafe (`*IT` at `verify`), keeping a Docker-free
+  `mvn test` unit lane — the idiomatic enterprise convention and a conscious call, since `app` is the
+  first module with integration tests.
+- **ADR numbering:** persistence baseline is ADR-0005 (created T4), auth/API security is a new ADR-0006
+  (a pre-existing SPEC §10 forward-reference to "ADR-0006" for Peppol was retargeted to a future ADR).
+- **Canonical JSON is JSONB-normalized, not byte-verbatim.** The `invoice.canonical` column normalizes
+  whitespace/key order; byte-exactness for audit is preserved by the SHA-256 of the raw request body,
+  not the stored document. Javadoc and ADR-0005 reconciled to say so.
+- **`dasniko/testcontainers-keycloak` rejected** (drags a beta shrinkwrap + keycloak-admin-client + a
+  second Jackson onto the test classpath); a ~40-line hand-rolled `GenericContainer` on the same pinned
+  Keycloak image does the job with zero new deps.
+- **springdoc 3.0.3 on Boot 4.1:** no springdoc release yet targets Boot 4.1 specifically; 3.0.3's parent
+  pins Framework 7.0.6 vs this repo's 7.0.8 (patch-only delta), verified empirically by a live
+  `OpenApiIT` against the real Boot 4.1 context. Re-check Central for a Boot-4.1-targeted release later.
+- **Deliberately deferred (documented, not dropped):** GDPR tenant-delete endpoint + retention job → M5;
+  OWASP dependency-check CI, `/actuator/info` git-sha, Traefik forwarded-headers (rate-limit keying) → M6;
+  JWT audience/`azp` validation is a framework-default gap recorded in ADR-0006 known-limits.
+
+**Verification**
+
+- Full `./mvnw verify` green across all 9 reactor modules (57.7 s). Test counts this session:
+  `core` 209, `formats-ebinterface` 17, `mapping` 83, `validation` 95, `app` 22 unit (Docker-free
+  Surefire lane) + 50 integration (Failsafe, Testcontainers Postgres + Keycloak); `formats-ubl` /
+  `rendering` / `ai-assist` still `package-info.java` only. `./mvnw spotless:apply` clean.
+- **Compose smoke (full stack, fresh DB):** `docker compose up -d --build` → postgres + keycloak +
+  mailpit + app all healthy; `GET /actuator/health` UP; Flyway `V1` applied (`flyway_schema_history`
+  success); `/v3/api-docs` 200 exposing all 8 resource paths and `/swagger-ui/index.html` 200
+  (Abnahme: OpenAPI-UI nutzbar); anonymous `POST /validate` on the valid sample → `id:null`,
+  `valid:true`, 0 findings, zero rows persisted; anonymous `GET /invoices` → 401; real Keycloak
+  password-grant token → authenticated `POST /invoices` → 201 with a valid report, `GET
+  /{id}/ebinterface` regenerated the XML, `audit_event` carried an `INVOICE_CREATED` row (Abnahme:
+  Auth-Matrix + Audit-Einträge nachweisbar). The rate-limiter path-encoding fix confirmed live:
+  14× anonymous `POST /api/v1/%76alidate` returned exactly ten 200s then four 429s (capacity 10) —
+  the percent-encoded variant is now charged to the same bucket, closing the bypass.
+- Final whole-branch review verdict "with fixes": the one Important finding — the rate limiter was
+  bypassable via a percent-encoded path (`/api/v1/%76alidate`) because `shouldNotFilter` compared the
+  raw `getRequestURI()` while authorization/routing match the decoded path — was closed by matching
+  through the same `PathPatternRequestMatcher` the security layer uses, with a `RateLimitIT` regression
+  case that forces the encoded request to consume the bucket's last token (proved on the wire with a
+  raw-socket capture). The matrix-param variant is rejected by Spring's `StrictHttpFirewall` (400) ahead
+  of the filter and is guarded as such. Two "verbatim" Javadocs reconciled to ADR-0005 in the same commit.
+- Golden-file integrity re-verified by SHA-256: the samples twin, validation corpus `b2g-full.xml`, and
+  the app test fixture are byte-identical.
+
+**Next**
+
+- Owner: re-run the official portal Abnahme on the M3 sample twin (delivery date + biller e-mail were
+  added, so the bytes changed again since the last portal check — still schema-valid, more conformant).
+- M4 — UBL BIS 3.0 + conversion + PDF (`formats-ubl`, `rendering`): bidirectional mapping with a lossy
+  report, `POST /convert`, PDF print view, roundtrip golden files; the `jaxb-runtime` opt-in pattern and
+  the version-strategy seam are ready for it.
+- Carried code-quality minors accepted at final review (see `.superpowers/sdd/progress.md` M3 section):
+  `InvoiceSummary.valid` getOrDefault(false) conflates unknown validity; `findByInvoiceIdIn` not
+  tenant-scoped (defense-in-depth); `DuplicateInvoiceException` embeds a raw invoice number in its
+  message (never surfaced today — static 409 detail, no app logger — latent if a logger arrives);
+  a mocked-repository unit test for `ApiKeyService`.
+
 ## 2026-07-24 — M2 hostile-review fix wave: complete
 
 **What**

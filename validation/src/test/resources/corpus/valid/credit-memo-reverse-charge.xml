@@ -10,6 +10,7 @@
       <Town>Salzburg</Town>
       <ZIP>5020</ZIP>
       <Country CountryCode="AT">Österreich</Country>
+      <Email>office@bau-sued.at</Email>
     </Address>
     <InvoiceRecipientsBillerID>L-100234</InvoiceRecipientsBillerID>
   </Biller>

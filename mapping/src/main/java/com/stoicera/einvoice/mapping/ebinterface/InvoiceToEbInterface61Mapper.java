@@ -4,6 +4,7 @@ import com.helger.ebinterface.v61.Ebi61AccountType;
 import com.helger.ebinterface.v61.Ebi61AddressType;
 import com.helger.ebinterface.v61.Ebi61BillerType;
 import com.helger.ebinterface.v61.Ebi61CountryType;
+import com.helger.ebinterface.v61.Ebi61DeliveryType;
 import com.helger.ebinterface.v61.Ebi61DetailsType;
 import com.helger.ebinterface.v61.Ebi61DocumentTypeType;
 import com.helger.ebinterface.v61.Ebi61InvoiceRecipientType;
@@ -14,6 +15,7 @@ import com.helger.ebinterface.v61.Ebi61NoPaymentType;
 import com.helger.ebinterface.v61.Ebi61OrderReferenceType;
 import com.helger.ebinterface.v61.Ebi61PaymentConditionsType;
 import com.helger.ebinterface.v61.Ebi61PaymentMethodType;
+import com.helger.ebinterface.v61.Ebi61PeriodType;
 import com.helger.ebinterface.v61.Ebi61TaxItemType;
 import com.helger.ebinterface.v61.Ebi61TaxPercentType;
 import com.helger.ebinterface.v61.Ebi61TaxType;
@@ -23,6 +25,7 @@ import com.helger.ebinterface.v61.Ebi61UniversalBankTransactionType;
 import com.stoicera.einvoice.core.invoice.Invoice;
 import com.stoicera.einvoice.core.invoice.InvoiceLine;
 import com.stoicera.einvoice.core.invoice.InvoiceTypeCode;
+import com.stoicera.einvoice.core.invoice.ServicePeriod;
 import com.stoicera.einvoice.core.party.Address;
 import com.stoicera.einvoice.core.party.Party;
 import com.stoicera.einvoice.core.payment.PaymentMeans;
@@ -66,6 +69,12 @@ import java.util.stream.Stream;
  *       <td><strong>XSD decision:</strong> {@code LanguageType} is an {@code xs:token} restricted
  *       to length 2 (ISO 639-1), so the plain 2-letter code {@code "de"} is used, not the
  *       ISO 639-2 {@code "ger"}.</td></tr>
+ *   <tr><td>{@code deliveryDate} (BT-72)</td><td>{@code Delivery/Date}</td>
+ *       <td>{@code setDate(LocalDate)} overload; mutually exclusive with {@code servicePeriod}
+ *       (enforced by {@code core}, never both present). {@code Delivery} is omitted entirely when
+ *       neither is present — the XSD makes it optional.</td></tr>
+ *   <tr><td>{@code servicePeriod} (BG-14)</td><td>{@code Delivery/Period/FromDate}+{@code ToDate}</td>
+ *       <td>{@code Ebi61PeriodType}, both dates via the {@code LocalDate} setter overloads.</td></tr>
  *   <tr><td>{@code seller}</td><td>{@code Biller}: {@code VATIdentificationNumber},
  *       {@code Address}</td>
  *       <td>{@code VATIdentificationNumber} is XSD-required on {@code Biller}; copied verbatim from
@@ -85,6 +94,9 @@ import java.util.stream.Stream;
  *       ({@code "AT"} → {@code "Österreich"}) via {@link java.util.Locale} — AUSTRIAPRO's own
  *       samples render the human-readable name there. An unknown code falls back to the code as its
  *       own text.</td></tr>
+ *   <tr><td>{@code seller.email} / {@code buyer.email}</td><td>{@code Address/Email}</td>
+ *       <td>{@code addEmail(String)}; omitted (no {@code Email} element) when the party carries
+ *       none — {@code EmailType} is a repeatable, optional XSD element.</td></tr>
  *   <tr><td>{@code orderReference}</td><td>{@code InvoiceRecipient/OrderReference/OrderID}</td>
  *       <td>Auftragsreferenz; {@code OrderReference} inherited from {@code AbstractPartyType};
  *       omitted when {@code null}.</td></tr>
@@ -157,6 +169,10 @@ public final class InvoiceToEbInterface61Mapper {
     Currency currency = invoice.currency();
 
     mapHeader(invoice, ebi);
+    Ebi61DeliveryType delivery = mapDelivery(invoice);
+    if (delivery != null) {
+      ebi.setDelivery(delivery);
+    }
     ebi.setBiller(mapBiller(invoice));
     ebi.setInvoiceRecipient(mapRecipient(invoice));
     ebi.setDetails(mapDetails(invoice, currency));
@@ -181,6 +197,30 @@ public final class InvoiceToEbInterface61Mapper {
       case COMMERCIAL_INVOICE -> Ebi61DocumentTypeType.INVOICE;
       case CREDIT_NOTE -> Ebi61DocumentTypeType.CREDIT_MEMO;
     };
+  }
+
+  /**
+   * {@code deliveryDate} (BT-72) and {@code servicePeriod} (BG-14) are mutually exclusive on {@link
+   * Invoice} (core enforces it, § 11 Abs 1 Z 4 UStG), so at most one of the two branches below ever
+   * fires; when neither is present this returns {@code null} and the caller omits the whole
+   * optional {@code Delivery} element rather than emitting an empty one.
+   */
+  private Ebi61DeliveryType mapDelivery(Invoice invoice) {
+    if (invoice.deliveryDate().isPresent()) {
+      Ebi61DeliveryType delivery = new Ebi61DeliveryType();
+      delivery.setDate(invoice.deliveryDate().get());
+      return delivery;
+    }
+    if (invoice.servicePeriod().isPresent()) {
+      ServicePeriod period = invoice.servicePeriod().get();
+      Ebi61PeriodType ebiPeriod = new Ebi61PeriodType();
+      ebiPeriod.setFromDate(period.from());
+      ebiPeriod.setToDate(period.to());
+      Ebi61DeliveryType delivery = new Ebi61DeliveryType();
+      delivery.setPeriod(ebiPeriod);
+      return delivery;
+    }
+    return null;
   }
 
   private Ebi61BillerType mapBiller(Invoice invoice) {
@@ -228,6 +268,9 @@ public final class InvoiceToEbInterface61Mapper {
     country.setValue(germanCountryName(address.countryCode()));
     country.setCountryCode(address.countryCode());
     target.setCountry(country);
+
+    party.email().ifPresent(target::addEmail);
+
     return target;
   }
 

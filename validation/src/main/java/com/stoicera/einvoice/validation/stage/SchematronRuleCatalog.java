@@ -45,7 +45,25 @@ public final class SchematronRuleCatalog {
               "Auftragsreferenz fehlt: Rechnungen an Bundesdienststellen müssen eine"
                   + " Auftragsreferenz (OrderReference/OrderID) enthalten.",
               "Order reference missing: invoices to Austrian federal bodies must carry an order"
-                  + " reference (OrderReference/OrderID)."));
+                  + " reference (OrderReference/OrderID)."),
+          RuleIds.AT_B2G_03,
+          new BilingualMessage(
+              "Für Bundesdienststellen ist eine E-Mail-Adresse des Rechnungsstellers"
+                  + " erforderlich (Biller/Address/Email).",
+              "Invoices to Austrian federal bodies require the biller's e-mail address"
+                  + " (Biller/Address/Email)."),
+          RuleIds.AT_B2G_04,
+          new BilingualMessage(
+              "Für Bundesdienststellen ist die Lieferantennummer erforderlich"
+                  + " (Biller/InvoiceRecipientsBillerID).",
+              "Invoices to Austrian federal bodies require the supplier number"
+                  + " (Biller/InvoiceRecipientsBillerID)."),
+          RuleIds.AT_B2G_05,
+          new BilingualMessage(
+              "Eine Zahlungsmethode ist erforderlich (PaymentMethod:"
+                  + " UniversalBankTransaction oder NoPayment).",
+              "A payment method is required (PaymentMethod: UniversalBankTransaction or"
+                  + " NoPayment)."));
 
   private SchematronRuleCatalog() {}
 

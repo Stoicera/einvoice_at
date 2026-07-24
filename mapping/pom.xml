@@ -149,10 +149,19 @@
               <targetClasses>
                 <param>com.stoicera.einvoice.mapping.*</param>
               </targetClasses>
-              <!-- Measured mutation score was 100% (105/105 mutants killed) on 2026-07-24 after
-                   Task 5 added the json package; a full mutation run takes ~11-13 s. Gate set to 85
-                   per the M2 task brief, mirroring core's PIT wiring, leaving generous headroom for
-                   benign survivors. -->
+              <!-- Measured mutation score was 100% (125/125 mutants killed) on 2026-07-24 after
+                   M3 Task 2 added delivery-date/service-period/email mapping; a full mutation run
+                   takes ~13-15 s. Gate set to 85 per the M2 task brief, mirroring core's PIT wiring,
+                   leaving generous headroom for benign survivors.
+
+                   IMPORTANT: the documented "-pl mapping" invocation above (deliberately not "-am")
+                   resolves core/formats-ebinterface from the LOCAL REPOSITORY, not the reactor — if
+                   those modules changed since they were last "mvn install"-ed, PIT's minion JVM will
+                   fail every discovered test with NoSuchMethodError/NoClassDefFoundError against the
+                   stale jar (a green plain "mvn test -am" run does NOT catch this, since -am always
+                   builds from the reactor's fresh output). Run
+                   "./mvnw -pl core,formats-ebinterface -am install -DskipTests" first whenever core
+                   or formats-ebinterface changed. -->
               <mutationThreshold>85</mutationThreshold>
               <timestampedReports>false</timestampedReports>
             </configuration>

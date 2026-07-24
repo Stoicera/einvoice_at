@@ -2,6 +2,26 @@ services:
   app:
     build: .
     image: einvoice-at:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    environment:
+      # Datasource resolves from POSTGRES_* (see application.yml). Inside the compose network the
+      # database is reachable at host `postgres` on its internal port 5432; credentials come from
+      # .env. No secrets are hard-coded here.
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-einvoice}
+      POSTGRES_USER: ${POSTGRES_USER:-einvoice}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — copy .env.example to .env and set a generated value}
+      # OAuth2 resource server. Two URLs on purpose (the classic Docker split): tokens carry the
+      # issuer clients see from the host (localhost:${KEYCLOAK_PORT}), while the app fetches the
+      # signing keys over the compose network at `keycloak:8080`. SecurityConfig validates `iss`
+      # against OAUTH2_ISSUER_URI and pulls JWKS from OAUTH2_JWK_SET_URI, so the two never have to be
+      # the same host.
+      OAUTH2_ISSUER_URI: http://localhost:${KEYCLOAK_PORT:-8081}/realms/einvoice
+      OAUTH2_JWK_SET_URI: http://keycloak:8080/realms/einvoice/protocol/openid-connect/certs
     ports:
       - "${APP_PORT:-8080}:8080"
     restart: unless-stopped
@@ -21,6 +41,48 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
+
+  # Identity provider. Dev mode with realm auto-import; the einvoice realm ships a confidential
+  # client (direct access grants on, for dev/test token fetching) and one test user — every
+  # credential in keycloak/dev-realm.json is dev-only. The admin bootstrap credentials are required
+  # from .env (no defaults), like POSTGRES_PASSWORD.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.0@sha256:0f198be292568439d700cdbfb893e69a6009bb43a94a06a945b1d3d506c76b13
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:?KEYCLOAK_ADMIN is required — copy .env.example to .env and set a value}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required — copy .env.example to .env and set a generated value}
+      # Expose the health endpoints on the management port (9000) for the healthcheck below.
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      # Keycloak's directory import requires the file to be named <realm>-realm.json, so the repo's
+      # keycloak/dev-realm.json is mounted into the import directory as einvoice-realm.json.
+      - ./keycloak/dev-realm.json:/opt/keycloak/data/import/einvoice-realm.json:ro
+    ports:
+      - "127.0.0.1:${KEYCLOAK_PORT:-8081}:8080"
+    healthcheck:
+      # The Keycloak image ships bash (with /dev/tcp) but no curl/wget, so the readiness probe is a
+      # raw HTTP GET to the management health endpoint over a bash TCP socket. /health/ready returns
+      # 200 only once the server is up and the realm import has finished.
+      test:
+        - CMD
+        - bash
+        - -c
+        - 'exec 3<>/dev/tcp/localhost/9000; printf "GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3; grep -q "200 OK" <&3'
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+  # Local SMTP sink. Joins the stack now per the M0 decision "Keycloak/Mailpit join at M3"; it is not
+  # wired to the app yet — the notification flow that sends through it arrives in M5.
+  mailpit:
+    image: axllent/mailpit:v1.30.5@sha256:b868afa176bfd6cce2323ea316cd99ccad77915e51e595748f6d786700ecf109
+    ports:
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
     restart: unless-stopped
 
 volumes:

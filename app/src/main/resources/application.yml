@@ -2,6 +2,59 @@ spring:
   application:
     name: einvoice-at
 
+  # Datasource is configured purely from environment variables (names aligned with the compose
+  # POSTGRES_* set in .env.example); no credentials live in this file. The localhost/5432 defaults
+  # only make a developer's `./mvnw spring-boot:run` reach a locally exposed Postgres — integration
+  # tests override all of this via Testcontainers @ServiceConnection.
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:einvoice}
+    username: ${POSTGRES_USER:einvoice}
+    password: ${POSTGRES_PASSWORD:}
+
+  jpa:
+    # Flyway owns the schema; Hibernate must never mutate it, only confirm the mapping matches.
+    hibernate:
+      ddl-auto: validate
+    # No open session in the view layer: transactions end at the service boundary.
+    open-in-view: false
+
+  flyway:
+    enabled: true
+
+  # Application-layer cap on POST /api/v1/validate uploads (SPEC section 4): 2 MB, well below the
+  # validator's own defensive 20 MB guard (EbInterface61Validator.MAX_INPUT_BYTES), so an oversized
+  # upload is rejected by the servlet container — 413, before a byte reaches the controller — rather
+  # than by the validator's internal XML-02 finding. Namespace verified against the Boot 4.1
+  # spring-boot-servlet module's configuration metadata (MultipartProperties moved there in the 4.1
+  # module split); both bounds are set so a request just under the file cap cannot slip through on
+  # request overhead.
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 2MB
+
+# OAuth2 resource-server (Keycloak) settings, consumed by SecurityConfig's JwtDecoder. Both come
+# from the environment; the compose stack sets OAUTH2_ISSUER_URI to the Keycloak realm. When an
+# issuer is set, tokens must carry a matching `iss`. jwk-set-uri is derived from the issuer when
+# left blank (Keycloak's standard certs path); override it only for a non-Keycloak JWKS layout. No
+# defaults here, so a misconfigured deployment fails loudly rather than trusting the wrong issuer.
+app:
+  oauth2:
+    issuer-uri: ${OAUTH2_ISSUER_URI:}
+    jwk-set-uri: ${OAUTH2_JWK_SET_URI:}
+
+  # Per-IP rate limiting on the anonymous side of POST /api/v1/validate only (SecurityConfig wires
+  # RateLimitFilter; T8, SPEC section 4). A fresh IP starts with `capacity` tokens and regenerates
+  # `refill-per-minute` tokens every 60s (bucket4j "greedy" refill — spread evenly across the
+  # minute, not released in one lump). Defaults are deliberately generous for a portfolio demo, not
+  # tuned against real traffic. Test contexts override both (AbstractKeycloakIT raises the shared
+  # ITs' capacity so their handful of anonymous /validate calls never collide with this limit;
+  # RateLimitIT lowers it in its own dedicated context to exercise the 429 path).
+  rate-limit:
+    validate:
+      capacity: ${RATE_LIMIT_VALIDATE_CAPACITY:10}
+      refill-per-minute: ${RATE_LIMIT_VALIDATE_REFILL_PER_MINUTE:10}
+
 server:
   port: 8080
 

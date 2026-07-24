@@ -26,6 +26,26 @@ class SchematronStageTest {
       "Order reference missing: invoices to Austrian federal bodies must carry an order reference"
           + " (OrderReference/OrderID).";
 
+  private static final String AT_B2G_03_DE =
+      "Für Bundesdienststellen ist eine E-Mail-Adresse des Rechnungsstellers erforderlich"
+          + " (Biller/Address/Email).";
+  private static final String AT_B2G_03_EN =
+      "Invoices to Austrian federal bodies require the biller's e-mail address"
+          + " (Biller/Address/Email).";
+
+  private static final String AT_B2G_04_DE =
+      "Für Bundesdienststellen ist die Lieferantennummer erforderlich"
+          + " (Biller/InvoiceRecipientsBillerID).";
+  private static final String AT_B2G_04_EN =
+      "Invoices to Austrian federal bodies require the supplier number"
+          + " (Biller/InvoiceRecipientsBillerID).";
+
+  private static final String AT_B2G_05_DE =
+      "Eine Zahlungsmethode ist erforderlich (PaymentMethod: UniversalBankTransaction oder"
+          + " NoPayment).";
+  private static final String AT_B2G_05_EN =
+      "A payment method is required (PaymentMethod: UniversalBankTransaction or NoPayment).";
+
   private List<Finding> run(String xml) {
     return stage.apply(new ValidationContext(TestDocuments.bytes(xml)));
   }
@@ -55,6 +75,43 @@ class SchematronStageTest {
     assertThat(findings).hasSize(1);
     assertThat(findings.get(0).ruleId()).isEqualTo("AT-B2G-01");
     assertThat(findings.get(0).severity()).isEqualTo(Severity.ERROR);
+  }
+
+  @Test
+  void missingBillerEmailYieldsSingleAtB2g03ErrorGermanFirst() {
+    List<Finding> findings = run(TestDocuments.ebInterface61WithoutBillerEmail());
+
+    assertThat(findings).hasSize(1);
+    Finding finding = findings.get(0);
+    assertThat(finding.ruleId()).isEqualTo("AT-B2G-03");
+    assertThat(finding.severity()).isEqualTo(Severity.ERROR);
+    assertThat(finding.messageDe()).isEqualTo(AT_B2G_03_DE);
+    assertThat(finding.messageEn()).isEqualTo(AT_B2G_03_EN);
+    assertThat(finding.location()).isNotBlank();
+  }
+
+  @Test
+  void missingSupplierNumberYieldsSingleAtB2g04ErrorGermanFirst() {
+    List<Finding> findings = run(TestDocuments.ebInterface61WithoutSupplierNumber());
+
+    assertThat(findings).hasSize(1);
+    Finding finding = findings.get(0);
+    assertThat(finding.ruleId()).isEqualTo("AT-B2G-04");
+    assertThat(finding.severity()).isEqualTo(Severity.ERROR);
+    assertThat(finding.messageDe()).isEqualTo(AT_B2G_04_DE);
+    assertThat(finding.messageEn()).isEqualTo(AT_B2G_04_EN);
+  }
+
+  @Test
+  void missingPaymentMethodYieldsSingleAtB2g05ErrorGermanFirst() {
+    List<Finding> findings = run(TestDocuments.ebInterface61WithoutPaymentMethod());
+
+    assertThat(findings).hasSize(1);
+    Finding finding = findings.get(0);
+    assertThat(finding.ruleId()).isEqualTo("AT-B2G-05");
+    assertThat(finding.severity()).isEqualTo(Severity.ERROR);
+    assertThat(finding.messageDe()).isEqualTo(AT_B2G_05_DE);
+    assertThat(finding.messageEn()).isEqualTo(AT_B2G_05_EN);
   }
 
   @Test
