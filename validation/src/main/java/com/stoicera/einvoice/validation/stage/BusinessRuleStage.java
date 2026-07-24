@@ -8,6 +8,7 @@ import com.stoicera.einvoice.core.InvariantViolationException;
 import com.stoicera.einvoice.core.payment.Iban;
 import com.stoicera.einvoice.core.validation.Finding;
 import com.stoicera.einvoice.core.validation.Severity;
+import com.stoicera.einvoice.validation.RuleIds;
 import com.stoicera.einvoice.validation.ValidationContext;
 import com.stoicera.einvoice.validation.ValidationStage;
 import java.util.ArrayList;
@@ -31,9 +32,6 @@ import java.util.List;
  * value without the report leaking it.
  */
 public final class BusinessRuleStage implements ValidationStage {
-
-  /** Rule id: every present beneficiary-account IBAN must pass the mod-97 checksum. */
-  public static final String RULE_IBAN_CHECKSUM = "AT-B2G-02";
 
   @Override
   public List<Finding> apply(ValidationContext ctx) {
@@ -83,7 +81,7 @@ public final class BusinessRuleStage implements ValidationStage {
   private static Finding checksumFinding(int position) {
     return Finding.of(
         Severity.ERROR,
-        RULE_IBAN_CHECKSUM,
+        RuleIds.AT_B2G_02,
         "/Invoice/PaymentMethod/UniversalBankTransaction/BeneficiaryAccount[" + position + "]/IBAN",
         "IBAN im Empfängerkonto " + position + " ist ungültig (Prüfsummenfehler).",
         "IBAN in beneficiary account " + position + " is invalid (checksum failure).");

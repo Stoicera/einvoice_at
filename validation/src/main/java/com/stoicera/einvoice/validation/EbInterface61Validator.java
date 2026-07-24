@@ -21,22 +21,16 @@ import java.util.List;
  * in a fixed order and stops at the first stage that makes later stages meaningless: input-size
  * guard ({@code XML-02}; anything above {@value #MAX_INPUT_BYTES} bytes is rejected up front
  * without parsing) → secure DOM parse ({@code XML-01}) → format detection ({@code FORMAT-01}/{@code
- * FORMAT-02}) → XSD ({@code EBI61-XSD}; a structurally invalid document cannot be meaningfully
- * checked by Schematron or business rules) → our own AT-B2G Schematron ({@code AT-B2G-nn};
- * evaluated only on a schema-valid tree) → our hand-written AT-B2G business rules ({@code
- * AT-B2G-nn}; e.g. the IBAN mod-97 check, also on a schema-valid tree). Findings appear in the
- * report in this pipeline order.
+ * FORMAT-02}) → XSD ({@code XSD-01}; a structurally invalid document cannot be meaningfully checked
+ * by Schematron or business rules) → our own AT-B2G Schematron ({@code AT-B2G-nn}; evaluated only
+ * on a schema-valid tree) → our hand-written AT-B2G business rules ({@code AT-B2G-nn}; e.g. the
+ * IBAN mod-97 check, also on a schema-valid tree). Findings appear in the report in this pipeline
+ * order.
  */
 public final class EbInterface61Validator {
 
   /** The validation profile this validator applies: Austrian business-to-government. */
   public static final String PROFILE_AT_B2G = "at-b2g";
-
-  /** Rule id: the upload is not well-formed XML. */
-  public static final String RULE_MALFORMED_XML = "XML-01";
-
-  /** Rule id: the upload exceeds the module's defensive input-size cap. */
-  public static final String RULE_INPUT_TOO_LARGE = "XML-02";
 
   /**
    * Defensive input-size cap, in bytes (20 MB): a module-level guard so the validator defends
@@ -114,7 +108,7 @@ public final class EbInterface61Validator {
   private static Finding malformedXmlFinding() {
     return Finding.of(
         Severity.ERROR,
-        RULE_MALFORMED_XML,
+        RuleIds.XML_01,
         null,
         "Die Datei ist kein wohlgeformtes XML und konnte nicht gelesen werden.",
         "The file is not well-formed XML and could not be parsed.");
@@ -123,7 +117,7 @@ public final class EbInterface61Validator {
   private static Finding inputTooLargeFinding() {
     return Finding.of(
         Severity.ERROR,
-        RULE_INPUT_TOO_LARGE,
+        RuleIds.XML_02,
         null,
         "Dokument überschreitet die maximale Größe von 20 MB.",
         "Document exceeds the maximum size of 20 MB.");

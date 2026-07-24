@@ -4,6 +4,7 @@ import com.helger.ebinterface.EEbInterfaceVersion;
 import com.stoicera.einvoice.core.validation.Finding;
 import com.stoicera.einvoice.core.validation.Severity;
 import com.stoicera.einvoice.formats.ebinterface.EbInterfaceNamespaces;
+import com.stoicera.einvoice.validation.RuleIds;
 import com.stoicera.einvoice.validation.ValidationContext;
 import com.stoicera.einvoice.validation.ValidationStage;
 import java.util.List;
@@ -21,12 +22,6 @@ import org.w3c.dom.Document;
  */
 public final class FormatDetectionStage implements ValidationStage {
 
-  /** Rule id: the document is XML but its namespace matches no supported invoice format. */
-  public static final String RULE_UNKNOWN_FORMAT = "FORMAT-01";
-
-  /** Rule id: the document is ebInterface, but a version this platform does not support. */
-  public static final String RULE_UNSUPPORTED_VERSION = "FORMAT-02";
-
   /** The only ebInterface version this validator supports. */
   private static final EEbInterfaceVersion SUPPORTED_VERSION = EEbInterfaceVersion.V61;
 
@@ -40,7 +35,7 @@ public final class FormatDetectionStage implements ValidationStage {
       return List.of(
           Finding.of(
               Severity.ERROR,
-              RULE_UNKNOWN_FORMAT,
+              RuleIds.FORMAT_01,
               null,
               "Unbekanntes Rechnungsformat: Der XML-Namensraum des Wurzelelements entspricht keiner"
                   + " unterstützten ebInterface-Version.",
@@ -58,8 +53,7 @@ public final class FormatDetectionStage implements ValidationStage {
       String messageEn =
           "Unsupported ebInterface version %s; only version %s is supported."
               .formatted(found, supported);
-      return List.of(
-          Finding.of(Severity.ERROR, RULE_UNSUPPORTED_VERSION, null, messageDe, messageEn));
+      return List.of(Finding.of(Severity.ERROR, RuleIds.FORMAT_02, null, messageDe, messageEn));
     }
 
     return List.of();

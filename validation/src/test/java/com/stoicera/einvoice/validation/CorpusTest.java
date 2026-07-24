@@ -24,7 +24,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  * then the fix" (CLAUDE.md). Each invalid file carries exactly one deliberate defect derived from
  * {@code valid/b2g-full.xml}, so a single expected rule id isolates the behaviour under test; the
  * {@code xsd-missing-invoice-number} case is the exception the brief calls out — one structural
- * defect can surface as several {@code EBI61-XSD} findings, hence the assertion compares the
+ * defect can surface as several {@code XSD-01} findings, hence the assertion compares the
  * <em>distinct</em> rule ids rather than a multiset.
  *
  * <p><strong>Set semantics (finding A7).</strong> The expected set for each file is matched
@@ -53,7 +53,7 @@ class CorpusTest {
         Arguments.of("corpus/valid/exempt-invoice.xml", Set.of()),
         Arguments.of("corpus/invalid/malformed.xml", Set.of("XML-01")),
         Arguments.of("corpus/invalid/wrong-namespace-ebi60.xml", Set.of("FORMAT-02")),
-        Arguments.of("corpus/invalid/xsd-missing-invoice-number.xml", Set.of("EBI61-XSD")),
+        Arguments.of("corpus/invalid/xsd-missing-invoice-number.xml", Set.of("XSD-01")),
         Arguments.of("corpus/invalid/at-b2g-01-missing-order-reference.xml", Set.of("AT-B2G-01")),
         Arguments.of("corpus/invalid/at-b2g-01-whitespace-order-id.xml", Set.of("AT-B2G-01")),
         Arguments.of("corpus/invalid/at-b2g-02-invalid-iban.xml", Set.of("AT-B2G-02")));

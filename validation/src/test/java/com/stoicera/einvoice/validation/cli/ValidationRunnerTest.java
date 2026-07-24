@@ -191,7 +191,10 @@ class ValidationRunnerTest {
     int exitCode = ValidationRunner.run(new String[] {file.toString()}, out, err);
 
     assertThat(exitCode).isEqualTo(1);
-    assertThat(outText()).contains("XML-01  -  Die Datei ist kein wohlgeformtes XML");
+    // Columns are padded (rule id to width 9), so "XML-01" is followed by its pad + the separator,
+    // then the empty location rendered as "-" (never the literal "null"), then the message.
+    assertThat(outText()).contains("XML-01     -  Die Datei ist kein wohlgeformtes XML");
+    assertThat(outText()).doesNotContain("null");
   }
 
   @Test
@@ -214,7 +217,7 @@ class ValidationRunnerTest {
 
     assertThat(exitCode).isEqualTo(1);
     assertThat(outText()).contains("UNGÜLTIG");
-    assertThat(outText()).contains("EBI61-XSD");
+    assertThat(outText()).contains("XSD-01");
   }
 
   @Test

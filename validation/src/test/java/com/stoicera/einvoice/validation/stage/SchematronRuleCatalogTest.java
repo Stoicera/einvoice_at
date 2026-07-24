@@ -60,6 +60,20 @@ class SchematronRuleCatalogTest {
   }
 
   @Test
+  void uncatalogedRuleWithBlankSvrlTextFallsBackToFixedTextInsteadOfThrowing() {
+    // T1-carried: a blank (empty/whitespace-only) SVRL text would be passed straight to Finding.of,
+    // whose non-blank invariant then throws — breaking the validator's never-throws contract. The
+    // fixed fallback text keeps a usable, bilingual finding with the id preserved.
+    Finding finding =
+        SchematronRuleCatalog.toFinding(failedAssert("AT-B2G-99", "/eb:Invoice", "   "));
+
+    assertThat(finding.severity()).isEqualTo(Severity.ERROR);
+    assertThat(finding.ruleId()).isEqualTo("AT-B2G-99");
+    assertThat(finding.messageDe()).isNotBlank();
+    assertThat(finding.messageEn()).isNotBlank();
+  }
+
+  @Test
   void uncatalogedRuleFallsBackToRawSvrlTextInBothLanguagesKeepingTheId() {
     Finding finding =
         SchematronRuleCatalog.toFinding(

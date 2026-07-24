@@ -67,7 +67,7 @@ class EbInterface61ValidatorTest {
     assertThat(report.findings())
         .anySatisfy(
             finding -> {
-              assertThat(finding.ruleId()).isEqualTo("EBI61-XSD");
+              assertThat(finding.ruleId()).isEqualTo("XSD-01");
               assertThat(finding.messageDe())
                   .startsWith("Das Dokument verletzt das ebInterface-6.1-Schema: ");
               // messageEn must be the English rendering, not a German fetch reused verbatim.
@@ -145,7 +145,7 @@ class EbInterface61ValidatorTest {
     assertThat(report.findings())
         .anySatisfy(
             finding -> {
-              assertThat(finding.ruleId()).isEqualTo("EBI61-XSD");
+              assertThat(finding.ruleId()).isEqualTo("XSD-01");
               assertThat(finding.messageDe()).endsWith("…");
               assertThat(finding.messageEn()).endsWith("…");
             });
