@@ -35,7 +35,10 @@ import java.util.stream.Stream;
  *
  * <p>Exit codes: {@code 0} every validated file is valid, {@code 1} at least one validated file is
  * invalid, {@code 2} a usage or I/O error occurred before (or instead of) a validation verdict — no
- * arguments, a nonexistent path, or a file that could not be read.
+ * arguments, a nonexistent path, a file that could not be read, or a resolved file list that came
+ * back empty (e.g. a directory with no {@code *.xml} files, most likely a mistyped corpus path).
+ * The empty-list case is deliberately a hard error rather than a silent {@code 0}: a CI gate that
+ * only checks the exit code must not see "all valid" for a run that validated nothing.
  */
 public final class ValidationRunner {
 
@@ -82,6 +85,11 @@ public final class ValidationRunner {
       files = resolveFiles(args);
     } catch (IllegalArgumentException | UncheckedIOException e) {
       printError(err, e.getMessage());
+      return EXIT_USAGE_OR_IO_ERROR;
+    }
+
+    if (files.isEmpty()) {
+      printError(err, "Keine XML-Dateien gefunden unter: " + String.join(", ", args));
       return EXIT_USAGE_OR_IO_ERROR;
     }
 

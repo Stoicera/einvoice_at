@@ -4,10 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.stoicera.einvoice.core.validation.Severity;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Unit tests for the {@link ValidationRunner#run} seam: no process spawning, only the documented
@@ -102,6 +106,27 @@ class ValidationRunnerTest {
 
     assertThat(exitCode).isEqualTo(2);
     assertThat(errText()).contains("Pfad nicht gefunden");
+    assertThat(outText()).isEmpty();
+  }
+
+  @Test
+  void emptyDirectoryExits2WithGermanErrorAndNoOutput(@TempDir Path emptyDir) {
+    int exitCode = ValidationRunner.run(new String[] {emptyDir.toString()}, out, err);
+
+    assertThat(exitCode).isEqualTo(2);
+    assertThat(errText()).contains("Keine XML-Dateien gefunden unter: " + emptyDir);
+    assertThat(outText()).isEmpty();
+  }
+
+  @Test
+  void directoryWithOnlyNonXmlFilesExits2WithGermanErrorAndNoOutput(@TempDir Path dir)
+      throws IOException {
+    Files.writeString(dir.resolve("README.md"), "not xml");
+
+    int exitCode = ValidationRunner.run(new String[] {dir.toString()}, out, err);
+
+    assertThat(exitCode).isEqualTo(2);
+    assertThat(errText()).contains("Keine XML-Dateien gefunden unter: " + dir);
     assertThat(outText()).isEmpty();
   }
 
