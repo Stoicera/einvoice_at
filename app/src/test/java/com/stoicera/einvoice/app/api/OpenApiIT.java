@@ -9,6 +9,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.HashSet;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -50,6 +52,18 @@ class OpenApiIT extends AbstractPostgresIT {
     assertThat(schemes.has("bearerAuth")).isTrue();
     assertThat(schemes.has("apiKeyAuth")).isTrue();
 
+    // OpenApiConfig#einvoiceOpenApi pins bearerAuth and apiKeyAuth as two top-level alternative
+    // security requirements: every operation inherits "bearer OR apiKey" unless it declares its
+    // own override. Without this assertion, deleting both addSecurityItem(...) calls would make
+    // the generated doc claim every endpoint is public and this suite would still pass.
+    JsonNode globalSecurity = doc.get("security");
+    assertThat(globalSecurity).isNotNull();
+    assertThat(globalSecurity.isArray()).isTrue();
+    assertThat(globalSecurity).hasSize(2);
+    Set<String> globalSecuritySchemes = new HashSet<>();
+    globalSecurity.forEach(entry -> globalSecuritySchemes.add(entry.fieldNames().next()));
+    assertThat(globalSecuritySchemes).containsExactlyInAnyOrder("bearerAuth", "apiKeyAuth");
+
     // POST /api/v1/validate is the one public endpoint (SecurityConfig permitAll): its operation
     // must explicitly override the global bearerAuth/apiKeyAuth requirement with an empty
     // security array, or the generated doc would wrongly claim it needs a credential.
@@ -59,7 +73,13 @@ class OpenApiIT extends AbstractPostgresIT {
 
     // Invoice creation actually answers 201 with a Location header (InvoiceController#create),
     // not the framework's inferred default 200.
-    assertThat(paths.get("/api/v1/invoices").get("post").get("responses").has("201")).isTrue();
+    JsonNode invoicesPost = paths.get("/api/v1/invoices").get("post");
+    assertThat(invoicesPost.get("responses").has("201")).isTrue();
+
+    // POST /api/v1/invoices is protected: it must have no operation-level security override, so
+    // it inherits the global bearerAuth/apiKeyAuth requirement asserted above rather than
+    // silently becoming public.
+    assertThat(invoicesPost.get("security")).isNull();
 
     // Declaring error @ApiResponses on a method that has no @ResponseStatus silently drops
     // springdoc's auto-derived 200 unless it is declared explicitly alongside them — every GET
