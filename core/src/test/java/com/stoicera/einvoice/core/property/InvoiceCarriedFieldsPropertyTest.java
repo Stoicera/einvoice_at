@@ -10,11 +10,11 @@ import net.jqwik.api.Provide;
 import net.jqwik.api.statistics.Statistics;
 
 /**
- * Coverage property for the M3 carried-over fields (BT-72/BG-14 delivery date/service period, BG-14
- * party email): pins that {@link Generators#invoices()} actually exercises every arm — present and
- * absent alike — rather than passing vacuously because an arm is never generated. {@link
- * InvoiceArithmeticPropertyTest}'s javadoc records why this repo treats vacuous properties as a
- * standing concern (finding P1.2); this test is the non-vacuity guard for the new arms.
+ * Coverage property for the M3 carried-over fields (BT-72/BG-14 delivery date/service period,
+ * BT-43/BT-58 party email): pins that {@link Generators#invoices()} actually exercises every arm —
+ * present and absent alike — rather than passing vacuously because an arm is never generated.
+ * {@link InvoiceArithmeticPropertyTest}'s javadoc records why this repo treats vacuous properties
+ * as a standing concern (finding P1.2); this test is the non-vacuity guard for the new arms.
  */
 class InvoiceCarriedFieldsPropertyTest {
 

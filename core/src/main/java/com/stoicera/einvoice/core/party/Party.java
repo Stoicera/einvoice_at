@@ -11,9 +11,10 @@ import java.util.regex.Pattern;
  * <p>{@code vatId} is optional in the model (e.g. Kleinunternehmer without UID); whether it is
  * required for a given profile is a business rule of the validation module, not a core invariant.
  *
- * <p>{@code email} is likewise optional here (added M3, BG-14/e-rechnung.gv.at biller contact); the
- * AT-B2G profile's requirement that a biller carry one is a validation-module business rule, not a
- * core invariant — see {@link #Party(String, Address, String)} for the pre-M3 shape.
+ * <p>{@code email} is likewise optional here (added M3, BT-43/BT-58, BG-6/BG-9/e-rechnung.gv.at
+ * biller contact); the AT-B2G profile's requirement that a biller carry one is a validation-module
+ * business rule, not a core invariant — see {@link #Party(String, Address, String)} for the pre-M3
+ * shape.
  */
 public record Party(String name, Address address, String vatId, Optional<String> email) {
 
