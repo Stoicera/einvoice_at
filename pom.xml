@@ -70,6 +70,15 @@
     <pitest.version>1.25.8</pitest.version>
     <pitest-junit5.version>1.2.3</pitest-junit5.version>
 
+    <!-- In-memory rate limiting (app's RateLimitFilter, T8). Version verified against Maven
+         Central maven-metadata.xml on 2026-07-24 (the solrsearch API is fine here too, but
+         metadata.xml is this repo's convention — see the pitest note above); 8.10.1 is both
+         <latest> and <release>, groupId com.bucket4j, artifactId bucket4j-core, Apache-2.0.
+         Java package is io.github.bucket4j (a historical mismatch with the com.bucket4j Maven
+         coordinates, not a typo). No newer release since 2024-03; the project appears dormant
+         but the jar is stable and dependency-free (no transitive pulls beyond the JDK). -->
+    <bucket4j.version>8.10.1</bucket4j.version>
+
     <!-- Reactor-wide defaults for org.codehaus.mojo:exec-maven-plugin's `java` goal (used by the
          validation module's ValidationRunner CLI): skipped everywhere except where a module opts
          back in with its own <skip>false</skip>. Both properties are needed, not just exec.skip:
@@ -125,6 +134,11 @@
         <groupId>com.helger.phive.rules</groupId>
         <artifactId>phive-rules-peppol</artifactId>
         <version>${phive-rules.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.bucket4j</groupId>
+        <artifactId>bucket4j-core</artifactId>
+        <version>${bucket4j.version}</version>
       </dependency>
       <dependency>
         <groupId>net.jqwik</groupId>

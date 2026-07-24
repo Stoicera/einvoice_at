@@ -16,6 +16,7 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.util.StringUtils;
 
 /**
@@ -34,6 +35,9 @@ import org.springframework.util.StringUtils;
  *       ROLE_API_KEY}) must never mint or revoke API keys;
  *   <li>everything else: authenticated.
  * </ul>
+ *
+ * <p>{@link RateLimitFilter} adds a per-IP token bucket in front of anonymous calls to the public
+ * validator only (T8, SPEC section 4) — see that class's Javadoc for the full rationale.
  */
 @Configuration
 @EnableWebSecurity
@@ -41,7 +45,12 @@ public class SecurityConfig {
 
   @Bean
   SecurityFilterChain securityFilterChain(
-      HttpSecurity http, ApiKeyRepository apiKeys, JwtDecoder jwtDecoder) throws Exception {
+      HttpSecurity http,
+      ApiKeyRepository apiKeys,
+      JwtDecoder jwtDecoder,
+      @Value("${app.rate-limit.validate.capacity}") long rateLimitCapacity,
+      @Value("${app.rate-limit.validate.refill-per-minute}") long rateLimitRefillPerMinute)
+      throws Exception {
     http.authorizeHttpRequests(
             authorize ->
                 authorize
@@ -68,6 +77,14 @@ public class SecurityConfig {
                     .authenticated())
         // X-Api-Key is resolved before the bearer-token filter.
         .addFilterBefore(new ApiKeyAuthFilter(apiKeys), BearerTokenAuthenticationFilter.class)
+        // Placed AFTER AuthorizationFilter, not alongside the authentication filters above:
+        // RateLimitFilter needs the request's FINAL authentication state (every authentication
+        // mechanism, including Spring Security's own anonymous-authentication filter, has run by
+        // then) and only ever sees requests that already cleared authorization — see
+        // RateLimitFilter's own Javadoc for the full placement rationale.
+        .addFilterAfter(
+            new RateLimitFilter(rateLimitCapacity, rateLimitRefillPerMinute),
+            AuthorizationFilter.class)
         .oauth2ResourceServer(
             oauth2 ->
                 oauth2.jwt(

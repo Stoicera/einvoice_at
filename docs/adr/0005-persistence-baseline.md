@@ -54,6 +54,20 @@ the query, not in caller code.
 Postgres wired to the Spring datasource via `@ServiceConnection`. The image is pinned to the exact
 digest used by `docker-compose.yml` so tests and the local stack run byte-identical Postgres.
 
+**Rate limiting is in-memory and single-instance, on purpose (T8).** `POST /api/v1/validate`'s
+anonymous side needs a limit (SPEC §4) with nothing else in front of it yet, so `RateLimitFilter`
+(`app/.../security`) keys a `com.bucket4j:bucket4j-core` token bucket per `HttpServletRequest
+.getRemoteAddr()` in a bounded, evicting `ConcurrentHashMap` — no external store. Two consequences
+worth recording rather than rediscovering later: (1) it does **not** read `X-Forwarded-For` or any
+other forwarded-header — with today's one instance and no reverse proxy in front of it, honoring a
+client-supplied header would just let an anonymous caller spoof a fresh bucket for free; (2) it is
+therefore inherently per-instance state — a second replica would track its own independent buckets,
+silently doubling the effective limit. Neither is a defect today. Both need revisiting together at
+M6, when Traefik starts terminating in front of the app: pin down Traefik's forwarded-header
+contract (which hop is trusted, which header it sets) before trusting anything the proxy forwards,
+and decide then whether a shared/distributed bucket store is warranted or whether per-instance
+limiting behind a proxy that itself rate-limits is good enough.
+
 ## Konsequenzen
 
 - The schema is reproducible and auditable: `V1` is the single, reviewed source, and a drift between

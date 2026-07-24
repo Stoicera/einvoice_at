@@ -69,6 +69,13 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
     </dependency>
+    <!-- Per-IP token-bucket rate limiting for the anonymous side of POST /api/v1/validate
+         (RateLimitFilter, T8). Version parent-managed (see the root POM's bucket4j.version
+         comment for the Maven Central verification). Dependency-free beyond the JDK. -->
+    <dependency>
+      <groupId>com.bucket4j</groupId>
+      <artifactId>bucket4j-core</artifactId>
+    </dependency>
 
     <!-- Library modules the app composes as the milestone's REST layer lands on top of this
          persistence baseline: canonical model + JSON boundary (core, mapping), ebInterface XML

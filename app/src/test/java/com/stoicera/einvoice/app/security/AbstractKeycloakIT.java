@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.TestPropertySource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.utility.DockerImageName;
@@ -32,7 +33,26 @@ import org.testcontainers.utility.MountableFile;
  * keeping the heavy Keycloak-admin-client / shrinkwrap transitive stack off the test classpath (see
  * docs/adr/0005). Started once as a static singleton and shared across the auth ITs; the image is
  * pinned by the same digest as {@code docker-compose.yml}.
+ *
+ * <p>Also raises {@code RateLimitFilter}'s per-IP capacity/refill (T8) far above their production
+ * defaults for every subclass: the auth ITs collectively make a handful of anonymous {@code POST
+ * /api/v1/validate} calls against the one Spring context Boot caches for all of them (identical
+ * {@code @SpringBootTest} configuration → one shared context), and the point of that override is
+ * only to keep those unrelated tests from ever colliding with the limit — {@code RateLimitIT}
+ * proves the limit itself, in its own dedicated low-capacity context. A plain {@link
+ * TestPropertySource} is used rather than a second {@code @DynamicPropertySource} method so that a
+ * subclass's own {@code @DynamicPropertySource} override (as {@code RateLimitIT} declares) is
+ * guaranteed to win: dynamic property sources always take precedence over
+ * {@code @TestPropertySource}-loaded ones, regardless of which class in the hierarchy registers
+ * them — unlike two {@code @DynamicPropertySource} methods, whose relative precedence instead
+ * depends on {@code MethodIntrospector}'s class-then-superclass traversal order (superclass last,
+ * so it would win the very override a subclass is trying to make).
  */
+@TestPropertySource(
+    properties = {
+      "app.rate-limit.validate.capacity=1000",
+      "app.rate-limit.validate.refill-per-minute=1000"
+    })
 public abstract class AbstractKeycloakIT extends AbstractPostgresIT {
 
   static final String REALM = "einvoice";
