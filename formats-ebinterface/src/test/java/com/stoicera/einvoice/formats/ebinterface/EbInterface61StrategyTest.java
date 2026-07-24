@@ -5,9 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.helger.ebinterface.v61.Ebi61BillerType;
 import com.helger.ebinterface.v61.Ebi61InvoiceRecipientType;
 import com.helger.ebinterface.v61.Ebi61InvoiceType;
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import javax.xml.parsers.DocumentBuilderFactory;
 import org.junit.jupiter.api.Test;
+import org.w3c.dom.Document;
 
 class EbInterface61StrategyTest {
 
@@ -84,5 +87,48 @@ class EbInterface61StrategyTest {
     assertThat(result.isSuccess()).isFalse();
     assertThat(result.document()).isNull();
     assertThat(result.errors()).isNotEmpty();
+  }
+
+  @Test
+  void readFromDomRoundTripsTheInvoiceNumber() {
+    Document dom = parse(strategy.write(minimalInvoice()));
+
+    ReadResult<Ebi61InvoiceType> result = strategy.read(dom);
+
+    assertThat(result.isSuccess()).isTrue();
+    assertThat(result.errors()).isEmpty();
+    assertThat(result.document()).isNotNull();
+    assertThat(result.document().getInvoiceNumber()).isEqualTo("2026-0001");
+  }
+
+  @Test
+  void readFromDomWithWrongNamespaceRootFails() {
+    Document dom =
+        parse(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                + "<Invoice xmlns=\"urn:example:not-ebinterface\">"
+                + "<InvoiceNumber>1</InvoiceNumber>"
+                + "</Invoice>");
+
+    ReadResult<Ebi61InvoiceType> result = strategy.read(dom);
+
+    assertThat(result.isSuccess()).isFalse();
+    assertThat(result.document()).isNull();
+    assertThat(result.errors()).isNotEmpty();
+  }
+
+  /**
+   * Parses {@code xml} into a namespace-aware DOM the way the validation module's SecureXml does.
+   */
+  private static Document parse(String xml) {
+    try {
+      DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+      factory.setNamespaceAware(true);
+      return factory
+          .newDocumentBuilder()
+          .parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
+    } catch (Exception e) {
+      throw new IllegalStateException("test fixture DOM did not parse", e);
+    }
   }
 }

@@ -9,6 +9,8 @@ import com.helger.jaxb.GenericJAXBMarshaller;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
+import org.w3c.dom.Node;
 
 /**
  * ebInterface 6.1 read/write over ph-ebinterface's {@link EbInterface61Marshaller}.
@@ -36,18 +38,33 @@ public final class EbInterface61Strategy implements EbInterfaceVersionStrategy<E
 
   @Override
   public ReadResult<Ebi61InvoiceType> read(byte[] xml) {
+    return read(marshaller -> marshaller.read(xml));
+  }
+
+  @Override
+  public ReadResult<Ebi61InvoiceType> read(Node node) {
+    return read(marshaller -> marshaller.read(node));
+  }
+
+  /**
+   * Shared lenient-read body: install a fresh, schema-off marshaller with error collection, run the
+   * caller's chosen source overload, and turn the collected diagnostics into a {@link ReadResult}.
+   *
+   * <p>Without schema validation, JAXB still returns a (near-empty) tree for well-formed input
+   * whose root element is not ebInterface 6.1, but reports the mismatch as an error. Any collected
+   * error-level diagnostic therefore fails the read so callers get a {@code null} document, not a
+   * hollow one — identical semantics whether the source was raw bytes or an already-parsed DOM.
+   */
+  private static ReadResult<Ebi61InvoiceType> read(
+      Function<GenericJAXBMarshaller<Ebi61InvoiceType>, Ebi61InvoiceType> source) {
     ErrorList errorList = new ErrorList();
-    Ebi61InvoiceType document = newMarshaller().setCollectErrors(errorList).read(xml);
+    Ebi61InvoiceType document = source.apply(newMarshaller().setCollectErrors(errorList));
 
     List<String> errors = new ArrayList<>();
     for (IError error : errorList) {
       errors.add(error.getAsStringLocaleIndepdent());
     }
 
-    // Without schema validation, JAXB still returns a (near-empty) tree for well-formed XML whose
-    // root element is not ebInterface 6.1, but reports the mismatch as an error. Treat any
-    // collected
-    // error-level diagnostic as a failed read so callers get a null document, not a hollow one.
     if (errorList.containsAtLeastOneError()) {
       document = null;
     }
