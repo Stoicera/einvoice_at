@@ -27,6 +27,8 @@ import org.junit.jupiter.api.Test;
  * samples/invoice-b2g-sample.ebinterface.xml} is asserted byte-for-byte (line-ending-normalized)
  * equal to what the pipeline just wrote, so the committed artifact provably is the pipeline's own
  * output — it is the file uploaded once to the official ebInterface portal check (owner Abnahme).
+ * The golden-file corpus copy {@code corpus/valid/b2g-full.xml} is pinned the same way, against the
+ * samples twin, so all three (pipeline output, samples twin, corpus copy) are provably identical.
  *
  * <p>Paths resolve against the module directory: Surefire runs with the working directory set to
  * {@code validation/}, so {@code Path.of("..", "samples", …)} climbs one level to the repository
@@ -37,6 +39,7 @@ class EndToEndGenerationTest {
   private static final Path SAMPLES = Path.of("..", "samples");
   private static final Path SAMPLE_JSON = SAMPLES.resolve("invoice-b2g-sample.json");
   private static final Path SAMPLE_XML_TWIN = SAMPLES.resolve("invoice-b2g-sample.ebinterface.xml");
+  private static final String CORPUS_B2G_FULL_RESOURCE = "corpus/valid/b2g-full.xml";
 
   private final EbInterface61Validator validator = new EbInterface61Validator();
 
@@ -68,12 +71,36 @@ class EndToEndGenerationTest {
         .isEqualTo(normalize(committedTwin));
   }
 
+  @Test
+  void corpusCopyMatchesTheSamplesTwin() throws IOException {
+    String committedTwin = Files.readString(SAMPLE_XML_TWIN, StandardCharsets.UTF_8);
+    String corpusCopy = readClasspathResource(CORPUS_B2G_FULL_RESOURCE);
+
+    // corpus/README.md claims corpus/valid/b2g-full.xml and the samples twin are the same pipeline
+    // output pinned twice; this assertion is what makes that claim true rather than aspirational.
+    assertThat(normalize(corpusCopy))
+        .as(
+            "corpus/valid/b2g-full.xml must equal %s (both pin the same pipeline output)",
+            SAMPLE_XML_TWIN)
+        .isEqualTo(normalize(committedTwin));
+  }
+
   /** Runs the JSON → canonical → ebInterface 6.1 chain for the committed B2G sample. */
   private static String generateFromSample() throws IOException {
     try (InputStream json = Files.newInputStream(SAMPLE_JSON)) {
       Invoice invoice = new InvoiceJsonReader().read(json);
       Ebi61InvoiceType ebi = new InvoiceToEbInterface61Mapper().map(invoice);
       return new EbInterface61Strategy().write(ebi);
+    }
+  }
+
+  private static String readClasspathResource(String resource) throws IOException {
+    try (InputStream in =
+        EndToEndGenerationTest.class.getClassLoader().getResourceAsStream(resource)) {
+      if (in == null) {
+        throw new IOException("Missing classpath resource: " + resource);
+      }
+      return new String(in.readAllBytes(), StandardCharsets.UTF_8);
     }
   }
 

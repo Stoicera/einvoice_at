@@ -8,7 +8,9 @@ import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import org.w3c.dom.Document;
+import org.xml.sax.ErrorHandler;
 import org.xml.sax.SAXException;
+import org.xml.sax.SAXParseException;
 
 /**
  * Hardened DOM parsing at the system boundary (Engineering Standards §4).
@@ -34,6 +36,7 @@ public final class SecureXml {
   public static Optional<Document> parse(byte[] xml) {
     try {
       DocumentBuilder builder = hardenedFactory().newDocumentBuilder();
+      builder.setErrorHandler(QUIET_ERROR_HANDLER);
       Document document = builder.parse(new ByteArrayInputStream(xml));
       return Optional.of(document);
     } catch (ParserConfigurationException | SAXException | IOException e) {
@@ -42,6 +45,32 @@ public final class SecureXml {
       return Optional.empty();
     }
   }
+
+  /**
+   * Without an explicit {@link ErrorHandler}, JAXP installs a default one that prints a {@code
+   * [Fatal Error] ...} line to {@code System.err} for every malformed document — noise on every
+   * negative test/corpus fixture. This handler restores the abort-on-error/fatalError behavior the
+   * pipeline relies on (both are re-thrown so {@link #parse(byte[])}'s catch clause still turns
+   * them into {@link Optional#empty()}) without ever printing.
+   */
+  private static final ErrorHandler QUIET_ERROR_HANDLER =
+      new ErrorHandler() {
+        @Override
+        public void warning(SAXParseException exception) {
+          // Recoverable, compliance-irrelevant: swallowed on purpose, same as before minus the
+          // stderr line.
+        }
+
+        @Override
+        public void error(SAXParseException exception) throws SAXParseException {
+          throw exception;
+        }
+
+        @Override
+        public void fatalError(SAXParseException exception) throws SAXParseException {
+          throw exception;
+        }
+      };
 
   private static DocumentBuilderFactory hardenedFactory() throws ParserConfigurationException {
     DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();

@@ -10,6 +10,7 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -56,7 +57,7 @@ class CorpusTest {
         report.findings().stream()
             .filter(finding -> isComplianceAffecting(finding.severity()))
             .map(Finding::ruleId)
-            .collect(java.util.stream.Collectors.toUnmodifiableSet());
+            .collect(Collectors.toUnmodifiableSet());
 
     assertThat(actualRuleIds)
         .as("compliance-affecting (ERROR/WARN) rule ids for %s", resource)

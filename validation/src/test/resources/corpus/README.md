@@ -54,8 +54,10 @@ The fully-populated B2G invoice: two taxed lines (20 % and 10 %), Auftragsrefere
 SEPA payment details, due date and payment terms. **Provenance:** this file is the byte-for-byte
 output of the real generation pipeline for `samples/invoice-b2g-sample.json`
 (`InvoiceJsonReader` → `InvoiceToEbInterface61Mapper` → `EbInterface61Strategy.write`); it is the same
-artifact committed as `samples/invoice-b2g-sample.ebinterface.xml`, and `EndToEndGenerationTest` pins
-both to the live pipeline output. The five `invalid/` files below are each derived from this document
+artifact committed as `samples/invoice-b2g-sample.ebinterface.xml`. `EndToEndGenerationTest` pins the
+samples twin byte-for-byte against the live pipeline output, and separately pins this corpus copy
+byte-for-byte against the samples twin — so all three are provably identical, transitively including
+the live pipeline output. The five `invalid/` files below are each derived from this document
 by introducing **exactly one** defect, so the difference under test is isolated to a single edit.
 
 ### `invalid/malformed.xml`
