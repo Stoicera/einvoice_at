@@ -16,6 +16,7 @@ import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.repository.Repository;
 
 /**
  * SPEC §2's first cross-module rule set: "only {@code app} knows the database". Every lib module
@@ -42,17 +43,23 @@ import org.junit.jupiter.api.Test;
  *       {@link #PERSISTENCE_TECH_EXCEPTIONS}); every other class is held to the rule with no
  *       blanket exemption.
  *   <li>{@link #controllersDoNotDependOnRepositoriesDirectly()} — {@code ..app.api..} controllers
- *       reach persistence only through a service or security component, never a {@code
- *       ..app.persistence..} {@code *Repository} directly. {@code InvoiceController}/{@code
- *       ReportController} already followed this shape (T6/T7: {@code InvoiceService}/{@code
- *       ReportService} own their repositories); {@code ApiKeyController} did not — it held {@code
- *       ApiKeyRepository} directly. Task 10 extracted {@code ApiKeyService} (in {@code
- *       ..app.security..}, alongside {@code CurrentTenant}/{@code ApiKeyAuthFilter}, which already
- *       held repositories directly as security-layer components — this rule is about controllers,
- *       not about "app.security may never touch persistence") so the rule holds without weakening.
- *       Note the rule does not forbid controllers from depending on {@code ..app.persistence..}
- *       <em>entities</em> (e.g. {@code TenantEntity}, returned by {@code CurrentTenant.require}) —
- *       that is the shape T6/T7 actually built, not a layering this task invents.
+ *       reach persistence only through a service or security component, never a Spring Data
+ *       repository directly. {@code InvoiceController}/{@code ReportController} already followed
+ *       this shape (T6/T7: {@code InvoiceService}/{@code ReportService} own their repositories);
+ *       {@code ApiKeyController} did not — it held {@code ApiKeyRepository} directly. Task 10
+ *       extracted {@code ApiKeyService} (in {@code ..app.security..}, alongside {@code
+ *       CurrentTenant}/{@code ApiKeyAuthFilter}, which already held repositories directly as
+ *       security-layer components — this rule is about controllers, not about "app.security may
+ *       never touch persistence") so the rule holds without weakening. Hardened in the Task 10 fix
+ *       wave from a name-based predicate ({@code ..app.persistence..} package + simple name ending
+ *       {@code Repository}) to a type-based one (assignable to {@code
+ *       org.springframework.data.repository.Repository}), which also catches a {@code
+ *       *RepositoryImpl} fragment or a renamed repository interface that the old, name-based
+ *       predicate would have missed; the name-based clause is kept OR'd in as belt-and-suspenders,
+ *       but the assignable-to predicate is the load-bearing part. Note the rule does not forbid
+ *       controllers from depending on {@code ..app.persistence..} <em>entities</em> (e.g. {@code
+ *       TenantEntity}, returned by {@code CurrentTenant.require}) — that is the shape T6/T7
+ *       actually built, not a layering this task invents.
  *   <li>{@link #coreStaysJdkOnlyAcrossTheWholeClasspath()} — {@code CoreArchitectureTest} already
  *       asserts this from {@code core}'s own, narrower import; this is the same assertion evaluated
  *       against the full cross-module import, cheap insurance against a future dependency reaching
@@ -146,11 +153,19 @@ class ArchitectureTest {
         .resideInAPackage("com.stoicera.einvoice.app.api..")
         .should()
         .dependOnClassesThat(
-            JavaClass.Predicates.resideInAPackage("com.stoicera.einvoice.app.persistence..")
-                .and(JavaClass.Predicates.simpleNameEndingWith("Repository")))
+            // Type-based and load-bearing: catches any Spring Data repository interface — including
+            // a *RepositoryImpl fragment or a renamed repository that would not end in "Repository"
+            // — by what it structurally is (assignable to the Spring Data marker interface), not by
+            // what it happens to be called. The package/name clause is kept only as an OR'd
+            // belt-and-suspenders on top, never the sole guard.
+            JavaClass.Predicates.assignableTo(Repository.class)
+                .or(
+                    JavaClass.Predicates.resideInAPackage("com.stoicera.einvoice.app.persistence..")
+                        .and(JavaClass.Predicates.simpleNameEndingWith("Repository"))))
         .because(
             "controllers reach persistence only through a service or security component"
-                + " (InvoiceService/ReportService/ApiKeyService), never a *Repository directly")
+                + " (InvoiceService/ReportService/ApiKeyService), never a Spring Data repository"
+                + " directly (type-based: assignable to org.springframework.data.repository.Repository)")
         .check(CLASSES);
   }
 

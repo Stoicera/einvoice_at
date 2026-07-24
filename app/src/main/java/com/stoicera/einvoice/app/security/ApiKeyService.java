@@ -20,8 +20,12 @@ import org.springframework.web.server.ResponseStatusException;
  * a security concern rather than a business one (unlike {@code InvoiceService}/{@code
  * ReportService} in their own {@code ..app.invoice../..app.report..} packages).
  *
- * <p>Behaviour is unchanged from the pre-extraction controller: this is a mechanical move, not a
- * redesign.
+ * <p>Extraction also added an intentional behaviour change over the pre-extraction controller: the
+ * controller performed the key/audit write and the audit write as two independent operations (no
+ * enclosing transaction), so a failure recording the audit event left an orphaned, un-audited key
+ * row committed. {@link #create} and {@link #revoke} are {@code @Transactional} here, matching
+ * {@code InvoiceService}'s create path, so the two writes commit or roll back together — see each
+ * method's Javadoc and {@code ApiKeyServiceTransactionIT}.
  */
 @Service
 public class ApiKeyService {
@@ -40,7 +44,13 @@ public class ApiKeyService {
    */
   public record CreatedKey(ApiKeyEntity entity, ApiKeys.GeneratedKey generated) {}
 
-  /** Mints a new key for {@code tenantId} and records the {@code API_KEY_CREATED} audit event. */
+  /**
+   * Mints a new key for {@code tenantId} and records the {@code API_KEY_CREATED} audit event.
+   *
+   * <p>Deliberately atomic: the key row and its audit event are written in one transaction, so if
+   * {@code audit.record} fails the key insert rolls back too — no key is ever left persisted
+   * without a corresponding audit trail. Proven by {@code ApiKeyServiceTransactionIT}.
+   */
   @Transactional
   public CreatedKey create(UUID tenantId, String name) {
     ApiKeys.GeneratedKey generated = ApiKeys.generate();
@@ -51,12 +61,17 @@ public class ApiKeyService {
   }
 
   /** Lists {@code tenantId}'s keys (active and revoked), newest first. */
+  @Transactional(readOnly = true)
   public List<ApiKeyEntity> list(UUID tenantId) {
     return apiKeys.findByTenantIdOrderByCreatedAtDesc(tenantId);
   }
 
   /**
    * Revokes one of {@code tenantId}'s keys and records the {@code API_KEY_REVOKED} audit event.
+   *
+   * <p>Deliberately atomic: the revocation write and its audit event share one transaction, so a
+   * failure recording the audit event rolls the revocation back too — the key is never left
+   * silently revoked with no audit trail.
    *
    * @throws ResponseStatusException 404 if no key with {@code id} exists for this tenant
    */
