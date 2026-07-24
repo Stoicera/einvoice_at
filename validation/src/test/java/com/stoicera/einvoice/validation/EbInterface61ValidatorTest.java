@@ -108,4 +108,30 @@ class EbInterface61ValidatorTest {
     assertThat(report.isValid()).isTrue();
     assertThat(report.findingsOf(Severity.ERROR)).isEmpty();
   }
+
+  @Test
+  void validEbInterface61WithValidIbanIsValid() {
+    ValidationReport report =
+        validator.validate(TestDocuments.bytes(TestDocuments.validEbInterface61WithValidIban()));
+
+    assertThat(report.sourceFormat()).isEqualTo("ebinterface-6.1");
+    assertThat(report.isValid()).isTrue();
+    assertThat(report.findings()).isEmpty();
+  }
+
+  @Test
+  void documentViolatingBothAtRulesReportsBothInPipelineOrder() {
+    ValidationReport report =
+        validator.validate(TestDocuments.bytes(TestDocuments.ebInterface61ViolatingBothAtRules()));
+
+    assertThat(report.sourceFormat()).isEqualTo("ebinterface-6.1");
+    assertThat(report.isValid()).isFalse();
+    // Both AT-B2G rules fire, and the report preserves pipeline order: the Schematron stage
+    // (AT-B2G-01) runs before the business-rule stage (AT-B2G-02), so that is the finding order.
+    assertThat(report.findings())
+        .extracting(Finding::ruleId)
+        .containsExactly("AT-B2G-01", "AT-B2G-02");
+    assertThat(report.findings())
+        .allSatisfy(finding -> assertThat(finding.severity()).isEqualTo(Severity.ERROR));
+  }
 }

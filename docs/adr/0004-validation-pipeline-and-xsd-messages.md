@@ -60,11 +60,33 @@ diagnostic (e.g. `cvc-complex-type.2.4.a: ...`).
    the cost is paid on first validation, not at class load, and the JVM class-init lock makes
    publication safe.
 
+5. **Java business rules operate on the parsed tree, unmarshalled from the hardened DOM, and are
+   deliberately narrow (M2 / Task 8).** Rules that read more naturally as Java than as XPath live in
+   `BusinessRuleStage`, gated exactly like Schematron: they run only on an XSD-valid document. The
+   first such rule is `AT-B2G-02` — every `IBAN` present under
+   `PaymentMethod/UniversalBankTransaction/BeneficiaryAccount` must pass the core `Iban` mod-97
+   checksum (the 6.1 XSD only bounds an IBAN's length, so a transposed digit is schema-clean). The
+   rule is intentionally about IBANs that are *present*: a missing payment method, a non-transfer
+   payment method, or a beneficiary account without an `IBAN` element is **not** a finding here.
+   Payment-completeness for B2G (is an IBAN *required*?) is a separate, later concern, not smuggled
+   into a checksum rule. The finding never echoes the IBAN — it is bank-account PII, so `Iban`
+   exposes only a throwing factory and the finding names the account by its 1-based position in both
+   the message (`IBAN im Empfängerkonto <n> …`) and the location
+   (`/Invoice/PaymentMethod/UniversalBankTransaction/BeneficiaryAccount[<n>]/IBAN`). To honour the
+   "parse untrusted bytes exactly once" property (see Konsequenzen), `ValidationContext.ebiInvoice()`
+   unmarshals the tree from the already-hardened `dom()` rather than re-reading the raw bytes: the
+   formats strategy gained a `read(org.w3c.dom.Node)` overload alongside `read(byte[])`, sharing one
+   lenient error-collection body, so the JAXB unmarshal reuses the XXE-safe DOM instead of opening a
+   second, unhardened parse.
+
 ## Konsequenzen
 
 - Tasks 7–10 consume these as fixed contracts: the stage order, the stop rules, the rule ids
   (`XML-01`, `FORMAT-01`, `FORMAT-02`, `EBI61-XSD`, and the later `AT-B2G-*`), the `sourceFormat`
-  values and `PROFILE_AT_B2G`. Changing any of them is a breaking change to those tasks.
+  values and `PROFILE_AT_B2G`. Changing any of them is a breaking change to those tasks. The report
+  preserves pipeline order, so findings from a schema-valid document appear Schematron-first
+  (`AT-B2G-01`) then business-rule (`AT-B2G-02`); the corpus and CLI tasks assert this order and the
+  exact `AT-B2G-02` message/location text.
 - `messageDe` findings whose technical detail is itself English (Xerces has no German translation for
   that particular built-in message, so the `Locale.GERMAN` run falls back to its own default) are a
   known, accepted gap, not a bug. If product wants fully-German XSD detail later, the fix is a curated
@@ -79,4 +101,8 @@ diagnostic (e.g. `cvc-complex-type.2.4.a: ...`).
   whether it `isValid()` to decide whether to stop after XSD, rather than re-implementing the
   ERROR-severity check.
 - The XSD stage depends only on the securely parsed DOM, so the same hardening protects every stage
-  downstream; no stage re-parses untrusted bytes.
+  downstream; no stage re-parses untrusted bytes. This is now literally true end to end: the
+  business-rule stage reads the JAXB tree via `ValidationContext.ebiInvoice()`, which unmarshals from
+  the hardened `dom()` through the formats `read(Node)` overload — the untrusted upload is parsed
+  exactly once, by `SecureXml`. The strategy keeps `read(byte[])` for callers outside the pipeline
+  (e.g. the mapping module) that legitimately start from bytes.

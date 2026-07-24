@@ -15,6 +15,19 @@ import java.nio.charset.StandardCharsets;
  */
 public final class TestDocuments {
 
+  /**
+   * A structurally correct IBAN that passes the mod-97 checksum — the ECB reference example for
+   * Austria (see {@code Iban}'s Javadoc).
+   */
+  public static final String VALID_IBAN = "AT611904300234573201";
+
+  /**
+   * The same IBAN with its last check digit flipped: correct shape and length (so it clears the
+   * ebInterface 6.1 XSD, which only bounds the length) but a failing mod-97 checksum — the {@code
+   * AT-B2G-02} case.
+   */
+  public static final String CHECKSUM_BROKEN_IBAN = "AT611904300234573202";
+
   private TestDocuments() {}
 
   /**
@@ -91,6 +104,80 @@ public final class TestDocuments {
    */
   public static String ebInterface61BlankOrderReference() {
     return validEbInterface61().replace("4021-2024", "   ");
+  }
+
+  /**
+   * The valid AT-B2G document plus a {@code PaymentMethod/UniversalBankTransaction} carrying a
+   * single beneficiary account whose {@code IBAN} passes the mod-97 checksum — fully compliant, the
+   * {@code AT-B2G-02} happy path.
+   */
+  public static String validEbInterface61WithValidIban() {
+    return withBeneficiaryAccounts(validEbInterface61(), VALID_IBAN);
+  }
+
+  /**
+   * The valid AT-B2G document plus one beneficiary account whose {@code IBAN} fails the mod-97
+   * checksum — XSD- and Schematron-clean, so the only finding is {@code AT-B2G-02}.
+   */
+  public static String ebInterface61WithBrokenIban() {
+    return withBeneficiaryAccounts(validEbInterface61(), CHECKSUM_BROKEN_IBAN);
+  }
+
+  /**
+   * Two beneficiary accounts, the first valid and the second checksum-broken — proves the finding
+   * names the offending account by its 1-based position (account 2), not the first one.
+   */
+  public static String ebInterface61WithSecondAccountBrokenIban() {
+    return withBeneficiaryAccounts(validEbInterface61(), VALID_IBAN, CHECKSUM_BROKEN_IBAN);
+  }
+
+  /**
+   * A {@code PaymentMethod/UniversalBankTransaction} whose single beneficiary account carries no
+   * {@code IBAN} element at all (only a {@code BankAccountOwner}). {@code AT-B2G-02} checks the
+   * IBANs that are present; a missing IBAN is the XSD's concern, not this rule's, so this yields
+   * nothing.
+   */
+  public static String ebInterface61WithBeneficiaryAccountButNoIban() {
+    return withPaymentMethod(
+        validEbInterface61(),
+        """
+              <BeneficiaryAccount>
+                <BankAccountOwner>Muster GmbH</BankAccountOwner>
+              </BeneficiaryAccount>
+        """);
+  }
+
+  /**
+   * Violates <em>both</em> Austrian business rules at once: no {@code OrderReference} ({@code
+   * AT-B2G-01}) and a checksum-broken {@code IBAN} ({@code AT-B2G-02}). Still XSD-valid, so both
+   * the Schematron and the business-rule stage run and each contributes its finding.
+   */
+  public static String ebInterface61ViolatingBothAtRules() {
+    return withBeneficiaryAccounts(ebInterface61WithoutOrderReference(), CHECKSUM_BROKEN_IBAN);
+  }
+
+  private static String withBeneficiaryAccounts(String base, String... ibans) {
+    StringBuilder accounts = new StringBuilder();
+    for (String iban : ibans) {
+      accounts
+          .append("      <BeneficiaryAccount>\n")
+          .append("        <IBAN>")
+          .append(iban)
+          .append("</IBAN>\n")
+          .append("      </BeneficiaryAccount>\n");
+    }
+    return withPaymentMethod(base, accounts.toString());
+  }
+
+  private static String withPaymentMethod(String base, String beneficiaryAccounts) {
+    return base.replace(
+        "  <PayableAmount>120.00</PayableAmount>\n",
+        "  <PayableAmount>120.00</PayableAmount>\n"
+            + "  <PaymentMethod>\n"
+            + "    <UniversalBankTransaction>\n"
+            + beneficiaryAccounts
+            + "    </UniversalBankTransaction>\n"
+            + "  </PaymentMethod>\n");
   }
 
   /**

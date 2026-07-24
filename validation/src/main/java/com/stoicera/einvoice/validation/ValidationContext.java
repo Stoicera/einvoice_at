@@ -60,10 +60,16 @@ public final class ValidationContext {
   /**
    * The leniently parsed ebInterface 6.1 document, read at most once; empty when the bytes do not
    * parse into a usable 6.1 tree. Used by the Schematron and business-rule stages.
+   *
+   * <p>The tree is unmarshalled from the already-hardened {@link #dom()} rather than re-read from
+   * the raw bytes, so the untrusted input is parsed exactly once, through {@code SecureXml}'s
+   * XXE-safe {@code DocumentBuilder}. No usable DOM (malformed or forbidden input) therefore means
+   * no invoice.
    */
   public Optional<Ebi61InvoiceType> ebiInvoice() {
     if (!invoiceParsed) {
-      invoice = new EbInterface61Strategy().read(xml).document();
+      invoice =
+          dom().map(document -> new EbInterface61Strategy().read(document).document()).orElse(null);
       invoiceParsed = true;
     }
     return Optional.ofNullable(invoice);

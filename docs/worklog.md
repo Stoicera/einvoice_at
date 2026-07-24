@@ -1,5 +1,50 @@
 # Worklog — einvoice-at
 
+## 2026-07-24 — M2 Task 8: IBAN business rule (AT-B2G-02) + full AT-B2G pipeline
+
+**What**
+
+- New `BusinessRuleStage` (validation): rule `AT-B2G-02` — every `IBAN` present under
+  `PaymentMethod/UniversalBankTransaction/BeneficiaryAccount` must pass the core `Iban` mod-97
+  checksum. Deliberately narrow: no payment method / non-transfer method / account without an `IBAN`
+  element is not a finding (structural presence is the XSD's job; B2G payment-completeness is a later
+  milestone). Finding never echoes the IBAN (bank PII) — `Iban` has only a throwing factory, so the
+  stage catches `InvariantViolationException`; message and location name the account by 1-based
+  position: `IBAN im Empfängerkonto <n> ist ungültig (Prüfsummenfehler).` /
+  `.../BeneficiaryAccount[<n>]/IBAN`.
+- Wired as the last stage in `EbInterface61Validator`, gated exactly like Schematron (runs only on an
+  XSD-valid tree). Report preserves pipeline order → `AT-B2G-01` then `AT-B2G-02`; facade test
+  asserts `containsExactly`.
+- Formats: new `read(org.w3c.dom.Node)` overload on `EbInterfaceVersionStrategy`, 6.1 impl unmarshals
+  a fresh `EbInterface61Marshaller` from the DOM (verified `IJAXBReader.read(Node)` via javap); both
+  read overloads share one lenient error-collection body. `ValidationContext.ebiInvoice()` now
+  unmarshals from the hardened `dom()` instead of re-reading raw bytes — closes the Task 6 review gap
+  (untrusted upload parsed exactly once, through `SecureXml`). `read(byte[])` kept for non-pipeline
+  callers (mapping).
+- ADR-0004 extended (decision 5 + Konsequenzen): business-rule stage, DOM-based `ebiInvoice()`, the
+  "parse exactly once" property now literally end-to-end, and the completeness-rule scoping note.
+
+**Decisions**
+
+- Business rules that read more naturally as Java than XPath live in `BusinessRuleStage` over the
+  parsed JAXB tree; XPath-shaped rules stay in Schematron. Both gated on XSD-clean.
+- `AT-B2G-02` rule id, DE/EN message templates and location format are a fixed contract for the
+  corpus and CLI tasks (per the brief).
+
+**Verification**
+
+- TDD: RED first — formats DOM test (compile: no `read(Node)`), facade "both rules" test
+  (`["AT-B2G-01"]` vs expected `["AT-B2G-01","AT-B2G-02"]`); GREEN after implement.
+- `./mvnw verify` green across all 9 modules. formats-ebinterface 15 tests (JaCoCo 96.15 line /
+  87.50 branch, gate 90/85); validation 46 tests (JaCoCo 96.88 / 88.89, gate 90/85). The
+  `[Fatal Error]` lines in output are Xerces stderr from the malformed/XXE negative fixtures, not
+  failures.
+
+**Next**
+
+- M2 Task 9 (round-trip corpus) / Task 10 (CLI): consume the `AT-B2G-*` contract and assert the
+  `AT-B2G-02` message/location text and pipeline finding order.
+
 ## 2026-07-24 — M2 Task 7: own AT-B2G Schematron stage (Auftragsreferenz rule)
 
 **What**

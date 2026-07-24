@@ -3,6 +3,7 @@ package com.stoicera.einvoice.validation;
 import com.stoicera.einvoice.core.validation.Finding;
 import com.stoicera.einvoice.core.validation.Severity;
 import com.stoicera.einvoice.core.validation.ValidationReport;
+import com.stoicera.einvoice.validation.stage.BusinessRuleStage;
 import com.stoicera.einvoice.validation.stage.FormatDetectionStage;
 import com.stoicera.einvoice.validation.stage.SchematronStage;
 import com.stoicera.einvoice.validation.stage.XsdValidationStage;
@@ -18,7 +19,9 @@ import java.util.List;
  * order and stops at the first stage that makes later stages meaningless: secure DOM parse ({@code
  * XML-01}) → format detection ({@code FORMAT-01}/{@code FORMAT-02}) → XSD ({@code EBI61-XSD}; a
  * structurally invalid document cannot be meaningfully checked by Schematron or business rules) →
- * our own AT-B2G Schematron ({@code AT-B2G-nn}; evaluated only on a schema-valid tree).
+ * our own AT-B2G Schematron ({@code AT-B2G-nn}; evaluated only on a schema-valid tree) → our
+ * hand-written AT-B2G business rules ({@code AT-B2G-nn}; e.g. the IBAN mod-97 check, also on a
+ * schema-valid tree). Findings appear in the report in this pipeline order.
  */
 public final class EbInterface61Validator {
 
@@ -37,6 +40,7 @@ public final class EbInterface61Validator {
   private final FormatDetectionStage formatDetection = new FormatDetectionStage();
   private final XsdValidationStage xsdValidation = new XsdValidationStage();
   private final SchematronStage schematron = new SchematronStage();
+  private final BusinessRuleStage businessRules = new BusinessRuleStage();
 
   /**
    * Validates {@code xml} and returns the report.
@@ -74,6 +78,11 @@ public final class EbInterface61Validator {
     // schema-valid, so the XPath rules evaluate against a well-formed 6.1 tree; its findings (e.g.
     // AT-B2G-01) are aggregated into the report alongside any (currently none) XSD warnings.
     findings.addAll(schematron.apply(ctx));
+
+    // Stage 4 — hand-written AT-B2G business rules over the parsed 6.1 tree (e.g. AT-B2G-02, the
+    // IBAN mod-97 check). Same gating as Schematron (a schema-valid tree), and it runs last, so its
+    // findings follow the Schematron findings in report order.
+    findings.addAll(businessRules.apply(ctx));
 
     return report(SOURCE_EBINTERFACE_61, findings);
   }
