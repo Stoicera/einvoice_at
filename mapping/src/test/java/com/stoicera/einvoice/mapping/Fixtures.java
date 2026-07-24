@@ -127,8 +127,7 @@ public final class Fixtures {
   }
 
   /**
-   * An invoice with a tax-exempt line (category E). The caller must supply the exemption reason;
-   * the mapper must echo both its code and text into the tax breakdown.
+   * The exemption reason (code + text) that {@link #exemptInvoice()} attaches to its EXEMPT line.
    */
   public static VatExemptionReason exemptReason() {
     return new VatExemptionReason("VATEX-EU-G", "Innergemeinschaftliche Lieferung");
@@ -180,6 +179,10 @@ public final class Fixtures {
         .build();
   }
 
+  /**
+   * An invoice with a tax-exempt line (category E). The mapper must echo both the exemption
+   * reason's code and text ({@link #exemptReason()}) into the tax breakdown.
+   */
   public static Invoice exemptInvoice() {
     return Invoice.builder()
         .invoiceNumber("2026-EX-0042")
