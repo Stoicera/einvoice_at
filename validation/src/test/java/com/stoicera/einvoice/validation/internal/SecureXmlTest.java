@@ -37,6 +37,30 @@ class SecureXmlTest {
   }
 
   @Test
+  void refusesInternalEntityExpansionBillionLaughs() {
+    // The billion-laughs DoS uses only INTERNAL entities (no external ref), the vector SecureXml's
+    // Javadoc explicitly claims to defeat. disallow-doctype-decl rejects the document at the
+    // DOCTYPE
+    // declaration, before a single entity is expanded -> empty Optional. (Complements
+    // refusesDoctypeXxePayload, which covers the external-entity flavour.)
+    Optional<Document> dom =
+        SecureXml.parse(TestDocuments.bytes(TestDocuments.billionLaughsPayload()));
+
+    assertThat(dom).isEmpty();
+  }
+
+  @Test
+  void refusesBareDoctypeDeclaration() {
+    // A bare <!DOCTYPE foo> with no entities and no external reference: the parse fails purely
+    // because a DOCTYPE was declared, not because of entity resolution or malformedness. This pins
+    // the mechanism (disallow-doctype-decl) rather than just the empty outcome.
+    Optional<Document> dom =
+        SecureXml.parse(TestDocuments.bytes(TestDocuments.bareDoctypePayload()));
+
+    assertThat(dom).isEmpty();
+  }
+
+  @Test
   void doesNotResolveXIncludeLocalFileDisclosure(@TempDir Path tempDir) throws Exception {
     // XInclude is a namespaced document-body mechanism, resolved independently of
     // DOCTYPE/DTD/entity

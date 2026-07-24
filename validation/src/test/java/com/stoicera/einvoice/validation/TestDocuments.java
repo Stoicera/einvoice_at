@@ -236,6 +236,42 @@ public final class TestDocuments {
   }
 
   /**
+   * The internal-entity "billion laughs" (XML bomb) probe: a {@code DOCTYPE} that declares nested
+   * entities each referencing the previous one, so a naive parser expands {@code &lol3;} to
+   * thousands of characters — the entity-expansion DoS the hardened parser's Javadoc claims to
+   * defeat. There is <em>no</em> external reference here (unlike {@link #xxeDoctypePayload()}), so
+   * this proves the defence holds for the pure in-memory-expansion vector too: the parser rejects
+   * the document the moment it sees the {@code DOCTYPE}, before any entity is expanded.
+   */
+  public static String billionLaughsPayload() {
+    return """
+        <?xml version="1.0"?>
+        <!DOCTYPE lolz [
+          <!ENTITY lol "lol">
+          <!ENTITY lol1 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">
+          <!ENTITY lol2 "&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;">
+          <!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">
+        ]>
+        <lolz>&lol3;</lolz>
+        """;
+  }
+
+  /**
+   * A minimal, entity-free {@code <!DOCTYPE foo>} declaration on an otherwise well-formed document.
+   * It carries no entities and no external reference, so it isolates the mechanism under test: the
+   * parser rejects it purely because a {@code DOCTYPE} was <em>declared</em> ({@code
+   * disallow-doctype-decl}), independent of any entity resolution — distinguishing "rejected
+   * because DOCTYPE disallowed" from "rejected because malformed" (finding C5).
+   */
+  public static String bareDoctypePayload() {
+    return """
+        <?xml version="1.0"?>
+        <!DOCTYPE foo>
+        <foo>content</foo>
+        """;
+  }
+
+  /**
    * A <em>DOCTYPE-free</em> document whose body carries an XInclude text inclusion pointing at
    * {@code href}. XInclude is a namespaced document-body mechanism resolved independently of {@code
    * DOCTYPE}/DTD/entity handling: were the parser XInclude-aware, this would splice the target

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="http://www.ebinterface.at/schema/6p1/" GeneratingSystem="einvoice-at" DocumentType="Invoice" InvoiceCurrency="EUR" Language="de">
+  <InvoiceNumber>2026-EX-0042</InvoiceNumber>
+  <InvoiceDate>2026-07-12</InvoiceDate>
+  <Biller>
+    <VATIdentificationNumber>ATU55555555</VATIdentificationNumber>
+    <Address>
+      <Name>Export Öl GmbH</Name>
+      <Street>Hafenstraße 7</Street>
+      <Town>Wien</Town>
+      <ZIP>1200</ZIP>
+      <Country CountryCode="AT">AT</Country>
+    </Address>
+    <InvoiceRecipientsBillerID>L-100777</InvoiceRecipientsBillerID>
+  </Biller>
+  <InvoiceRecipient>
+    <VATIdentificationNumber>IT12345670017</VATIdentificationNumber>
+    <OrderReference>
+      <OrderID>BBG-2026-EX-0042</OrderID>
+    </OrderReference>
+    <Address>
+      <Name>Abnehmer S.r.l.</Name>
+      <Street>Via Roma 1</Street>
+      <Town>Bozen</Town>
+      <ZIP>39100</ZIP>
+      <Country CountryCode="IT">IT</Country>
+    </Address>
+  </InvoiceRecipient>
+  <Details>
+    <ItemList>
+      <ListLineItem>
+        <PositionNumber>1</PositionNumber>
+        <Description>Lieferung (steuerfrei)</Description>
+        <Quantity Unit="C62">4</Quantity>
+        <UnitPrice>250.00</UnitPrice>
+        <TaxItem>
+          <TaxableAmount>1000.00</TaxableAmount>
+          <TaxPercent TaxCategoryCode="E">0.00</TaxPercent>
+        </TaxItem>
+        <LineItemAmount>1000.00</LineItemAmount>
+      </ListLineItem>
+    </ItemList>
+  </Details>
+  <Tax>
+    <TaxItem>
+      <TaxableAmount>1000.00</TaxableAmount>
+      <TaxPercent TaxCategoryCode="E">0.00</TaxPercent>
+      <TaxAmount>0.00</TaxAmount>
+      <Comment>Steuerbefreiung: E | VATEX-EU-G | Innergemeinschaftliche Lieferung</Comment>
+    </TaxItem>
+  </Tax>
+  <TotalGrossAmount>1000.00</TotalGrossAmount>
+  <PayableAmount>1000.00</PayableAmount>
+</Invoice>
