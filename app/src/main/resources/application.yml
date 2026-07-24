@@ -21,6 +21,18 @@ spring:
   flyway:
     enabled: true
 
+  # Application-layer cap on POST /api/v1/validate uploads (SPEC section 4): 2 MB, well below the
+  # validator's own defensive 20 MB guard (EbInterface61Validator.MAX_INPUT_BYTES), so an oversized
+  # upload is rejected by the servlet container — 413, before a byte reaches the controller — rather
+  # than by the validator's internal XML-02 finding. Namespace verified against the Boot 4.1
+  # spring-boot-servlet module's configuration metadata (MultipartProperties moved there in the 4.1
+  # module split); both bounds are set so a request just under the file cap cannot slip through on
+  # request overhead.
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 2MB
+
 # OAuth2 resource-server (Keycloak) settings, consumed by SecurityConfig's JwtDecoder. Both come
 # from the environment; the compose stack sets OAUTH2_ISSUER_URI to the Keycloak realm. When an
 # issuer is set, tokens must carry a matching `iss`. jwk-set-uri is derived from the issuer when

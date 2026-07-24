@@ -2,6 +2,7 @@ package com.stoicera.einvoice.app.security;
 
 import com.stoicera.einvoice.app.persistence.TenantEntity;
 import com.stoicera.einvoice.app.persistence.TenantRepository;
+import java.util.Optional;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -62,5 +63,22 @@ public class CurrentTenant {
     }
     throw new IllegalStateException(
         "Unsupported authentication type: " + authentication.getClass().getName());
+  }
+
+  /**
+   * Resolves the tenant for {@code authentication} if it identifies an authenticated principal (a
+   * JWT login or an API key); returns {@link Optional#empty()} for an anonymous caller — either no
+   * authentication at all, or Spring Security's {@code AnonymousAuthenticationToken} (the principal
+   * a {@code permitAll} route still carries).
+   *
+   * <p>Used only by endpoints reachable by both anonymous and authenticated callers ({@code POST
+   * /api/v1/validate}); every tenant-scoped endpoint keeps using {@link #require}.
+   */
+  public Optional<TenantEntity> resolveIfAuthenticated(Authentication authentication) {
+    if (authentication instanceof ApiKeyAuthenticationToken
+        || authentication instanceof JwtAuthenticationToken) {
+      return Optional.of(require(authentication));
+    }
+    return Optional.empty();
   }
 }

@@ -2,6 +2,7 @@ package com.stoicera.einvoice.app.api;
 
 import com.stoicera.einvoice.app.invoice.DuplicateInvoiceException;
 import com.stoicera.einvoice.app.invoice.InvoiceNotFoundException;
+import com.stoicera.einvoice.app.report.ReportNotFoundException;
 import com.stoicera.einvoice.core.InvariantViolationException;
 import com.stoicera.einvoice.mapping.json.InvoiceJsonException;
 import java.net.URI;
@@ -28,12 +29,13 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
  * contrast, never leaks an exception message or class.
  *
  * <p>The class extends {@link ResponseEntityExceptionHandler} so Spring MVC's own exceptions (wrong
- * method, unsupported media type, unreadable body, type-mismatched path/query values, and an
- * oversized upload — {@code MaxUploadSizeExceededException} → 413, the application cap itself is
- * wired in a later task) keep their correct HTTP status; {@link #handleExceptionInternal} then
- * stamps the project's {@code type} URI onto those framework problems too, so the whole API speaks
- * one problem vocabulary. Anything not otherwise mapped falls through to a bare 500 that leaks
- * nothing.
+ * method, unsupported media type, unreadable body, type-mismatched path/query values, a missing
+ * multipart part — {@code MissingServletRequestPartException} → 400 — and an oversized upload —
+ * {@code MaxUploadSizeExceededException} → 413, the application cap being {@code
+ * spring.servlet.multipart.max-file-size}/{@code max-request-size} in {@code application.yml}) keep
+ * their correct HTTP status; {@link #handleExceptionInternal} then stamps the project's {@code
+ * type} URI onto those framework problems too, so the whole API speaks one problem vocabulary.
+ * Anything not otherwise mapped falls through to a bare 500 that leaks nothing.
  */
 @RestControllerAdvice
 public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
@@ -64,6 +66,18 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         "invoice-not-found",
         "Invoice not found",
         "No invoice with the given id exists for this tenant.");
+  }
+
+  /**
+   * Unknown report id, or an id belonging to another tenant — one indistinguishable 404, no oracle.
+   */
+  @ExceptionHandler(ReportNotFoundException.class)
+  ProblemDetail handleReportNotFound(ReportNotFoundException ex) {
+    return problem(
+        HttpStatus.NOT_FOUND,
+        "report-not-found",
+        "Report not found",
+        "No report with the given id exists for this tenant.");
   }
 
   /** The {@code (tenant, invoiceNumber)} uniqueness constraint was violated. */

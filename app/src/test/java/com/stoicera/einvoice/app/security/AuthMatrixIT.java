@@ -2,6 +2,8 @@ package com.stoicera.einvoice.app.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stoicera.einvoice.app.persistence.ApiKeyEntity;
 import com.stoicera.einvoice.app.persistence.ApiKeyRepository;
 import com.stoicera.einvoice.app.persistence.TenantEntity;
@@ -82,10 +84,23 @@ class AuthMatrixIT extends AbstractKeycloakIT {
 
   @Test
   void theValidatorEndpointIsPublicToAnonymousCallers() throws Exception {
-    // POST /api/v1/validate is permitAll, so security does not block an anonymous caller. The
-    // endpoint itself arrives in T7; until then there is no handler, so the request routes to 404 —
-    // crucially NOT 401/403. T7 replaces this with a 200 + ValidationReport assertion.
-    assertThat(post(PROTECTED_VALIDATE)).isEqualTo(404);
+    // POST /api/v1/validate is permitAll, so an anonymous caller reaches the handler and gets a
+    // normal 200 with a ValidationReport for a valid upload — not the 401/403 a protected route
+    // would answer with, and (per ValidateApiIT) no database row is written for this call.
+    MultipartBodies.Multipart multipart =
+        MultipartBodies.singleFilePart("file", "invoice.xml", ValidateApiIT.validFileBytes());
+    HttpResponse<String> response =
+        http.send(
+            HttpRequest.newBuilder(URI.create("http://localhost:" + port + PROTECTED_VALIDATE))
+                .header("Content-Type", multipart.contentType())
+                .POST(HttpRequest.BodyPublishers.ofByteArray(multipart.body()))
+                .build(),
+            HttpResponse.BodyHandlers.ofString());
+
+    assertThat(response.statusCode()).isEqualTo(200);
+    JsonNode payload = new ObjectMapper().readTree(response.body());
+    assertThat(payload.get("id").isNull()).isTrue();
+    assertThat(payload.get("report").get("valid").asBoolean()).isTrue();
   }
 
   private static final String PROTECTED_VALIDATE = "/api/v1/validate";
@@ -101,14 +116,5 @@ class AuthMatrixIT extends AbstractKeycloakIT {
       builder.header(headerName, headerValue);
     }
     return http.send(builder.build(), HttpResponse.BodyHandlers.discarding()).statusCode();
-  }
-
-  private int post(String path) throws Exception {
-    return http.send(
-            HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
-                .POST(HttpRequest.BodyPublishers.noBody())
-                .build(),
-            HttpResponse.BodyHandlers.discarding())
-        .statusCode();
   }
 }
