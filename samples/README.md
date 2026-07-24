@@ -23,6 +23,28 @@ the golden-file corpus task (M2 Task 9): `InvoiceJsonReader` → `InvoiceToEbInt
 (line-ending-normalized), so the JSON sample is also the input fixture for the milestone's
 end-to-end acceptance test.
 
+## `invoice-b2g-sample.ebinterface.xml`
+
+The ebInterface 6.1 XML twin of `invoice-b2g-sample.json`: exactly what the generation pipeline
+(`InvoiceJsonReader` → `InvoiceToEbInterface61Mapper` → `EbInterface61Strategy.write`) writes for that
+JSON, committed verbatim. `validation`'s `EndToEndGenerationTest` regenerates it in memory on every
+run and asserts byte-for-byte equality (line endings normalized: CR stripped, trailing newline
+ignored), so this file provably *is* the pipeline's own output and cannot silently drift from the
+mapper. The identical bytes also serve as the `valid/b2g-full.xml` entry of the validation golden-file
+corpus (`validation/src/test/resources/corpus/`).
+
+**Milestone Abnahme (owner action).** This twin is the artifact uploaded **once** to the official
+ebInterface portal check (<https://formvalidation.brz.gv.at/> / the WKO ebInterface validator) to
+confirm the platform's output passes an authoritative external validator, not only our own. That is a
+manual, one-time owner step (Sebastian); the automated acceptance lives in `EndToEndGenerationTest`.
+
+**Regeneration.** Do not hand-edit this file. On an *intentional* mapper or writer change,
+`EndToEndGenerationTest.committedTwinMatchesTheFreshlyGeneratedXml` fails and reports the fresh
+pipeline output as its "actual" value; copy that verbatim over this file (and the corpus
+`valid/b2g-full.xml`), re-derive the corpus `invalid/*` files from their single documented defects,
+and re-run the portal check. There is no generator flag or `--generate` mode — the acceptance test is
+the single source of the expected bytes.
+
 ### JSON field reference
 
 | Field | Type | Required | Canonical target | Notes |
