@@ -15,10 +15,13 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -62,6 +65,19 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
   private static final String VALIDATE_PATH = "/api/v1/validate";
 
+  // Deliberately NOT request.getRequestURI().equals(VALIDATE_PATH): getRequestURI() returns the
+  // raw, undecoded, un-normalized URI straight off the wire, while SecurityConfig's
+  // requestMatchers(HttpMethod, "/api/v1/validate") — and the DispatcherServlet's own routing —
+  // resolve the request against a decoded PathContainer via PathPatternRequestMatcher. A raw-string
+  // equals() check is a different, stricter test than the one that actually decides "is this
+  // permitAll /api/v1/validate", so a percent-encoded or matrix-parameterized variant of the same
+  // path (e.g. "/api/v1/%76alidate", "/api/v1/validate;x=y") clears authorization as the public
+  // validator yet fails this raw comparison — an unlimited-anonymous-access bypass of the limiter.
+  // Matching through the identical PathPatternRequestMatcher machinery keeps this filter and
+  // SecurityConfig's authorization rule looking at the same normalized path.
+  private static final RequestMatcher VALIDATE_MATCHER =
+      PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, VALIDATE_PATH);
+
   // Mirrors ApiExceptionHandler's PROBLEM_BASE + slug convention. Filters run outside Spring MVC's
   // dispatch, so ApiExceptionHandler's @RestControllerAdvice never sees a rejection this filter
   // makes — the problem body has to be written here, by hand, in the same vocabulary.
@@ -95,7 +111,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
   @Override
   protected boolean shouldNotFilter(HttpServletRequest request) {
-    return !("POST".equals(request.getMethod()) && VALIDATE_PATH.equals(request.getRequestURI()));
+    return !VALIDATE_MATCHER.matches(request);
   }
 
   @Override

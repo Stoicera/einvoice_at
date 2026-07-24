@@ -83,9 +83,11 @@ public class InvoiceService {
    * Creates an invoice from its raw canonical-JSON request body.
    *
    * <p>The body bytes are consumed exactly once: hashed for the audit trail, then parsed. The
-   * received text is stored verbatim as the canonical form; the extracted columns come from the
-   * parsed {@link Invoice}. The generated ebInterface document is validated and its report
-   * persisted and returned — a report with findings does not stop creation.
+   * received text is stored as the canonical form, as received (the jsonb column normalizes
+   * whitespace/key order — see ADR-0005; byte-exactness is preserved via the audit SHA-256). The
+   * extracted columns come from the parsed {@link Invoice}. The generated ebInterface document is
+   * validated and its report persisted and returned — a report with findings does not stop
+   * creation.
    *
    * @throws com.stoicera.einvoice.mapping.json.InvoiceJsonException the body is not the canonical
    *     JSON shape (mapped to 400)
@@ -135,7 +137,11 @@ public class InvoiceService {
     return new InvoiceCreated(invoiceEntity.getId(), report);
   }
 
-  /** Returns the stored canonical JSON for one of the tenant's invoices, verbatim. */
+  /**
+   * Returns the stored canonical JSON for one of the tenant's invoices, as received (the jsonb
+   * column normalizes whitespace/key order — see ADR-0005; byte-exactness is preserved via the
+   * audit SHA-256).
+   */
   @Transactional(readOnly = true)
   public String canonicalJson(UUID tenantId, UUID id) {
     return invoices
