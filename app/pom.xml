@@ -23,9 +23,96 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
+    <!-- Bean Validation (Jakarta) for the request DTOs the invoices/validate APIs add later.
+         Version Boot-managed. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+    <!-- Persistence: Spring Data JPA (Hibernate ORM 7 via Boot 4.1's dependencyManagement). -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+    <!-- Schema migrations. Boot 4 split each technology's auto-configuration into its own module,
+         so a bare flyway-core does NOT bring Boot's FlywayAutoConfiguration (Flyway then never runs).
+         spring-boot-starter-flyway pulls that auto-configuration module together with flyway-core;
+         flyway-database-postgresql adds the Postgres-specific database support Flyway 10+ splits out
+         of core. All versions Boot-managed. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-flyway</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-database-postgresql</artifactId>
+    </dependency>
+    <!-- PostgreSQL JDBC driver. Runtime scope: the app codes to JPA/Spring, never to the driver
+         API directly. Version Boot-managed. -->
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!-- Library modules the app composes as the milestone's REST layer lands on top of this
+         persistence baseline: canonical model + JSON boundary (core, mapping), ebInterface XML
+         generation (formats-ebinterface) and the validation pipeline (validation). Reactor-versioned
+         siblings, never pinned here. Their Spring-free packages sit OUTSIDE com.stoicera.einvoice.app,
+         so component scanning never picks them up — they are plain classpath libraries. -->
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>core</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>mapping</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>validation</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>formats-ebinterface</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- ph-ebinterface pulls only the Jakarta XML Binding API; the JAXB runtime provider must be
+         supplied by the module that actually marshals ebInterface XML at runtime — that is the app,
+         once the invoices API writes XML. Opt-in exactly as formats-ebinterface does. Version
+         parent-managed. -->
+    <dependency>
+      <groupId>org.glassfish.jaxb</groupId>
+      <artifactId>jaxb-runtime</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Testcontainers: Boot's @ServiceConnection support + the Postgres module. Versions come
+         from Boot 4.1's testcontainers BOM import (testcontainers-bom 2.0.5), never pinned.
+         NOTE: Boot 4.1 ships Testcontainers 2.x, which renamed the Maven modules from the 1.x
+         "postgresql"/"junit-jupiter" the task brief listed to "testcontainers-postgresql"/
+         "testcontainers-junit-jupiter". The 2.x coordinates are used here. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-testcontainers</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-junit-jupiter</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -36,6 +123,23 @@
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <!-- The repo runs its whole suite under Surefire (no Failsafe ceremony). Surefire's default
+             includes match *Test/*Tests only, so the Testcontainers integration tests — named *IT by
+             convention, and the base class every later M3 IT extends — are added explicitly here.
+             This keeps a single test runner while letting `./mvnw verify -pl app` (and plain test)
+             exercise the database ITs. Abstract bases like AbstractPostgresIT carry no @Test and are
+             skipped regardless. -->
+        <configuration>
+          <includes>
+            <include>**/*Test.java</include>
+            <include>**/*Tests.java</include>
+            <include>**/*IT.java</include>
+          </includes>
+        </configuration>
       </plugin>
     </plugins>
   </build>

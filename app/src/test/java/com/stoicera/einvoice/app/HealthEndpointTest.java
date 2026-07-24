@@ -7,8 +7,15 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.web.client.RestClient;
 
+/**
+ * Web/actuator smoke test. It boots the full application context, so once the persistence layer
+ * landed it needs a real datasource; rather than excluding the database auto-configuration (and
+ * coupling the test to Boot-internal auto-configuration class names), it extends {@link
+ * AbstractPostgresIT} and reuses the shared Testcontainers Postgres. The assertion — the health
+ * endpoint reports {@code UP} — is unchanged and now covers the database health contributor too.
+ */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class HealthEndpointTest {
+class HealthEndpointTest extends AbstractPostgresIT {
 
   @LocalServerPort private int port;
 

@@ -2,6 +2,17 @@ services:
   app:
     build: .
     image: einvoice-at:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # The app resolves its datasource from POSTGRES_* (see application.yml). Inside the compose
+      # network the database is reachable at host `postgres` on its internal port 5432; credentials
+      # come from .env. No secrets are hard-coded here.
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-einvoice}
+      POSTGRES_USER: ${POSTGRES_USER:-einvoice}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — copy .env.example to .env and set a generated value}
     ports:
       - "${APP_PORT:-8080}:8080"
     restart: unless-stopped

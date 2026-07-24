@@ -2,6 +2,25 @@ spring:
   application:
     name: einvoice-at
 
+  # Datasource is configured purely from environment variables (names aligned with the compose
+  # POSTGRES_* set in .env.example); no credentials live in this file. The localhost/5432 defaults
+  # only make a developer's `./mvnw spring-boot:run` reach a locally exposed Postgres — integration
+  # tests override all of this via Testcontainers @ServiceConnection.
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:einvoice}
+    username: ${POSTGRES_USER:einvoice}
+    password: ${POSTGRES_PASSWORD:}
+
+  jpa:
+    # Flyway owns the schema; Hibernate must never mutate it, only confirm the mapping matches.
+    hibernate:
+      ddl-auto: validate
+    # No open session in the view layer: transactions end at the service boundary.
+    open-in-view: false
+
+  flyway:
+    enabled: true
+
 server:
   port: 8080
 
