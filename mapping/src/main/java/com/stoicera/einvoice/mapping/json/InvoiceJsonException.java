@@ -14,7 +14,9 @@ package com.stoicera.einvoice.mapping.json;
  *
  * <p>Messages carry JSON pointer-ish context (the offending field path) so a caller can locate the
  * problem, but never echo the raw payload value beyond the offending field/property name — the
- * input is untrusted and the message must stay safe to log.
+ * input is untrusted and the message must stay safe to log. The echoed property name and field path
+ * are themselves length-bounded (core's bounded-echo discipline), so an attacker-controlled
+ * document with a huge property name cannot force an unbounded-length exception message.
  */
 public final class InvoiceJsonException extends RuntimeException {
 

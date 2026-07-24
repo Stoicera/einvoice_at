@@ -151,6 +151,23 @@ class InvoiceJsonReaderTest {
   }
 
   @Test
+  void unknownPropertyWithHugeNameThrowsInvoiceJsonExceptionWithBoundedMessage() {
+    // Attacker-controlled JSON could name a property anything; the echoed name/path must not let
+    // that force an unbounded exception message (core's bounded-echo discipline, Texts.safeEcho).
+    String hugeName = "x".repeat(500);
+    String json =
+        MINIMAL_JSON.replace(
+            "\"invoiceNumber\": \"2026-000001\",",
+            "\"invoiceNumber\": \"2026-000001\", \"" + hugeName + "\": \"x\",");
+
+    assertThatThrownBy(() -> reader.read(toStream(json)))
+        .isInstanceOf(InvoiceJsonException.class)
+        .hasMessageContaining("Unknown property")
+        .hasMessageContaining("…")
+        .satisfies(e -> assertThat(e.getMessage()).hasSizeLessThan(200));
+  }
+
+  @Test
   void numericUnitPriceThrowsInvoiceJsonExceptionNamingTheField() {
     String json = MINIMAL_JSON.replace("\"unitPrice\": \"100.00\"", "\"unitPrice\": 100.00");
 

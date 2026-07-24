@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.cfg.CoercionAction;
 import com.fasterxml.jackson.databind.cfg.CoercionInputShape;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.fasterxml.jackson.databind.type.LogicalType;
+import com.stoicera.einvoice.core.internal.Texts;
 import com.stoicera.einvoice.core.invoice.Invoice;
 import com.stoicera.einvoice.core.invoice.InvoiceLine;
 import com.stoicera.einvoice.core.invoice.InvoiceTypeCode;
@@ -125,9 +126,14 @@ public final class InvoiceJsonReader {
       return dto;
     } catch (UnrecognizedPropertyException e) {
       throw new InvoiceJsonException(
-          "Unknown property '" + e.getPropertyName() + "' at " + fieldPath(e), e);
+          "Unknown property '"
+              + Texts.safeEcho(e.getPropertyName())
+              + "' at "
+              + Texts.safeEcho(fieldPath(e)),
+          e);
     } catch (JsonMappingException e) {
-      throw new InvoiceJsonException("Invalid value for field '" + fieldPath(e) + "'", e);
+      throw new InvoiceJsonException(
+          "Invalid value for field '" + Texts.safeEcho(fieldPath(e)) + "'", e);
     } catch (JsonProcessingException e) {
       throw new InvoiceJsonException("Malformed JSON input", e);
     } catch (IOException e) {
