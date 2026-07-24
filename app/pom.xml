@@ -157,6 +157,14 @@
       <artifactId>testcontainers</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- ArchUnit: the first cross-module rule set (T10, SPEC §2) lives here rather than in a
+         lib module, since it is app's test classpath (app + every lib module it depends on) that
+         gives it visibility across the whole com.stoicera.einvoice tree. Scope test, matching the
+         other modules' ArchitectureTests (version/scope managed in the root POM). -->
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit</artifactId>
+    </dependency>
   </dependencies>
 
   <build>
