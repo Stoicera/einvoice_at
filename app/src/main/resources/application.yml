@@ -58,6 +58,12 @@ app:
   limits:
     max-request-body-size: ${MAX_REQUEST_BODY_SIZE:2MB}
 
+  # Cap on the number of ACTIVE (non-revoked) API keys one tenant may hold. Minting was unbounded
+  # before the M3 hostile review. Revoked keys keep their rows for the audit trail but do not count,
+  # so a tenant at the cap makes room by revoking rather than by losing history.
+  api-keys:
+    max-active-per-tenant: ${API_KEYS_MAX_ACTIVE_PER_TENANT:25}
+
   # Per-IP rate limiting on the anonymous side of POST /api/v1/validate only (SecurityConfig wires
   # RateLimitFilter; T8, SPEC section 4). A fresh IP starts with `capacity` tokens and regenerates
   # `refill-per-minute` tokens every 60s (bucket4j "greedy" refill — spread evenly across the

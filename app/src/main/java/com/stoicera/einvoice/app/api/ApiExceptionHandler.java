@@ -6,6 +6,8 @@ import com.stoicera.einvoice.app.invoice.DuplicateInvoiceException;
 import com.stoicera.einvoice.app.invoice.InvoiceNotFoundException;
 import com.stoicera.einvoice.app.problem.Problems;
 import com.stoicera.einvoice.app.report.ReportNotFoundException;
+import com.stoicera.einvoice.app.security.ApiKeyNotFoundException;
+import com.stoicera.einvoice.app.security.TooManyApiKeysException;
 import com.stoicera.einvoice.core.InvariantViolationException;
 import com.stoicera.einvoice.mapping.json.InvoiceJsonException;
 import java.util.Locale;
@@ -79,6 +81,30 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         "report-not-found",
         "Report not found",
         "No report with the given id exists for this tenant.");
+  }
+
+  /**
+   * Unknown API-key id, or one belonging to another tenant — one indistinguishable 404, no oracle.
+   */
+  @ExceptionHandler(ApiKeyNotFoundException.class)
+  ProblemDetail handleApiKeyNotFound(ApiKeyNotFoundException ex) {
+    return problem(
+        HttpStatus.NOT_FOUND,
+        "api-key-not-found",
+        "API key not found",
+        "No API key with the given id exists for this tenant.");
+  }
+
+  /** The tenant already holds the maximum number of active API keys. */
+  @ExceptionHandler(TooManyApiKeysException.class)
+  ProblemDetail handleTooManyApiKeys(TooManyApiKeysException ex) {
+    return problem(
+        HttpStatus.CONFLICT,
+        "api-key-limit-reached",
+        "API key limit reached",
+        "This tenant already holds the maximum of "
+            + ex.getLimit()
+            + " active API keys. Revoke one before creating another.");
   }
 
   /** The {@code (tenant, invoiceNumber)} uniqueness constraint was violated. */

@@ -6,6 +6,9 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.stoicera.einvoice.app.problem.Problems;
+import com.stoicera.einvoice.app.security.ApiKeyNotFoundException;
+import com.stoicera.einvoice.app.security.TooManyApiKeysException;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -61,6 +64,29 @@ class ApiExceptionHandlerTest {
         // Neither the exception's message nor its class name may appear anywhere in the response.
         .doesNotContain(SECRET_DETAIL)
         .doesNotContain("IllegalStateException");
+  }
+
+  @Test
+  void anUnknownApiKeyGetsItsOwnNotFoundSlugRatherThanTheFrameworkDefault() {
+    // ApiKeyService used to throw ResponseStatusException, which left this condition speaking the
+    // framework's generic ".../not-found" type. ADR-0006 promises one slug per condition.
+    ProblemDetail problem =
+        handler.handleApiKeyNotFound(new ApiKeyNotFoundException(UUID.randomUUID()));
+
+    assertThat(problem.getStatus()).isEqualTo(HttpStatus.NOT_FOUND.value());
+    assertThat(problem.getType()).isEqualTo(Problems.type("api-key-not-found"));
+    assertThat(problem.getDetail())
+        .isEqualTo("No API key with the given id exists for this tenant.");
+  }
+
+  @Test
+  void reachingTheApiKeyLimitIsAConflictNamingTheLimit() {
+    ProblemDetail problem = handler.handleTooManyApiKeys(new TooManyApiKeysException(25));
+
+    assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+    assertThat(problem.getType()).isEqualTo(Problems.type("api-key-limit-reached"));
+    // The caller is told the number and how to make room — this is a state they can resolve.
+    assertThat(problem.getDetail()).contains("25").contains("Revoke");
   }
 
   @Test

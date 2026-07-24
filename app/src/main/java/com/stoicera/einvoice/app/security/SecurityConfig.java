@@ -159,7 +159,12 @@ public class SecurityConfig {
     }
     // createDefaultWithValidators keeps the framework's own default validators and appends ours —
     // the same set createDefaultWithIssuer would have produced when only an issuer is configured.
-    decoder.setJwtValidator(JwtValidators.createDefaultWithValidators(additional));
+    // It rejects an empty list outright, so with neither issuer nor audience configured (the
+    // persistence ITs, which send no tokens at all) the decoder is left with the default validator
+    // NimbusJwtDecoder builds for itself, which is the same set.
+    if (!additional.isEmpty()) {
+      decoder.setJwtValidator(JwtValidators.createDefaultWithValidators(additional));
+    }
     return decoder;
   }
 

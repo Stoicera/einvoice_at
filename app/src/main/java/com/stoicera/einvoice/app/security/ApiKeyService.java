@@ -7,10 +7,9 @@ import com.stoicera.einvoice.app.persistence.ApiKeyRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Application service behind the API-key management endpoints: mint, list, revoke — all scoped to
@@ -32,10 +31,15 @@ public class ApiKeyService {
 
   private final ApiKeyRepository apiKeys;
   private final AuditService audit;
+  private final int maxActiveKeysPerTenant;
 
-  public ApiKeyService(ApiKeyRepository apiKeys, AuditService audit) {
+  public ApiKeyService(
+      ApiKeyRepository apiKeys,
+      AuditService audit,
+      @Value("${app.api-keys.max-active-per-tenant}") int maxActiveKeysPerTenant) {
     this.apiKeys = apiKeys;
     this.audit = audit;
+    this.maxActiveKeysPerTenant = maxActiveKeysPerTenant;
   }
 
   /**
@@ -50,9 +54,22 @@ public class ApiKeyService {
    * <p>Deliberately atomic: the key row and its audit event are written in one transaction, so if
    * {@code audit.record} fails the key insert rolls back too — no key is ever left persisted
    * without a corresponding audit trail. Proven by {@code ApiKeyServiceTransactionIT}.
+   *
+   * <p>Bounded by {@code app.api-keys.max-active-per-tenant}: minting was unlimited before the M3
+   * hostile review. Only active keys count, so a tenant at the cap makes room by revoking — the
+   * revoked rows stay for the audit trail.
+   *
+   * @throws TooManyApiKeysException the tenant already holds the maximum number of active keys
    */
   @Transactional
   public CreatedKey create(UUID tenantId, String name) {
+    // Inside the transaction, so the count and the insert see one consistent snapshot. Two truly
+    // simultaneous mints could still both observe limit-1 under READ COMMITTED and land one key
+    // over; that is an acceptable soft bound for an anti-runaway cap, not a security boundary
+    // (unlike the key/audit atomicity above, which is enforced, not best-effort).
+    if (apiKeys.countByTenantIdAndRevokedAtIsNull(tenantId) >= maxActiveKeysPerTenant) {
+      throw new TooManyApiKeysException(maxActiveKeysPerTenant);
+    }
     ApiKeys.GeneratedKey generated = ApiKeys.generate();
     ApiKeyEntity saved =
         apiKeys.save(new ApiKeyEntity(tenantId, name, generated.keyHash(), generated.prefix()));
@@ -73,15 +90,15 @@ public class ApiKeyService {
    * failure recording the audit event rolls the revocation back too — the key is never left
    * silently revoked with no audit trail.
    *
-   * @throws ResponseStatusException 404 if no key with {@code id} exists for this tenant
+   * @throws ApiKeyNotFoundException no key with {@code id} exists for this tenant — including the
+   *     case where it exists for another one, which is deliberately indistinguishable
    */
   @Transactional
   public void revoke(UUID tenantId, UUID id) {
     ApiKeyEntity key =
         apiKeys
             .findByIdAndTenantId(id, tenantId)
-            .orElseThrow(
-                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "API key not found"));
+            .orElseThrow(() -> new ApiKeyNotFoundException(id));
     key.revoke(Instant.now());
     apiKeys.save(key);
     audit.record(tenantId, AuditAction.API_KEY_REVOKED, key.getKeyHash());

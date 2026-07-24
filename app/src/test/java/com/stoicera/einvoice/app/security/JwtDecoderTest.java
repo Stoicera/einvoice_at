@@ -147,6 +147,27 @@ class JwtDecoderTest {
   }
 
   @Test
+  void withNeitherIssuerNorAudienceConfiguredTheDecoderStillBuildsAndStillChecksExpiry()
+      throws Exception {
+    // The persistence ITs run with no issuer and no audience — they send no tokens at all, so the
+    // decoder only has to exist. It very nearly did not: JwtValidators.createDefaultWithValidators
+    // rejects an empty list, so building the validator set unconditionally broke every one of
+    // those contexts. The default validators must still be in force in this configuration, which
+    // the expiry assertion below is what actually proves.
+    JwtDecoder permissive = decoder("", "");
+
+    assertThatCode(() -> permissive.decode(token(ISSUER, AUDIENCE, validExpiry(), signingKey)))
+        .doesNotThrowAnyException();
+    assertThatThrownBy(
+            () ->
+                permissive.decode(
+                    token(
+                        ISSUER, AUDIENCE, Instant.now().minus(Duration.ofMinutes(10)), signingKey)))
+        .isInstanceOf(JwtException.class)
+        .hasMessageContaining("expired");
+  }
+
+  @Test
   void withAnAudienceConfiguredATokenMintedForThisApiIsAccepted() throws Exception {
     Jwt jwt = decoder(ISSUER, AUDIENCE).decode(token(ISSUER, AUDIENCE, validExpiry(), signingKey));
 

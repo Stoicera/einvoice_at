@@ -170,6 +170,25 @@ class ArchitectureTest {
   }
 
   @Test
+  void httpStatusDecisionsStayOutOfServices() {
+    noClasses()
+        .that()
+        .resideOutsideOfPackage("com.stoicera.einvoice.app.api..")
+        .should()
+        .dependOnClassesThat()
+        .haveFullyQualifiedName("org.springframework.web.server.ResponseStatusException")
+        .because(
+            "ResponseStatusException exists only to let non-web code smuggle an HTTP status out of"
+                + " a service; ApiKeyService did exactly that, which also left its 404 speaking the"
+                + " framework's generic not-found type instead of a per-condition slug (ADR-0006)."
+                + " Services throw domain exceptions (InvoiceNotFoundException,"
+                + " ReportNotFoundException, ApiKeyNotFoundException, TooManyApiKeysException) and"
+                + " ApiExceptionHandler owns the status. Filters writing their own problem response"
+                + " are unaffected: they use org.springframework.http.HttpStatus, not this class")
+        .check(CLASSES);
+  }
+
+  @Test
   void coreStaysJdkOnlyAcrossTheWholeClasspath() {
     classes()
         .that()
