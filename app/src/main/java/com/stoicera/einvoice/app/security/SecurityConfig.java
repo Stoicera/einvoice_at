@@ -91,8 +91,7 @@ public class SecurityConfig {
                     jwt -> jwt.decoder(jwtDecoder).jwtAuthenticationConverter(jwtConverter())))
         // Stateless: no HTTP session is created; every request re-authenticates from its token or
         // key. CSRF defends cookie-session browsers, and this API keeps no cookie session, so it is
-        // disabled here (rationale recorded in ADR-0005 — the app security & persistence baseline;
-        // the security section is finalized by the T11 documentation wave). Spring's default
+        // disabled here (rationale recorded in ADR-0006 — auth and API security). Spring's default
         // security response headers are left in place.
         .sessionManagement(
             session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

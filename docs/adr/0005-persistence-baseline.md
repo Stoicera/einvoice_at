@@ -32,10 +32,18 @@ Timestamps are `java.time.Instant` mapped to `timestamptz`.
 **Canonical JSON is the source of truth; XML is never stored.** The full canonical invoice is stored
 as a `jsonb` column (`invoice.canonical`), bound through Hibernate's native
 `@JdbcTypeCode(SqlTypes.JSON)` on a `String` field — no third-party `hibernate-types` dependency.
-Scalar columns (`invoice_number`, `type_code`, `currency`, `payable_amount`, party names, dates) are
-extracted projections for listing, filtering and the `(tenant_id, invoice_number)` uniqueness
-guarantee. ebInterface / UBL XML is always regenerated from the canonical form, never persisted.
-Validation `report.findings` is stored the same JSONB way.
+Because the column is `jsonb`, Postgres *normalizes* what it stores: insignificant whitespace is
+dropped, object keys are ordered and duplicate keys collapsed. The create path writes the received
+request text into the column as-is, but a later `GET` therefore reads back a form that is
+*semantically* equal to the submission, **not guaranteed byte-identical** to it — the canonical
+column is the queryable source of truth, not a byte-verbatim archive. Byte-level fidelity of exactly
+what a tenant submitted is preserved separately, as the SHA-256 of the raw request body recorded on
+the `INVOICE_CREATED` audit event (`audit_event.payload_sha256`): that hash is the tamper-evident
+fingerprint, the JSONB column is the working record. Scalar columns (`invoice_number`, `type_code`,
+`currency`, `payable_amount`, party names, dates) are extracted projections for listing, filtering
+and the `(tenant_id, invoice_number)` uniqueness guarantee. ebInterface / UBL XML is always
+regenerated from the canonical form, never persisted. Validation `report.findings` is stored the same
+JSONB way.
 
 **Fixed-length text where the domain is fixed-length; hashes only.** `currency` is `char(3)` (ISO
 4217) and the SHA-256 columns (`api_key.key_hash`, `audit_event.payload_sha256`) are `char(64)` hex,
@@ -80,5 +88,11 @@ limiting behind a proxy that itself rate-limits is good enough.
   Maven modules are `testcontainers-postgresql` / `testcontainers-junit-jupiter` (renamed from the 1.x
   `postgresql` / `junit-jupiter`), and whose `DockerImageName` parser accepts a digest pin
   (`postgres@sha256:…`) but not the combined `tag@sha256:…` form.
-- Later M3 infrastructure library choices (OpenAPI, rate limiting, the Keycloak test container) are
-  recorded as they land — see the M3 worklog entries and any follow-up ADR.
+- The M3 REST/security layer that lands on top of this baseline records its decisions where they
+  belong: the authentication stack, API-key and tenant model in **ADR-0006**; the springdoc /
+  bucket4j / Testcontainers-Keycloak version provenance and the hand-rolled Keycloak
+  `GenericContainer` choice in the relevant POM and test-base comments and the M3 worklog.
+- Deliberately deferred, recorded here so they are not lost: the GDPR tenant-data-delete endpoint and
+  the anonymous-artefact retention job (SPEC §8) land with the M5 dashboard; OWASP dependency-check in
+  CI, the `/actuator/info` git-sha + build-time endpoint (SPEC §9) and the Traefik forwarded-headers
+  contract for the rate limiter (above) land at M6.

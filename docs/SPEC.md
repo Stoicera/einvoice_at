@@ -65,6 +65,8 @@ Key rules (ArchUnit-enforced as the involved modules gain code; the core rule is
 
 Security: public endpoints = `/`, `/validator`, `POST /validate` (rate-limited, max 2 MB, upload discarded after processing). Everything else: OAuth2 (Keycloak) or `X-Api-Key`. Audit log entries for create/validate/convert with tenant, timestamp, hash of payload (not payload itself).
 
+_M3 sync (2026-07-24):_ Realized under `/api/v1` as built. `POST /invoices` and `POST /validate` each answer with a two-field envelope `{"id", "report"}` — the persisted row's id (`null` for an anonymous `validate`, which persists nothing) plus the `ValidationReport`. The invoice format output shipped this milestone is `GET /invoices/{id}/ebinterface` (the `ubl`/`pdf` variants arrive with their modules, M4). API-key management (`POST`/`GET`/`DELETE /api/v1/api-keys`) is added and restricted to OAuth2 (JWT) logins, so an API key can neither mint nor revoke keys. Every problem+json `type` is a stable URI under `https://einvoice-at.stoicera.com/problems/`. Auth design and honest known limits: [ADR-0006](adr/0006-auth-and-api-security.md). `POST /convert` and `POST /reports/{id}/explain` remain later milestones (M4/M5).
+
 ## 5. Web UI (Thymeleaf + htmx)
 
 Pages: Landing/"Prüfer" (public upload → report, German-first, SEO meta), Report view (findings grouped by severity, "Fehler erklären" button per finding when AI enabled), Dashboard (login): invoice list, create-invoice form (htmx wizard), API-key management. Design: clean, Stoicera-adjacent (dark/gold accents), no framework bloat; Lighthouse ≥ 95 on public pages.
@@ -84,6 +86,8 @@ Pages: Landing/"Prüfer" (public upload → report, German-first, SEO meta), Rep
 
 Postgres schemas: `tenant`, `invoice` (canonical JSONB + extracted columns), `report`, `audit_event`, `api_key` (hash only). Flyway migrations from V1. Retention job: anonymous validation artefacts never persisted; tenant data delete endpoint (GDPR).
 
+_M3 sync (2026-07-24):_ The five "schemas" above are realized as five tables in the single `public` schema (not separate SQL schemas), Flyway from `V1__baseline_schema.sql` — rationale in [ADR-0005](adr/0005-persistence-baseline.md). The "anonymous artefacts never persisted" promise is met and enforced today ([ADR-0006](adr/0006-auth-and-api-security.md)); the tenant-data-delete endpoint and the retention job are deferred to M5 (with the dashboard).
+
 ## 9. Deployment
 
 - `docker-compose.yml`: app, postgres, keycloak (with realm import `dev-realm.json`), mailpit, optional `observability` profile (grafana+prometheus+tempo).
@@ -94,5 +98,5 @@ Postgres schemas: `tenant`, `invoice` (canonical JSONB + extracted columns), `re
 
 - ebInterface 7.0 lands Q4 2026 → `FormatVersionStrategy` interface ready; adding a version must not touch `core`.
 - Schematron rule sets evolve → rule-set versions pinned + documented; update procedure in docs.
-- We are not a certified Peppol Access Point; sending via Peppol/USP is out of MVP scope (extension point documented in ADR-0006).
+- We are not a certified Peppol Access Point; sending via Peppol/USP is out of MVP scope (extension point to be captured in a dedicated ADR when Peppol sending is scoped, M4+ — the ADR-0006 slot this line originally reserved was taken by auth & API security).
 - Mapping ebInterface↔UBL is lossy in edge cases → conversion report lists exactly which fields.
