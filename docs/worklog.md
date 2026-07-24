@@ -104,6 +104,12 @@
   problem+json, Postgres + Flyway, Keycloak in compose (realm import), OAuth2 Resource Server +
   API keys, rate limiting on `/validate`, Testcontainers (Postgres + Keycloak) integration tests;
   first cross-module ArchUnit rules land here too (SPEC §2).
+- Carried from final review: promote `Texts.safeEcho` out of `core.internal` once `app` starts
+  rendering exception messages — cross-module use of an internal package is a spreading pattern
+  to resolve then.
+- Carried from final review: `SecureXml`'s quiet-handler Javadoc says "restores" abort behavior;
+  it actually fails closed (stricter than JAXP default on recoverable errors) — one-word precision
+  fix at the next touch.
 
 ## 2026-07-23 — M0 Fundament: complete
 
