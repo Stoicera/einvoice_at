@@ -67,7 +67,7 @@ class EbInterface61ValidatorTest {
     assertThat(report.findings())
         .anySatisfy(
             finding -> {
-              assertThat(finding.ruleId()).isEqualTo("EBI61-XSD");
+              assertThat(finding.ruleId()).isEqualTo("XSD-01");
               assertThat(finding.messageDe())
                   .startsWith("Das Dokument verletzt das ebInterface-6.1-Schema: ");
               // messageEn must be the English rendering, not a German fetch reused verbatim.
@@ -117,6 +117,72 @@ class EbInterface61ValidatorTest {
     assertThat(report.sourceFormat()).isEqualTo("ebinterface-6.1");
     assertThat(report.isValid()).isTrue();
     assertThat(report.findings()).isEmpty();
+  }
+
+  @Test
+  void overlongXsdValueDoesNotThrowAndProducesBoundedFinding() {
+    // P1-2: an XSD-invalid value longer than Finding's 4096-char message cap used to make
+    // validate() throw InvariantViolationException out of the documented "never throws" contract.
+    ValidationReport report =
+        validator.validate(TestDocuments.bytes(TestDocuments.ebInterface61WithOverlongXsdValue()));
+
+    assertThat(report.sourceFormat()).isEqualTo("ebinterface-6.1");
+    assertThat(report.isValid()).isFalse();
+    assertThat(report.findingsOf(Severity.ERROR)).isNotEmpty();
+
+    // No finding overflows the core caps, whatever the parser echoed.
+    assertThat(report.findings())
+        .allSatisfy(
+            finding -> {
+              assertThat(finding.messageDe().length()).isLessThanOrEqualTo(4096);
+              assertThat(finding.messageEn().length()).isLessThanOrEqualTo(4096);
+              if (finding.location() != null) {
+                assertThat(finding.location().length()).isLessThanOrEqualTo(1024);
+              }
+            });
+    // At least one XSD finding echoed the overlong value and was therefore truncated with the
+    // ellipsis marker in both languages.
+    assertThat(report.findings())
+        .anySatisfy(
+            finding -> {
+              assertThat(finding.ruleId()).isEqualTo("XSD-01");
+              assertThat(finding.messageDe()).endsWith("…");
+              assertThat(finding.messageEn()).endsWith("…");
+            });
+  }
+
+  @Test
+  void oversizedInputYieldsSingleXml02ErrorAndStops() {
+    // P2-9 (size half): a document one byte above the module's defensive input cap is rejected up
+    // front with a single XML-02 finding, German first, before any parse is attempted.
+    byte[] oversized = new byte[EbInterface61Validator.MAX_INPUT_BYTES + 1];
+
+    ValidationReport report = validator.validate(oversized);
+
+    assertThat(report.sourceFormat()).isEqualTo("unknown");
+    assertThat(report.findings()).hasSize(1);
+    Finding finding = report.findings().get(0);
+    assertThat(finding.ruleId()).isEqualTo("XML-02");
+    assertThat(finding.severity()).isEqualTo(Severity.ERROR);
+    assertThat(finding.messageDe())
+        .isEqualTo("Dokument überschreitet die maximale Größe von 20 MB.");
+    assertThat(finding.messageEn()).isEqualTo("Document exceeds the maximum size of 20 MB.");
+    assertThat(report.isValid()).isFalse();
+  }
+
+  @Test
+  void inputExactlyAtCapIsNotRejectedAsTooLargeAndReachesTheParser() {
+    // Boundary of the defensive size cap: input of exactly MAX_INPUT_BYTES must clear the size
+    // guard (which rejects only strictly larger uploads) and reach the parser, where these non-XML
+    // bytes become a single XML-01 — never an XML-02. Pins the `>` boundary against a `>=` slip
+    // that would reject a legitimately-sized document up front.
+    byte[] atCap = new byte[EbInterface61Validator.MAX_INPUT_BYTES];
+
+    ValidationReport report = validator.validate(atCap);
+
+    assertThat(report.findings()).hasSize(1);
+    assertThat(report.findings().get(0).ruleId()).isEqualTo("XML-01");
+    assertThat(report.isValid()).isFalse();
   }
 
   @Test

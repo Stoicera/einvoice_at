@@ -37,6 +37,19 @@ corpus (`validation/src/test/resources/corpus/`).
 ebInterface portal check (<https://formvalidation.brz.gv.at/> / the WKO ebInterface validator) to
 confirm the platform's output passes an authoritative external validator, not only our own. That is a
 manual, one-time owner step (Sebastian); the automated acceptance lives in `EndToEndGenerationTest`.
+The portal check **passed** on 2026-07-24: *"Diese Datei ist gültig gemäß ebInterface Standard
+ebInterface 6.1"* (see `docs/worklog.md`, M2 hostile-review fix wave entry, for the full quote and
+date).
+
+**IMPORTANT — re-confirmation advisable.** The Abnahme above ran against the pre-fix-wave bytes of
+this file. The M2 hostile-review fix wave's Country-display-name change (finding A6 — the `Country`
+element text now reads the German display name, e.g. `Österreich`, instead of echoing the ISO code)
+regenerated this twin, so the exact bytes the portal validated are no longer the exact bytes committed
+here. The change is schema-valid and, if anything, more standard-conformant than before (AUSTRIAPRO's
+own samples use the display name too) — but it means today's committed twin has not itself been run
+through the official portal a second time. Re-running the portal check on the current bytes is a cheap
+owner action worth doing before relying on the Abnahme claim for the current file, even though no
+regression is expected.
 
 **Regeneration.** Do not hand-edit this file. On an *intentional* mapper or writer change,
 `EndToEndGenerationTest.committedTwinMatchesTheFreshlyGeneratedXml` fails and reports the fresh
@@ -67,7 +80,7 @@ the single source of the expected bytes.
 | `lines[].unitPrice` | **string** | yes | `InvoiceLine.unitPrice` | Decimal. |
 | `lines[].vatCategory` | string | yes | `VatRate.category` (part of BG-30) | One of `STANDARD`, `ZERO_RATED`, `REVERSE_CHARGE`, `EXEMPT`. |
 | `lines[].vatPercent` | **string** | yes | `VatRate.percentage` | Decimal, e.g. `"20"`. |
-| `paymentMeans` | object | no | `Invoice.paymentMeans` (BG-17) | `iban` (checksum-validated), `bic` (optional). Whole object omitted when there is no SEPA payment info. |
+| `paymentMeans` | object | no | `Invoice.paymentMeans` (BG-17) | `iban` (checksum-validated), `bic` (optional). Whole object omitted when there is no SEPA payment info. **Provenance:** the sample's `AT611904300234573201` and its Bank-Austria-format BIC `BKAUATWW` are canonical ebInterface test values — a checksum-valid IBAN chosen so the fixture clears the `AT-B2G-02` mod-97 check — not a real account or a real bank customer. |
 | `paymentTerms` | string | no | `Invoice.paymentTerms` (BT-20) | Free text. |
 | `exemptionReasons` | array | no | wired via `Invoice.Builder#exemptionReason` (BT-120/BT-121) | `category` (`VatCategory`), `code` and/or `text`. One entry per VAT category that needs a reason (`REVERSE_CHARGE`, `EXEMPT`); `REVERSE_CHARGE` gets a default reason from the builder when omitted. |
 

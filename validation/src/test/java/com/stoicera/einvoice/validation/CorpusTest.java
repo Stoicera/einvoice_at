@@ -24,13 +24,21 @@ import org.junit.jupiter.params.provider.MethodSource;
  * then the fix" (CLAUDE.md). Each invalid file carries exactly one deliberate defect derived from
  * {@code valid/b2g-full.xml}, so a single expected rule id isolates the behaviour under test; the
  * {@code xsd-missing-invoice-number} case is the exception the brief calls out — one structural
- * defect can surface as several {@code EBI61-XSD} findings, hence the assertion compares the
+ * defect can surface as several {@code XSD-01} findings, hence the assertion compares the
  * <em>distinct</em> rule ids rather than a multiset.
  *
- * <p>Only {@link Severity#ERROR} and {@link Severity#WARN} findings gate compliance, so those are
- * the ones asserted; a valid document is one whose compliance-affecting finding set is empty (an
- * {@code INFO} note, e.g. on {@code b2g-full.xml}, does not count and is deliberately ignored
- * here).
+ * <p><strong>Set semantics (finding A7).</strong> The expected set for each file is matched
+ * set-equal against the {@link Severity#ERROR} <em>and</em> {@link Severity#WARN} findings the
+ * validator produces — the corpus's notion of "compliance-affecting". This is deliberately stricter
+ * than core's {@link ValidationReport#isValid()}, which counts {@link Severity#ERROR} only: the
+ * first WARN-severity rule ever added (SPEC §7 plans "tax rates plausible", a natural WARN) must
+ * not be able to slip past the corpus by leaving {@code isValid()} true. An {@code INFO} note (e.g.
+ * on {@code b2g-full.xml}) never gates compliance and is ignored here.
+ *
+ * <p>The secondary cross-check ({@code isValid() == expectedRuleIds.isEmpty()}) holds only while no
+ * corpus file expects a <em>WARN-only</em> finding set (none does today: every {@code invalid/}
+ * file fails on an ERROR-severity rule). When the first WARN-only rule lands, that cross-check —
+ * not the set-equal assertion, which is the load-bearing one — is what must be revisited.
  */
 class CorpusTest {
 
@@ -41,10 +49,13 @@ class CorpusTest {
     return List.of(
         Arguments.of("corpus/valid/minimal.xml", Set.of()),
         Arguments.of("corpus/valid/b2g-full.xml", Set.of()),
+        Arguments.of("corpus/valid/credit-memo-reverse-charge.xml", Set.of()),
+        Arguments.of("corpus/valid/exempt-invoice.xml", Set.of()),
         Arguments.of("corpus/invalid/malformed.xml", Set.of("XML-01")),
         Arguments.of("corpus/invalid/wrong-namespace-ebi60.xml", Set.of("FORMAT-02")),
-        Arguments.of("corpus/invalid/xsd-missing-invoice-number.xml", Set.of("EBI61-XSD")),
+        Arguments.of("corpus/invalid/xsd-missing-invoice-number.xml", Set.of("XSD-01")),
         Arguments.of("corpus/invalid/at-b2g-01-missing-order-reference.xml", Set.of("AT-B2G-01")),
+        Arguments.of("corpus/invalid/at-b2g-01-whitespace-order-id.xml", Set.of("AT-B2G-01")),
         Arguments.of("corpus/invalid/at-b2g-02-invalid-iban.xml", Set.of("AT-B2G-02")));
   }
 

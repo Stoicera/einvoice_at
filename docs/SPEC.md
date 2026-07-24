@@ -15,7 +15,7 @@ Status: v1.0 · 2026-07-23 · Language of repo: English (domain terms stay Germa
 | Build | **Maven** (multi-module) | Enterprise default in AT; wrapper committed |
 | Persistence | PostgreSQL 17 + Spring Data JPA (Hibernate) + **Flyway** | Standard, migration-first |
 | e-invoice libs | **ph-ebinterface** (ebInterface XSD/model), **phive** + phive-rules (Schematron validation for ebInterface & Peppol), **ph-ubl** (UBL 2.1) — all MIT/Apache, actively maintained by Philip Helger; if a rule set is missing, fall back to official AUSTRIAPRO/OpenPeppol artefacts executed via ph-schematron | Don't reinvent validated standards artefacts; credit upstream in README |
-| Mapping | Dedicated `mapping` module: internal canonical model (EN 16931 core) ↔ ebInterface 6.1 ↔ UBL BIS 3.0. MapStruct where mechanical, hand-written + heavily tested where semantic | The canonical model is the heart of the system |
+| Mapping | Dedicated `mapping` module: internal canonical model (EN 16931 core) ↔ ebInterface 6.1 ↔ UBL BIS 3.0. Hand-written and heavily tested (MapStruct evaluated but unrealized as of M2; all mapping turned out semantic) | The canonical model is the heart of the system |
 | PDF | OpenPDF or Apache PDFBox via a `rendering` module (HTML→PDF acceptable: openhtmltopdf) | Print view of invoice |
 | Web UI | **Thymeleaf + htmx + Tailwind (standalone CLI)** | Java-pure server-rendered UI: exactly what enterprise Java shops respect; no SPA build complexity |
 | AuthN/Z | Spring Security (OAuth2 Resource Server) + **Keycloak** as IdP (docker compose); API keys for machine access (hashed at rest) | Answers the "do we need Keycloak?" question: Spring Security is the framework, Keycloak the IdP — document this in an ADR |
@@ -34,7 +34,7 @@ einvoice-at/
 ├── core/                         # canonical invoice model (EN 16931 core subset), pure Java, zero Spring deps
 ├── formats-ebinterface/          # ebInterface 6.1 read/write/validate (wraps ph-ebinterface); version-strategy interface for 7.0
 ├── formats-ubl/                  # UBL BIS 3.0 read/write/validate
-├── mapping/                      # canonical ↔ formats; MapStruct + manual semantic mapping; golden-file tests
+├── mapping/                      # canonical ↔ formats; MapStruct evaluated but unrealized as of M2 (hand-written, semantic mapping); golden-file tests
 ├── validation/                   # orchestrates XSD + Schematron (phive) + own business rules; produces ValidationReport
 ├── rendering/                    # invoice → PDF / HTML print view
 ├── ai-assist/                    # LlmClient port + OpenRouter adapter; error-explanation service; prompt templates versioned
@@ -78,7 +78,7 @@ Pages: Landing/"Prüfer" (public upload → report, German-first, SEO meta), Rep
 
 ## 7. Validation pipeline (module `validation`)
 
-`detectFormat → XSD → Schematron (profile per format/version) → business rules (AT-B2G: order reference present, IBAN valid, tax rates plausible, KZ totals) → aggregate ValidationReport`. Each stage independent + testable; golden test corpus in `validation/src/test/resources/corpus/` (valid + systematically broken samples per rule). This corpus is a portfolio asset in itself — document it. For ebInterface, the Schematron stage runs project-own AT-B2G rules (see [ADR-0004](adr/0004-validation-pipeline-and-xsd-messages.md)) because AUSTRIAPRO publishes no official Schematron for ebInterface; Peppol BIS 3.0's official Schematron rule sets arrive unmodified with M4.
+`secure parse (XXE-hardened DOM, XML-01) → detectFormat → XSD → Schematron (profile per format/version; AT-B2G-01 order-reference-present is a Schematron rule, not a business rule) → business rules (AT-B2G-02 IBAN valid; tax rates plausible, KZ totals unimplemented — out of M2 scope, see [ADR-0004](adr/0004-validation-pipeline-and-xsd-messages.md) Entscheidung 9) → aggregate ValidationReport`. Each stage independent + testable; golden test corpus in `validation/src/test/resources/corpus/` (valid + systematically broken samples per rule). This corpus is a portfolio asset in itself — document it. For ebInterface, the Schematron stage runs project-own AT-B2G rules (see [ADR-0004](adr/0004-validation-pipeline-and-xsd-messages.md)) because AUSTRIAPRO publishes no official Schematron for ebInterface; Peppol BIS 3.0's official Schematron rule sets arrive unmodified with M4.
 
 ## 8. Data & persistence
 

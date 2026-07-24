@@ -3,6 +3,8 @@ package com.stoicera.einvoice.validation.stage;
 import com.helger.schematron.svrl.SVRLFailedAssert;
 import com.stoicera.einvoice.core.validation.Finding;
 import com.stoicera.einvoice.core.validation.Severity;
+import com.stoicera.einvoice.validation.RuleIds;
+import com.stoicera.einvoice.validation.internal.BoundedText;
 import java.util.Map;
 
 /**
@@ -23,15 +25,22 @@ import java.util.Map;
  */
 public final class SchematronRuleCatalog {
 
-  /** Rule id: a B2G invoice must carry an Auftragsreferenz ({@code OrderReference/OrderID}). */
-  public static final String RULE_AUFTRAGSREFERENZ = "AT-B2G-01";
+  /**
+   * Last-resort bilingual text for an uncatalogued failed assert that carries no usable SVRL text
+   * (empty or whitespace-only). Passing that blank string straight to {@link Finding#of} would trip
+   * its non-blank invariant and throw, breaking the validator's never-throws contract; this keeps a
+   * usable finding — with the id preserved — instead.
+   */
+  private static final String FALLBACK_TEXT =
+      "Unkatalogisierte Schematron-Regel ohne Meldungstext"
+          + " (uncatalogued Schematron rule without message text)";
 
   /** A finding's bilingual message pair: German (primary) and English (secondary). */
   private record BilingualMessage(String messageDe, String messageEn) {}
 
   private static final Map<String, BilingualMessage> CATALOG =
       Map.of(
-          RULE_AUFTRAGSREFERENZ,
+          RuleIds.AT_B2G_01,
           new BilingualMessage(
               "Auftragsreferenz fehlt: Rechnungen an Bundesdienststellen müssen eine"
                   + " Auftragsreferenz (OrderReference/OrderID) enthalten.",
@@ -53,13 +62,18 @@ public final class SchematronRuleCatalog {
    */
   static Finding toFinding(SVRLFailedAssert failedAssert) {
     String ruleId = failedAssert.getID();
-    String location = failedAssert.getLocation();
+    // The SVRL location is a document-derived XPath and could exceed Finding's location cap.
+    String location = BoundedText.cap(failedAssert.getLocation(), BoundedText.MAX_LOCATION);
     BilingualMessage message = CATALOG.get(ruleId);
     if (message != null) {
       return Finding.of(Severity.ERROR, ruleId, location, message.messageDe(), message.messageEn());
     }
-    // Uncatalogued id — never drop it; surface the raw assert text in both languages.
-    String rawText = failedAssert.getText();
-    return Finding.of(Severity.ERROR, ruleId, location, rawText, rawText);
+    // Uncatalogued id — never drop it; surface the raw assert text in both languages. Bound it
+    // first: a <value-of> can pull document content into the assert text and overflow Finding.
+    // A blank (empty or whitespace-only) assert text would trip Finding's non-blank invariant, so
+    // fall back to a fixed bilingual text and keep the finding rather than throw.
+    String rawText = BoundedText.cap(failedAssert.getText(), BoundedText.MAX_MESSAGE_DETAIL);
+    String detail = rawText == null || rawText.isBlank() ? FALLBACK_TEXT : rawText;
+    return Finding.of(Severity.ERROR, ruleId, location, detail, detail);
   }
 }

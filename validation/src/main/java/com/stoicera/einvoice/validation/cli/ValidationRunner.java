@@ -42,7 +42,8 @@ import java.util.stream.Stream;
  */
 public final class ValidationRunner {
 
-  private static final String USAGE = "Aufruf: ValidationRunner <datei-oder-verzeichnis>...";
+  private static final String USAGE =
+      "Aufruf: " + ValidationRunner.class.getSimpleName() + " <datei-oder-verzeichnis>...";
 
   /** Exit code: every validated file is valid. */
   static final int EXIT_ALL_VALID = 0;
@@ -139,7 +140,7 @@ public final class ValidationRunner {
   private static List<Path> xmlFilesUnder(Path directory) {
     try (Stream<Path> walk = Files.walk(directory)) {
       return walk.filter(Files::isRegularFile)
-          .filter(path -> path.getFileName().toString().endsWith(".xml"))
+          .filter(ValidationRunner::isXmlFile)
           .sorted(Comparator.comparing(Path::toString))
           .toList();
     } catch (IOException e) {
@@ -147,20 +148,33 @@ public final class ValidationRunner {
     }
   }
 
-  /** Writes one German-first report block for {@code file}'s {@code report} to {@code out}. */
+  /**
+   * Whether {@code path} names an {@code *.xml} file — the extension filter the directory walk
+   * applies. A named method rather than an inline lambda so the discovery rule is directly unit-
+   * and mutation-testable. Package-visible for tests.
+   */
+  static boolean isXmlFile(Path path) {
+    return path.getFileName().toString().endsWith(".xml");
+  }
+
+  /**
+   * Writes one German-first report block for {@code file}'s {@code report} to {@code out}. The
+   * severity label and rule id are padded to fixed column widths so the findings line up as a
+   * readable table in a CI log even when rule ids differ in length ({@code XML-01} vs {@code
+   * AT-B2G-01}); the variable-length location and message follow.
+   */
   private static void printReport(PrintStream out, Path file, ValidationReport report) {
     out.println("== " + file + " ==");
     out.println("Format: " + report.sourceFormat() + " · Profil: " + report.profile());
     for (Finding finding : report.findings()) {
       String location = finding.location() == null ? "-" : finding.location();
       out.println(
-          germanSeverityLabel(finding.severity())
-              + "  "
-              + finding.ruleId()
-              + "  "
-              + location
-              + "  "
-              + finding.messageDe());
+          "%-7s  %-9s  %s  %s"
+              .formatted(
+                  germanSeverityLabel(finding.severity()),
+                  finding.ruleId(),
+                  location,
+                  finding.messageDe()));
       out.println("        EN: " + finding.messageEn());
     }
     out.println(

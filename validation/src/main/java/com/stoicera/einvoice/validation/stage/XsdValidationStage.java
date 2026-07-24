@@ -14,8 +14,10 @@ import com.helger.phive.xml.source.IValidationSourceXML;
 import com.helger.phive.xml.source.ValidationSourceXML;
 import com.stoicera.einvoice.core.validation.Finding;
 import com.stoicera.einvoice.core.validation.Severity;
+import com.stoicera.einvoice.validation.RuleIds;
 import com.stoicera.einvoice.validation.ValidationContext;
 import com.stoicera.einvoice.validation.ValidationStage;
+import com.stoicera.einvoice.validation.internal.BoundedText;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -25,7 +27,7 @@ import org.w3c.dom.Document;
  * Validates the DOM against the bundled ebInterface 6.1 XSD via phive.
  *
  * <p>The phive validation-executor-set registry is expensive to build, so it is initialised exactly
- * once in a lazy holder and shared across runs. Each schema violation becomes an {@code EBI61-XSD}
+ * once in a lazy holder and shared across runs. Each schema violation becomes an {@code XSD-01}
  * finding: the technical detail is kept exactly as the underlying Xerces parser delivers it, behind
  * a German lead-in that is always ours — see ADR-0004.
  *
@@ -43,9 +45,6 @@ import org.w3c.dom.Document;
  * line/column, because a DOM carries no positional information.
  */
 public final class XsdValidationStage implements ValidationStage {
-
-  /** Rule id: the document violates the ebInterface 6.1 XML schema. */
-  public static final String RULE_XSD = "EBI61-XSD";
 
   private static final String GERMAN_LEAD_IN = "Das Dokument verletzt das ebInterface-6.1-Schema: ";
 
@@ -101,10 +100,17 @@ public final class XsdValidationStage implements ValidationStage {
    */
   static Finding toFinding(IError germanError, IError englishError) {
     Severity severity = severityOf(germanError.getErrorLevel());
-    String germanDetail = detailText(germanError);
-    String englishDetail = englishError == null ? germanDetail : englishDetailText(englishError);
-    String location = germanError.getErrorLocation().getAsString();
-    return Finding.of(severity, RULE_XSD, location, GERMAN_LEAD_IN + germanDetail, englishDetail);
+    // Bound the parser text before it reaches Finding: a cvc-* message echoes the offending value
+    // verbatim, which can exceed Finding's message/location caps and make Finding.of throw.
+    String germanDetail = BoundedText.cap(detailText(germanError), BoundedText.MAX_MESSAGE_DETAIL);
+    String englishDetail =
+        englishError == null
+            ? germanDetail
+            : BoundedText.cap(englishDetailText(englishError), BoundedText.MAX_MESSAGE_DETAIL);
+    String location =
+        BoundedText.cap(germanError.getErrorLocation().getAsString(), BoundedText.MAX_LOCATION);
+    return Finding.of(
+        severity, RuleIds.XSD_01, location, GERMAN_LEAD_IN + germanDetail, englishDetail);
   }
 
   /**

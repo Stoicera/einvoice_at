@@ -89,6 +89,26 @@ public final class TestDocuments {
   }
 
   /**
+   * Length, in characters, of the offending value embedded by {@link
+   * #ebInterface61WithOverlongXsdValue()}. Chosen well above the core {@code Finding}'s
+   * 4096-character message cap so that an <em>unbounded</em> echo of the value into the finding
+   * text would overflow that cap and throw — the P1-2 crash this fixture reproduces.
+   */
+  public static final int OVERLONG_VALUE_LENGTH = 5000;
+
+  /**
+   * A well-formed ebInterface 6.1 document whose {@code InvoiceDate} carries a {@value
+   * #OVERLONG_VALUE_LENGTH}-character value that is not a valid {@code xs:date}. Xerces bakes the
+   * whole offending value into its {@code cvc-datatype-valid} message, so the XSD stage builds a
+   * finding whose detail text is longer than the {@code Finding} message cap unless the foreign
+   * text is bounded first. The namespace is untouched, so the document clears format detection and
+   * reaches the XSD stage.
+   */
+  public static String ebInterface61WithOverlongXsdValue() {
+    return validEbInterface61().replace("2024-03-05", "9".repeat(OVERLONG_VALUE_LENGTH));
+  }
+
+  /**
    * ebInterface 6.1 document that is fully XSD-valid but carries no {@code OrderReference} — the
    * business-rule case the AT-B2G Schematron must catch as {@code AT-B2G-01} (Auftragsreferenz
    * missing). Derived by removing the whole {@code OrderReference} element from the valid document.
@@ -213,6 +233,60 @@ public final class TestDocuments {
         <!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
         <foo>&xxe;</foo>
         """;
+  }
+
+  /**
+   * The internal-entity "billion laughs" (XML bomb) probe: a {@code DOCTYPE} that declares nested
+   * entities each referencing the previous one, so a naive parser expands {@code &lol3;} to
+   * thousands of characters — the entity-expansion DoS the hardened parser's Javadoc claims to
+   * defeat. There is <em>no</em> external reference here (unlike {@link #xxeDoctypePayload()}), so
+   * this proves the defence holds for the pure in-memory-expansion vector too: the parser rejects
+   * the document the moment it sees the {@code DOCTYPE}, before any entity is expanded.
+   */
+  public static String billionLaughsPayload() {
+    return """
+        <?xml version="1.0"?>
+        <!DOCTYPE lolz [
+          <!ENTITY lol "lol">
+          <!ENTITY lol1 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">
+          <!ENTITY lol2 "&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;">
+          <!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">
+        ]>
+        <lolz>&lol3;</lolz>
+        """;
+  }
+
+  /**
+   * A minimal, entity-free {@code <!DOCTYPE foo>} declaration on an otherwise well-formed document.
+   * It carries no entities and no external reference, so it isolates the mechanism under test: the
+   * parser rejects it purely because a {@code DOCTYPE} was <em>declared</em> ({@code
+   * disallow-doctype-decl}), independent of any entity resolution — distinguishing "rejected
+   * because DOCTYPE disallowed" from "rejected because malformed" (finding C5).
+   */
+  public static String bareDoctypePayload() {
+    return """
+        <?xml version="1.0"?>
+        <!DOCTYPE foo>
+        <foo>content</foo>
+        """;
+  }
+
+  /**
+   * A <em>DOCTYPE-free</em> document whose body carries an XInclude text inclusion pointing at
+   * {@code href}. XInclude is a namespaced document-body mechanism resolved independently of {@code
+   * DOCTYPE}/DTD/entity handling: were the parser XInclude-aware, this would splice the target
+   * file's raw bytes straight into the DOM — a local-file-disclosure vector that {@code
+   * disallow-doctype-decl} does <em>not</em> stop (there is no {@code DOCTYPE} here). A hardened
+   * parser leaves the {@code xi:include} element un-expanded and never reads {@code href}.
+   */
+  public static String xIncludeTextPayload(String href) {
+    return """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <invoice xmlns:xi="http://www.w3.org/2001/XInclude">
+          <leak><xi:include href="HREF" parse="text"/></leak>
+        </invoice>
+        """
+        .replace("HREF", href);
   }
 
   public static byte[] bytes(String xml) {

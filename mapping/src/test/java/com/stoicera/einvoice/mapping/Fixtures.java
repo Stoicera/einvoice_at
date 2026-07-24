@@ -98,6 +98,33 @@ public final class Fixtures {
   }
 
   /**
+   * An invoice whose seller <em>and</em> buyer both lack a UID — the {@code Party.vatId == null}
+   * state core deliberately permits (Kleinunternehmer issuer, private buyer). Drives the mapper's
+   * no-UID convention path: e-rechnung.gv.at requires the placeholder {@code ATU00000000} on both
+   * {@code Biller} and {@code InvoiceRecipient} in this case.
+   */
+  public static Invoice invoiceWithoutVatIds() {
+    return Invoice.builder()
+        .invoiceNumber("2026-000777")
+        .type(InvoiceTypeCode.COMMERCIAL_INVOICE)
+        .issueDate(LocalDate.of(2026, 7, 20))
+        .currency(Money.EUR)
+        .seller(
+            new Party(
+                "Ötztal Handwerk e.U.", new Address("Talstraße 4", "Sölden", "6450", "AT"), null))
+        .buyer(new Party("Privatkunde Groß", new Address("Feldweg 2", "Imst", "6460", "AT"), null))
+        .addLine(
+            new InvoiceLine(
+                "1",
+                "Leistung",
+                new BigDecimal("1"),
+                "C62",
+                new BigDecimal("90.00"),
+                VatRate.STANDARD_20))
+        .build();
+  }
+
+  /**
    * A credit note carrying a reverse-charge line (category AE). The builder supplies the default
    * BR-AE-10 exemption reason; the mapper must echo it into the tax breakdown.
    */
@@ -123,6 +150,37 @@ public final class Fixtures {
                 "C62",
                 new BigDecimal("5000.00"),
                 VatRate.REVERSE_CHARGE))
+        .build();
+  }
+
+  /**
+   * A credit note (category AE) that <em>does</em> carry payment means — a refund to the buyer's
+   * account. Exercises the A10 branch where a credit note with {@code paymentMeans} keeps its
+   * {@code UniversalBankTransaction} rather than emitting {@code NoPayment}.
+   */
+  public static Invoice creditNoteWithRefundAccount() {
+    return Invoice.builder()
+        .invoiceNumber("2026-CN-0099")
+        .type(InvoiceTypeCode.CREDIT_NOTE)
+        .issueDate(LocalDate.of(2026, 7, 18))
+        .currency(Money.EUR)
+        .seller(
+            new Party(
+                "Süd Bau GmbH",
+                new Address("Mozartweg 3", "Salzburg", "5020", "AT"),
+                "ATU33333333"))
+        .buyer(
+            new Party(
+                "Nord Bau AG", new Address("Donaukanal 12", "Wien", "1020", "AT"), "ATU44444444"))
+        .addLine(
+            new InvoiceLine(
+                "1",
+                "Bauleistung (Reverse Charge)",
+                new BigDecimal("1"),
+                "C62",
+                new BigDecimal("5000.00"),
+                VatRate.REVERSE_CHARGE))
+        .paymentMeans(new PaymentMeans(new Iban("AT611904300234573201"), "BKAUATWW"))
         .build();
   }
 

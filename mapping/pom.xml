@@ -15,24 +15,30 @@
   <name>einvoice-at :: mapping</name>
 
   <dependencies>
-    <!-- Canonical model (source) and the ebInterface 6.1 JAXB adapter (target/writer).
-         Both are project modules; their versions come from the reactor, never pinned here. -->
+    <!-- Canonical model (source): a project module, version from the reactor, never pinned here. -->
     <dependency>
       <groupId>com.stoicera.einvoice</groupId>
       <artifactId>core</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!-- ebInterface 6.1 JAXB types are the mapping target. Version pinned by the parent
+         dependencyManagement (8.1.0); never redeclare it here. Main code only constructs these
+         JAXB POJOs and their setters — it never marshals — so no JAXB runtime is needed at compile
+         or runtime scope here. -->
+    <dependency>
+      <groupId>com.helger</groupId>
+      <artifactId>ph-ebinterface</artifactId>
+    </dependency>
+    <!-- The ebInterface adapter is a TEST-scope dependency (finding A9): the mapper imports the
+         ph-ebinterface JAXB types directly, so main code never touches formats-ebinterface — only
+         the tests use EbInterface61Strategy to marshal a mapped tree back and re-read it against
+         the XSD (the schema-validity property). Its transitive glassfish jaxb-runtime therefore
+         reaches this module in test scope only, which is exactly where marshalling happens. -->
     <dependency>
       <groupId>com.stoicera.einvoice</groupId>
       <artifactId>formats-ebinterface</artifactId>
       <version>${project.version}</version>
-    </dependency>
-    <!-- ebInterface 6.1 JAXB types are the mapping target. Version pinned by the parent
-         dependencyManagement (8.1.0); never redeclare it here. The JAXB runtime provider
-         reaches this module transitively (runtime scope) via formats-ebinterface. -->
-    <dependency>
-      <groupId>com.helger</groupId>
-      <artifactId>ph-ebinterface</artifactId>
+      <scope>test</scope>
     </dependency>
     <!-- Strict JSON boundary reader (Task 5). Classic Jackson 2 (com.fasterxml.jackson.core), not
          the Jackson 3 (tools.jackson.core) artifact Spring Boot 4.1 also manages; version comes

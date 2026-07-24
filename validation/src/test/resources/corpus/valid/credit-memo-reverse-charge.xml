@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="http://www.ebinterface.at/schema/6p1/" GeneratingSystem="einvoice-at" DocumentType="CreditMemo" InvoiceCurrency="EUR" Language="de">
+  <InvoiceNumber>2026-CN-0042</InvoiceNumber>
+  <InvoiceDate>2026-07-15</InvoiceDate>
+  <Biller>
+    <VATIdentificationNumber>ATU33333333</VATIdentificationNumber>
+    <Address>
+      <Name>Bau Süd GmbH</Name>
+      <Street>Mozartweg 3</Street>
+      <Town>Salzburg</Town>
+      <ZIP>5020</ZIP>
+      <Country CountryCode="AT">Österreich</Country>
+    </Address>
+    <InvoiceRecipientsBillerID>L-100234</InvoiceRecipientsBillerID>
+  </Biller>
+  <InvoiceRecipient>
+    <VATIdentificationNumber>ATU87654321</VATIdentificationNumber>
+    <OrderReference>
+      <OrderID>BBG-2026-CN-0042</OrderID>
+    </OrderReference>
+    <Address>
+      <Name>Bundesbeschaffung GmbH</Name>
+      <Street>Lassallestraße 9b</Street>
+      <Town>Wien</Town>
+      <ZIP>1020</ZIP>
+      <Country CountryCode="AT">Österreich</Country>
+    </Address>
+  </InvoiceRecipient>
+  <Details>
+    <ItemList>
+      <ListLineItem>
+        <PositionNumber>1</PositionNumber>
+        <Description>Bauleistung (Reverse Charge)</Description>
+        <Quantity Unit="C62">1</Quantity>
+        <UnitPrice>5000.00</UnitPrice>
+        <TaxItem>
+          <TaxableAmount>5000.00</TaxableAmount>
+          <TaxPercent TaxCategoryCode="AE">0.00</TaxPercent>
+        </TaxItem>
+        <LineItemAmount>5000.00</LineItemAmount>
+      </ListLineItem>
+    </ItemList>
+  </Details>
+  <Tax>
+    <TaxItem>
+      <TaxableAmount>5000.00</TaxableAmount>
+      <TaxPercent TaxCategoryCode="AE">0.00</TaxPercent>
+      <TaxAmount>0.00</TaxAmount>
+      <Comment>Übergang der Steuerschuld: AE | VATEX-EU-AE | Reverse charge</Comment>
+    </TaxItem>
+  </Tax>
+  <TotalGrossAmount>5000.00</TotalGrossAmount>
+  <PayableAmount>5000.00</PayableAmount>
+  <PaymentMethod>
+    <NoPayment />
+  </PaymentMethod>
+</Invoice>

@@ -19,6 +19,10 @@
          the app module's Spring context. Version verified against Maven Central
          maven-metadata.xml on 2026-07-24: latest and release both 3.6.3. -->
     <exec-maven-plugin.version>3.6.3</exec-maven-plugin.version>
+    <!-- The real exec.mainClass lives here, in the one module that owns the CLI, overriding the
+         root POM's no-op placeholder (finding A9). This is the only project where `exec:java`
+         actually runs. -->
+    <exec.mainClass>com.stoicera.einvoice.validation.cli.ValidationRunner</exec.mainClass>
   </properties>
 
   <dependencies>
@@ -149,11 +153,81 @@
         <version>${exec-maven-plugin.version}</version>
         <configuration>
           <!-- Opts back in to the reactor-wide default (see the root POM's exec.skip property
-               comment): this is the one module where `exec:java` is meant to actually run. -->
+               comment): this is the one module where `exec:java` is meant to actually run. The
+               mainClass comes from this module's own exec.mainClass property (finding A9). -->
           <skip>false</skip>
-          <mainClass>com.stoicera.einvoice.validation.cli.ValidationRunner</mainClass>
+          <mainClass>${exec.mainClass}</mainClass>
         </configuration>
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- Mutation testing gives the coverage number teeth; run locally with
+         ./mvnw -pl validation -Pmutation test-compile org.pitest:pitest-maven:mutationCoverage
+         Deliberately NOT "-am": the bare pitest goal runs against every project the reactor
+         selects, so "-am" would drag core (its own profile) and formats-ebinterface into the
+         same reactor. All four gated modules now carry the profile, so the CI job (ci.yml) can
+         list them together, but it still installs the dependency closure first and runs the goal
+         without "-am" — see mapping/pom.xml's reactor-landmine note. This module's PIT reactor
+         also needs mapping (a test-scope dependency) in the local repo; the CI install step and a
+         prior local reactor build both put it there.
+         Kept out of the default verify because PIT re-runs the whole validation suite (XSD +
+         Schematron + business-rule stages, secure-parse) once per mutant, far slower than a plain
+         verify. -->
+    <profile>
+      <id>mutation</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.pitest</groupId>
+            <artifactId>pitest-maven</artifactId>
+            <version>${pitest.version}</version>
+            <dependencies>
+              <dependency>
+                <groupId>org.pitest</groupId>
+                <artifactId>pitest-junit5-plugin</artifactId>
+                <version>${pitest-junit5.version}</version>
+              </dependency>
+            </dependencies>
+            <configuration>
+              <targetClasses>
+                <param>com.stoicera.einvoice.validation.*</param>
+              </targetClasses>
+              <!-- Measured mutation score 103/116 (89%) on 2026-07-24; a full run takes ~30 s. The
+                   13 surviving mutants are documented and left on purpose. Six live in SecureXml, in
+                   three DISTINCT categories (not one blanket "dominated by disallow-doctype-decl"
+                   claim, which was previously and wrongly asserted for all six):
+                   (a) FOUR are behaviourally dominated by the killed disallow-doctype-decl guard —
+                   external-general-entities, external-parameter-entities, load-external-dtd and
+                   expandEntityReferences each flip a feature whose non-default value only matters for
+                   entities or an external DTD, and both can appear only inside a DOCTYPE that is
+                   rejected first; no untrusted payload reaches entity resolution to distinguish them.
+                   (b) setXIncludeAware(false) is NOT dominated: XInclude is an independent
+                   document-body vector, and a DOCTYPE-free xi:include still discloses a local file
+                   the moment awareness is on (proven by
+                   SecureXmlTest.doesNotResolveXIncludeLocalFileDisclosure). Its RemoveVoidMethodCall
+                   mutant nonetheless survives as an EQUIVALENT mutant — removing the setter falls
+                   back to JAXP's already-false default, so no test can distinguish it — but the new
+                   regression test now pins the behaviour, so an accidental flip to true or a changed
+                   parser/JAXP default is caught even though PIT cannot mark the equivalent mutant
+                   killed. (c) FEATURE_SECURE_PROCESSING is a defensive DoS-limit guard: its
+                   entity-expansion caps are DOCTYPE-gated, but its attribute-count/element-depth caps
+                   are DOCTYPE-independent, so it is not purely dominated — it survives only because no
+                   corpus fixture reaches any DoS limit.
+                   The remaining seven are equivalent or defensive-unreachable (early empty-list
+                   returns in BusinessRuleStage, the always-true Schematron self-check, the never-hit
+                   German/English count-mismatch fallback, and the System.exit/IO-catch seams in the
+                   CLI). Gate set to 85 — a few points under the measured rate, mirroring mapping's
+                   PIT wiring — so a genuine regression trips it without the benign survivors being a
+                   tripwire. The validation module runs no jqwik property tests, so this score is
+                   deterministic run to run. -->
+              <mutationThreshold>85</mutationThreshold>
+              <timestampedReports>false</timestampedReports>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

@@ -23,10 +23,14 @@ import org.w3c.dom.Document;
  * always sees a well-formed, schema-valid 6.1 document.
  *
  * <p>Compiling (parsing and binding) the Schematron is expensive, so the {@link
- * SchematronResourcePure} is built once in a lazy holder and reused; the pure engine binds the
- * schema on first use and is safe to share across validation runs. Each failed assert becomes a
- * finding through {@link SchematronRuleCatalog}, which owns the bilingual message text; the SVRL
- * location is carried through verbatim.
+ * SchematronResourcePure} is compiled once in a static holder and reused across every validation
+ * run. The pure engine's own bind is a lazy, unsynchronised write of a non-volatile field, which
+ * would race under concurrent first use (M3's single shared validator over HTTP request threads);
+ * the holder therefore forces the bind eagerly at initialisation so the JVM class-init lock
+ * publishes a fully-bound, thereafter read-only resource that is genuinely safe to share — see
+ * {@link SchematronHolder}. Each failed assert becomes a finding through {@link
+ * SchematronRuleCatalog}, which owns the bilingual message text; the SVRL location is carried
+ * through, bounded to a safe length (512 chars, {@code BoundedText.MAX_LOCATION}).
  */
 public final class SchematronStage implements ValidationStage {
 
@@ -60,20 +64,44 @@ public final class SchematronStage implements ValidationStage {
   /**
    * Whether the bundled AT-B2G Schematron parses and binds cleanly. Exercised by the stage test so
    * a malformed {@code .sch} (or a broken classpath) fails a fast, obvious assertion rather than
-   * surfacing as a mysterious runtime failure.
+   * surfacing as a mysterious runtime failure. The result is computed once, when the holder binds
+   * the schema (see {@link SchematronHolder}), so reading it never triggers a second compile.
    */
   static boolean isCompiledSchematronValid() {
-    return SchematronHolder.SCHEMATRON.isValidSchematron();
+    return SchematronHolder.SCHEMATRON_VALID;
   }
 
   /**
-   * Lazy, thread-safe holder for the compiled Schematron: the JVM initialises it on first access
-   * and the class-init lock makes publication safe. Building it eagerly at class load would pay the
-   * compilation cost even when no ebInterface document is ever validated.
+   * Holder for the compiled Schematron, initialised lazily on first access to this class (so the
+   * compilation cost is not paid when no ebInterface document is ever validated) but bound eagerly
+   * once it is.
+   *
+   * <p>{@link SchematronResourcePure#fromClassPath} only <em>constructs</em> the resource; the pure
+   * engine compiles ("binds") the schema lazily, on first {@code applySchematronValidationToSVRL},
+   * through {@code getOrCreateBoundSchema()} — verified in the pinned {@code
+   * ph-schematron-pure-10.0.0} bytecode to be an unsynchronised {@code getfield / ifnonnull /
+   * createBoundSchema / putfield} write of the <em>non-volatile</em> instance field {@code
+   * m_aBoundSchema}. Two threads racing that first bind would each run the expensive compile and
+   * could unsafely publish a half-built bound schema to the losing thread.
+   *
+   * <p>Calling {@link ISchematronResource#isValidSchematron()} in this initializer forces that bind
+   * (the method calls {@code getOrCreateBoundSchema()} itself) exactly once, under the JVM's
+   * class-initialisation lock. That lock establishes a happens-before to every later reader of
+   * {@code SCHEMATRON}, so once initialisation completes the resource is fully bound and every
+   * subsequent {@code applySchematronValidationToSVRL} only ever takes the already-bound read path
+   * — no thread re-enters the write. This is what makes the stage's "safe to share" claim true; a
+   * concurrency regression test ({@code EbInterface61ValidatorConcurrencyTest}) pins it.
    */
   private static final class SchematronHolder {
 
     private static final ISchematronResource SCHEMATRON =
         SchematronResourcePure.fromClassPath(SCHEMATRON_PATH);
+
+    /**
+     * Validity of the bundled Schematron, captured once. Evaluating {@link
+     * ISchematronResource#isValidSchematron()} here also forces the otherwise-lazy compile, so the
+     * class-init lock covers the bind and publishes a fully-bound resource (see the class Javadoc).
+     */
+    private static final boolean SCHEMATRON_VALID = SCHEMATRON.isValidSchematron();
   }
 }

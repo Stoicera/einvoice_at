@@ -1,6 +1,8 @@
 package com.stoicera.einvoice.validation.architecture;
 
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
@@ -14,6 +16,11 @@ import org.junit.jupiter.api.Test;
  * format and profile; canonical mapping is a separate concern that depends on validation, never the
  * other way round. Test scope may use {@code mapping} once Task 9 adds round-trip fixtures. Never
  * weaken these rules to make a build pass; fix the design.
+ *
+ * <p>Beyond the negative rules, a positive whitelist ({@link #dependsOnlyOnAllowedModules()}) pins
+ * the exact set of packages main code may reach, so an accidental dependency on a sibling module
+ * ({@code rendering}, {@code ai-assist}) or a raw parser internal fails loudly rather than sliding
+ * in unnoticed — the same shape {@code mapping} already carries (finding A8).
  */
 class ValidationArchitectureTest {
 
@@ -21,6 +28,14 @@ class ValidationArchitectureTest {
       new ClassFileImporter()
           .withImportOption(new ImportOption.DoNotIncludeTests())
           .importPackages("com.stoicera.einvoice.validation");
+
+  @Test
+  void moduleClassesAreImported() {
+    // Guards every rule below against passing vacuously: if the package string above is ever
+    // mistyped, the import comes back empty and each noClasses()/classes() rule would trivially
+    // hold. Asserting a non-empty import makes that failure loud (finding A8).
+    assertThat(MODULE_CLASSES).isNotEmpty();
+  }
 
   @Test
   void doesNotDependOnSpring() {
@@ -46,6 +61,25 @@ class ValidationArchitectureTest {
         .should()
         .dependOnClassesThat()
         .resideInAnyPackage("com.stoicera.einvoice.mapping..")
+        .check(MODULE_CLASSES);
+  }
+
+  @Test
+  void dependsOnlyOnAllowedModules() {
+    classes()
+        .that()
+        .resideInAPackage("com.stoicera.einvoice.validation..")
+        .should()
+        .onlyDependOnClassesThat()
+        .resideInAnyPackage(
+            "com.stoicera.einvoice.validation..",
+            "com.stoicera.einvoice.core..",
+            "com.stoicera.einvoice.formats.ebinterface..",
+            "com.helger..",
+            "java..",
+            "javax.xml..",
+            "org.w3c.dom..",
+            "org.xml.sax..")
         .check(MODULE_CLASSES);
   }
 }

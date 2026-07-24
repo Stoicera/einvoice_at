@@ -35,7 +35,7 @@ class XsdValidationStageTest {
     assertThat(findings)
         .allSatisfy(
             finding -> {
-              assertThat(finding.ruleId()).isEqualTo("EBI61-XSD");
+              assertThat(finding.ruleId()).isEqualTo("XSD-01");
               assertThat(finding.messageDe())
                   .startsWith("Das Dokument verletzt das ebInterface-6.1-Schema: ");
             });
@@ -110,7 +110,7 @@ class XsdValidationStageTest {
 
     Finding finding = XsdValidationStage.toFinding(germanError, englishError);
 
-    assertThat(finding.ruleId()).isEqualTo("EBI61-XSD");
+    assertThat(finding.ruleId()).isEqualTo("XSD-01");
     assertThat(finding.severity()).isEqualTo(Severity.ERROR);
     assertThat(finding.location()).isEqualTo("upload.xml");
     assertThat(finding.messageDe())

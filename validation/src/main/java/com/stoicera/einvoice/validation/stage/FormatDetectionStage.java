@@ -4,6 +4,7 @@ import com.helger.ebinterface.EEbInterfaceVersion;
 import com.stoicera.einvoice.core.validation.Finding;
 import com.stoicera.einvoice.core.validation.Severity;
 import com.stoicera.einvoice.formats.ebinterface.EbInterfaceNamespaces;
+import com.stoicera.einvoice.validation.RuleIds;
 import com.stoicera.einvoice.validation.ValidationContext;
 import com.stoicera.einvoice.validation.ValidationStage;
 import java.util.List;
@@ -16,16 +17,10 @@ import org.w3c.dom.Document;
  * <p>The stage runs only after a DOM is available. It resolves the root namespace against the known
  * ebInterface versions: an unrecognised namespace is {@code FORMAT-01} (unknown format); a
  * recognised but unsupported ebInterface version is {@code FORMAT-02} (naming the found and the
- * supported version); the supported version 6.1 is recorded on the context and produces no finding,
- * so the pipeline continues to the XSD stage.
+ * supported version); the supported version 6.1 produces no finding, so the pipeline continues to
+ * the XSD stage. Success is communicated solely by returning an empty finding list.
  */
 public final class FormatDetectionStage implements ValidationStage {
-
-  /** Rule id: the document is XML but its namespace matches no supported invoice format. */
-  public static final String RULE_UNKNOWN_FORMAT = "FORMAT-01";
-
-  /** Rule id: the document is ebInterface, but a version this platform does not support. */
-  public static final String RULE_UNSUPPORTED_VERSION = "FORMAT-02";
 
   /** The only ebInterface version this validator supports. */
   private static final EEbInterfaceVersion SUPPORTED_VERSION = EEbInterfaceVersion.V61;
@@ -40,7 +35,7 @@ public final class FormatDetectionStage implements ValidationStage {
       return List.of(
           Finding.of(
               Severity.ERROR,
-              RULE_UNKNOWN_FORMAT,
+              RuleIds.FORMAT_01,
               null,
               "Unbekanntes Rechnungsformat: Der XML-Namensraum des Wurzelelements entspricht keiner"
                   + " unterstützten ebInterface-Version.",
@@ -58,11 +53,9 @@ public final class FormatDetectionStage implements ValidationStage {
       String messageEn =
           "Unsupported ebInterface version %s; only version %s is supported."
               .formatted(found, supported);
-      return List.of(
-          Finding.of(Severity.ERROR, RULE_UNSUPPORTED_VERSION, null, messageDe, messageEn));
+      return List.of(Finding.of(Severity.ERROR, RuleIds.FORMAT_02, null, messageDe, messageEn));
     }
 
-    ctx.setDetectedVersion(detected);
     return List.of();
   }
 }

@@ -16,7 +16,7 @@
   <InvoiceRecipient>
     <VATIdentificationNumber>ATU87654321</VATIdentificationNumber>
     <OrderReference>
-      <OrderID>BBG-2026-4711</OrderID>
+      <OrderID>   </OrderID>
     </OrderReference>
     <Address>
       <Name>Bundesbeschaffung GmbH</Name>
@@ -70,7 +70,7 @@
     <UniversalBankTransaction>
       <BeneficiaryAccount>
         <BIC>BKAUATWW</BIC>
-        <IBAN>AT611904300234573202</IBAN>
+        <IBAN>AT611904300234573201</IBAN>
       </BeneficiaryAccount>
     </UniversalBankTransaction>
   </PaymentMethod>
