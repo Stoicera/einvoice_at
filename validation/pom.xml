@@ -194,7 +194,7 @@
               <targetClasses>
                 <param>com.stoicera.einvoice.validation.*</param>
               </targetClasses>
-              <!-- Measured mutation score 104/117 (89%) on 2026-07-24; a full run takes ~30 s. The
+              <!-- Measured mutation score 103/116 (89%) on 2026-07-24; a full run takes ~30 s. The
                    13 surviving mutants are documented and left on purpose. Six live in SecureXml, in
                    three DISTINCT categories (not one blanket "dominated by disallow-doctype-decl"
                    claim, which was previously and wrongly asserted for all six):

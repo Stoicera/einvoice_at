@@ -30,7 +30,7 @@ import org.w3c.dom.Document;
  * publishes a fully-bound, thereafter read-only resource that is genuinely safe to share — see
  * {@link SchematronHolder}. Each failed assert becomes a finding through {@link
  * SchematronRuleCatalog}, which owns the bilingual message text; the SVRL location is carried
- * through verbatim.
+ * through, bounded to a safe length (512 chars, {@code BoundedText.MAX_LOCATION}).
  */
 public final class SchematronStage implements ValidationStage {
 

@@ -34,7 +34,7 @@ einvoice-at/
 ├── core/                         # canonical invoice model (EN 16931 core subset), pure Java, zero Spring deps
 ├── formats-ebinterface/          # ebInterface 6.1 read/write/validate (wraps ph-ebinterface); version-strategy interface for 7.0
 ├── formats-ubl/                  # UBL BIS 3.0 read/write/validate
-├── mapping/                      # canonical ↔ formats; MapStruct + manual semantic mapping; golden-file tests
+├── mapping/                      # canonical ↔ formats; MapStruct evaluated but unrealized as of M2 (hand-written, semantic mapping); golden-file tests
 ├── validation/                   # orchestrates XSD + Schematron (phive) + own business rules; produces ValidationReport
 ├── rendering/                    # invoice → PDF / HTML print view
 ├── ai-assist/                    # LlmClient port + OpenRouter adapter; error-explanation service; prompt templates versioned

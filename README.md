@@ -82,7 +82,7 @@ The M2 modules carry the same JaCoCo discipline — `formats-ebinterface` and `v
 4. **Own AT-B2G Schematron** — runs only once the document is XSD-valid. `AT-B2G-01` checks the Auftragsreferenz is present, required for invoices to Austrian federal bodies.
 5. **Java business rule** — runs alongside Schematron gating. `AT-B2G-02` checks every `IBAN` present under the payment method against the core `Iban` mod-97 checksum (the XSD only bounds an IBAN's length). The finding never echoes the IBAN itself — only its 1-based position in the document.
 
-Every rule id the pipeline can produce is centralised in `RuleIds` (module `validation`) — the single registry the corpus and the CLI both assert against, so the id scheme (`PREFIX-NN`) stays uniform as new rules land:
+Every rule id the pipeline can produce is centralised in `RuleIds` (module `validation`) — the single registry the corpus and the CLI both depend on (the corpus asserts against it, the CLI only prints it), so the id scheme (`PREFIX-NN`) stays uniform as new rules land:
 
 | Rule id | Stage | Meaning |
 |---|---|---|
