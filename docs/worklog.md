@@ -1,5 +1,43 @@
 # Worklog — einvoice-at
 
+## 2026-07-24 — M2 Task 6: validation pipeline skeleton + phive XSD stage
+
+**What**
+
+- New `validation` module wired: deps `core`, `formats-ebinterface`, `phive-api`, `phive-xml`,
+  `phive-rules-ebinterface`, `ph-ebinterface` (all parent-managed); JaCoCo gate 90/85.
+- `SecureXml` (module-internal): namespace-aware `DocumentBuilderFactory`, secure-processing on,
+  `disallow-doctype-decl` on, external entities/DTD off — XXE hardening at the boundary; returns
+  `Optional<Document>` (empty for malformed / DOCTYPE).
+- Pipeline: `ValidationContext` (lazy DOM / detected version / lenient Ebi61 parse, all memoized),
+  `ValidationStage`, `FormatDetectionStage` (`FORMAT-01`/`FORMAT-02`), `XsdValidationStage` (phive
+  ebInterface 6.1 VES behind a lazy registry holder), `EbInterface61Validator` facade. Fixed order
+  and stop rules: `XML-01` → `FORMAT-01`/`FORMAT-02` → `EBI61-XSD`; `sourceFormat` `ebinterface-6.1`
+  / `unknown`; `profile` always `at-b2g`. Facade never throws (null input → `XML-01`).
+- TDD: failing tests first; 29 tests (SecureXml, context, both stages, facade integration,
+  ArchUnit). ArchUnit: no Spring/JPA, main code must not depend on `mapping..`.
+- ADR-0004 records the XSD-message honesty (parser text verbatim behind a German lead-in), the
+  pipeline order/stop rules, and the boundary hardening.
+
+**Decisions**
+
+- XSD finding text is the Xerces message as delivered; asked in `Locale.GERMAN` it is German for
+  built-in messages (may fall back to English), always behind our German lead-in — no fake
+  translation. DOM-sourced errors carry `upload.xml` as location (no line/col in a DOM).
+- `severityOf`: error-and-above → ERROR, else WARN (VES is XSD-only, so ERROR in practice).
+- Facade decides the XSD stop via the freshly built report's `isValid()` — core stays the single
+  source of validity truth.
+
+**Verification**
+
+- `./mvnw verify -pl validation` green; JaCoCo 100 % line / 100 % branch (gate 90/85). Full
+  `./mvnw verify` green across all nine modules.
+
+**Next**
+
+- M2 Task 7+: Schematron stage and Austrian B2G business rules (`AT-B2G-01`/`AT-B2G-02`), plugging
+  into the same context/stage contract; round-trip fixtures via `mapping` in test scope (Task 9).
+
 ## 2026-07-23 — M0 Fundament: complete
 
 **What**
