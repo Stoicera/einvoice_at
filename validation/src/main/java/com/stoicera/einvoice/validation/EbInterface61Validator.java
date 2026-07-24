@@ -4,6 +4,7 @@ import com.stoicera.einvoice.core.validation.Finding;
 import com.stoicera.einvoice.core.validation.Severity;
 import com.stoicera.einvoice.core.validation.ValidationReport;
 import com.stoicera.einvoice.validation.stage.FormatDetectionStage;
+import com.stoicera.einvoice.validation.stage.SchematronStage;
 import com.stoicera.einvoice.validation.stage.XsdValidationStage;
 import java.util.ArrayList;
 import java.util.List;
@@ -17,7 +18,7 @@ import java.util.List;
  * order and stops at the first stage that makes later stages meaningless: secure DOM parse ({@code
  * XML-01}) → format detection ({@code FORMAT-01}/{@code FORMAT-02}) → XSD ({@code EBI61-XSD}; a
  * structurally invalid document cannot be meaningfully checked by Schematron or business rules) →
- * Schematron and Austrian business rules (added in later milestone tasks).
+ * our own AT-B2G Schematron ({@code AT-B2G-nn}; evaluated only on a schema-valid tree).
  */
 public final class EbInterface61Validator {
 
@@ -35,6 +36,7 @@ public final class EbInterface61Validator {
 
   private final FormatDetectionStage formatDetection = new FormatDetectionStage();
   private final XsdValidationStage xsdValidation = new XsdValidationStage();
+  private final SchematronStage schematron = new SchematronStage();
 
   /**
    * Validates {@code xml} and returns the report.
@@ -68,8 +70,10 @@ public final class EbInterface61Validator {
       return afterXsd;
     }
 
-    // Stage 3+ — Schematron and Austrian B2G business rules arrive in later milestone tasks; their
-    // findings will be aggregated into `findings` here before the report is rebuilt.
+    // Stage 3 — our own AT-B2G Schematron. It runs only now that the document is structurally
+    // schema-valid, so the XPath rules evaluate against a well-formed 6.1 tree; its findings (e.g.
+    // AT-B2G-01) are aggregated into the report alongside any (currently none) XSD warnings.
+    findings.addAll(schematron.apply(ctx));
 
     return report(SOURCE_EBINTERFACE_61, findings);
   }

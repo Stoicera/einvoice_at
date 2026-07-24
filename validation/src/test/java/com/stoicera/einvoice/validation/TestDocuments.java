@@ -7,15 +7,20 @@ import java.nio.charset.StandardCharsets;
  * the mapping module: the validation module must never take a main-scope dependency on {@code
  * mapping}, and a hostile reviewer can read exactly what is fed to the pipeline.
  *
- * <p>{@link #validEbInterface61()} is the minimal structurally valid ebInterface 6.1 invoice —
- * every required {@code InvoiceType} child and attribute per the bundled 6.1 XSD, nothing more. The
- * broken and wrong-version variants are derived from it so the difference under test is isolated.
+ * <p>{@link #validEbInterface61()} is the minimal <em>fully AT-B2G-valid</em> ebInterface 6.1
+ * invoice: every required {@code InvoiceType} child and attribute per the bundled 6.1 XSD, plus the
+ * {@code OrderReference/OrderID} (Auftragsreferenz) the AT-B2G Schematron ({@code AT-B2G-01})
+ * requires — nothing more. The broken, wrong-version and missing/blank-order-reference variants are
+ * derived from it so the difference under test is isolated.
  */
 public final class TestDocuments {
 
   private TestDocuments() {}
 
-  /** Minimal ebInterface 6.1 document that passes the bundled 6.1 XSD without a single error. */
+  /**
+   * Minimal ebInterface 6.1 document that passes the bundled 6.1 XSD <em>and</em> the AT-B2G
+   * Schematron without a single error — it carries the Auftragsreferenz {@code AT-B2G-01} demands.
+   */
   public static String validEbInterface61() {
     return """
         <?xml version="1.0" encoding="UTF-8"?>
@@ -31,6 +36,9 @@ public final class TestDocuments {
           </Biller>
           <InvoiceRecipient>
             <VATIdentificationNumber>ATU18708634</VATIdentificationNumber>
+            <OrderReference>
+              <OrderID>4021-2024</OrderID>
+            </OrderReference>
           </InvoiceRecipient>
           <Details>
             <ItemList>
@@ -65,6 +73,24 @@ public final class TestDocuments {
    */
   public static String brokenEbInterface61() {
     return validEbInterface61().replaceFirst("  <InvoiceNumber>993433000298</InvoiceNumber>\n", "");
+  }
+
+  /**
+   * ebInterface 6.1 document that is fully XSD-valid but carries no {@code OrderReference} — the
+   * business-rule case the AT-B2G Schematron must catch as {@code AT-B2G-01} (Auftragsreferenz
+   * missing). Derived by removing the whole {@code OrderReference} element from the valid document.
+   */
+  public static String ebInterface61WithoutOrderReference() {
+    return validEbInterface61().replaceFirst("(?s)\\s*<OrderReference>.*?</OrderReference>", "");
+  }
+
+  /**
+   * ebInterface 6.1 document whose {@code OrderID} is whitespace only — XSD-valid ({@code IDType}
+   * is an unconstrained string), but the AT-B2G Schematron still fails {@code AT-B2G-01} because
+   * {@code normalize-space()} of the order id is empty. Derived by blanking the valid order id.
+   */
+  public static String ebInterface61BlankOrderReference() {
+    return validEbInterface61().replace("4021-2024", "   ");
   }
 
   /**

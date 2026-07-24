@@ -1,5 +1,54 @@
 # Worklog — einvoice-at
 
+## 2026-07-24 — M2 Task 7: own AT-B2G Schematron stage (Auftragsreferenz rule)
+
+**What**
+
+- New original Schematron `validation/src/main/resources/schematron/at-b2g-ebinterface-6.1.sch`
+  (queryBinding `xslt`, `eb` bound to `EEbInterfaceVersion.V61.getNamespaceURI()` =
+  `http://www.ebinterface.at/schema/6p1/`). Header records provenance: original AT-B2G rules, not
+  derived from any AUSTRIAPRO artefact — ebInterface ships no official Schematron. One rule so far:
+  `AT-B2G-01`, Auftragsreferenz (`InvoiceRecipient/OrderReference/OrderID` must be non-blank).
+- `SchematronStage` runs ph-schematron's pure (XPath) engine against the already-parsed DOM
+  (`applySchematronValidationToSVRL(ctx.dom(), null)`); compiled resource cached in a lazy,
+  thread-safe holder (mirrors the Task 6 registry holder). `SchematronRuleCatalog` owns the DE/EN
+  finding text per rule id (messageDe first); an uncatalogued failed assert never drops — it maps to
+  an ERROR with the raw SVRL text in both languages and the id kept as-is.
+- Wired into the facade after the XSD stop: Schematron runs only on a schema-valid tree. Facade test
+  extended to prove the gating (XSD-broken doc → no `AT-B2G` finding) plus the new business-rule
+  path (schema-valid but no order reference → invalid with `AT-B2G-01`).
+- TDD: failing tests first (RED = missing `SchematronStage`/`SchematronRuleCatalog` symbols), then
+  green. New tests: stage (4), catalog mapper incl. fallback via a synthetic `SVRLFailedAssert` (2),
+  facade (+1). Validation module 39 tests.
+
+**Decisions**
+
+- ph-schematron-pure/api stay transitive through the phive stack (phive-xml → ph-schematron-pure
+  10.0.0, phive-api → ph-schematron-api 10.0.0) — no new dependency, no free pin. This mirrors the
+  established module convention: the XSD stage already consumes ph-diagnostics transitively through
+  phive rather than redeclaring helger sub-artifacts; phive is the single governed entry point. A
+  provenance comment on the phive-xml dependency records the intent.
+- The `.sch` uses `queryBinding="xslt"`, which the pure engine accepts (it registers xslt/xslt2/
+  xslt3 alongside xpath* and evaluates XPath either way; Saxon-HE 12.10 on the classpath gives it
+  XPath 2.0+, so `normalize-space()`/`!=` are fine).
+- Assert text is the German finding text so the raw SVRL stays useful; the catalog is the single
+  source of the bilingual pair. All failed asserts map to ERROR (a failed `assert` is a hard rule).
+- Fixture `validEbInterface61()` now carries the Auftragsreferenz, so it is the minimal *fully
+  AT-B2G-valid* document; the missing/blank-order-reference variants are derived from it.
+
+**Verification**
+
+- `./mvnw verify -pl validation` green; JaCoCo 97.8 % line / 90.5 % branch (gate 90/85). Two
+  intentionally-uncovered lines: the defensive `IllegalStateException` catch for a checked
+  `applySchematronValidationToSVRL` failure that cannot occur on an XSD-clean DOM (same "cannot
+  happen" spirit as the XSD stage's `orElseThrow`). Full `./mvnw verify` green across all nine
+  modules.
+
+**Next**
+
+- M2 Task 8+: further AT-B2G rules (`AT-B2G-02` …) extend the same `.sch`/catalog; corpus + CLI
+  tasks consume the fixed `AT-B2G-01` id and its DE/EN texts.
+
 ## 2026-07-24 — M2 Task 6: validation pipeline skeleton + phive XSD stage
 
 **What**

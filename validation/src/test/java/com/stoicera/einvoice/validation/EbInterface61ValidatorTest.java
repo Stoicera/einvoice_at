@@ -75,10 +75,31 @@ class EbInterface61ValidatorTest {
                   .doesNotStartWith("Das Dokument verletzt das ebInterface-6.1-Schema: ");
               assertThat(finding.messageEn()).isNotEqualTo(finding.messageDe());
             });
+    // Gating: a document that fails the XSD stage must never reach the Schematron stage, so no
+    // AT-B2G rule can fire on a structurally invalid tree.
+    assertThat(report.findings()).noneMatch(finding -> finding.ruleId().startsWith("AT-B2G"));
   }
 
   @Test
-  void validEbInterface61IsValid() {
+  void schemaValidButMissingOrderReferenceFailsAtB2g01() {
+    ValidationReport report =
+        validator.validate(TestDocuments.bytes(TestDocuments.ebInterface61WithoutOrderReference()));
+
+    assertThat(report.sourceFormat()).isEqualTo("ebinterface-6.1");
+    assertThat(report.isValid()).isFalse();
+    assertThat(report.findings())
+        .anySatisfy(
+            finding -> {
+              assertThat(finding.ruleId()).isEqualTo("AT-B2G-01");
+              assertThat(finding.severity()).isEqualTo(Severity.ERROR);
+            });
+    // The document is structurally schema-valid: the only error is the business rule, not XSD.
+    assertThat(report.findingsOf(Severity.ERROR))
+        .allSatisfy(finding -> assertThat(finding.ruleId()).isEqualTo("AT-B2G-01"));
+  }
+
+  @Test
+  void validEbInterface61WithOrderReferenceIsValid() {
     ValidationReport report =
         validator.validate(TestDocuments.bytes(TestDocuments.validEbInterface61()));
 

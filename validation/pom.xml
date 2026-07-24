@@ -31,7 +31,14 @@
     </dependency>
 
     <!-- phive: the XSD/Schematron validation engine by Philip Helger. phive-api is the executor
-         model, phive-xml the XML source binding; both parent-managed (12.1.0), never redeclared. -->
+         model, phive-xml the XML source binding; both parent-managed (12.1.0), never redeclared.
+         The AT-B2G Schematron stage runs on ph-schematron's pure (XPath) engine
+         (com.helger.schematron:ph-schematron-pure) and reads SVRL via ph-schematron-api; both ride
+         in transitively through the phive stack (phive-xml → ph-schematron-pure:10.0.0, phive-api →
+         ph-schematron-api:10.0.0, verified via dependency:tree). We keep them transitive on purpose,
+         mirroring how the XSD stage already consumes ph-diagnostics through phive rather than
+         redeclaring every helger sub-artifact — phive is the single governed entry point for its
+         own stack. -->
     <dependency>
       <groupId>com.helger.phive</groupId>
       <artifactId>phive-api</artifactId>
