@@ -235,6 +235,24 @@ public final class TestDocuments {
         """;
   }
 
+  /**
+   * A <em>DOCTYPE-free</em> document whose body carries an XInclude text inclusion pointing at
+   * {@code href}. XInclude is a namespaced document-body mechanism resolved independently of {@code
+   * DOCTYPE}/DTD/entity handling: were the parser XInclude-aware, this would splice the target
+   * file's raw bytes straight into the DOM — a local-file-disclosure vector that {@code
+   * disallow-doctype-decl} does <em>not</em> stop (there is no {@code DOCTYPE} here). A hardened
+   * parser leaves the {@code xi:include} element un-expanded and never reads {@code href}.
+   */
+  public static String xIncludeTextPayload(String href) {
+    return """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <invoice xmlns:xi="http://www.w3.org/2001/XInclude">
+          <leak><xi:include href="HREF" parse="text"/></leak>
+        </invoice>
+        """
+        .replace("HREF", href);
+  }
+
   public static byte[] bytes(String xml) {
     return xml.getBytes(StandardCharsets.UTF_8);
   }
