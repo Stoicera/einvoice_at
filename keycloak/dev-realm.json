@@ -1,0 +1,43 @@
+{
+  "realm": "einvoice",
+  "enabled": true,
+  "displayName": "einvoice-at (dev)",
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "accessTokenLifespan": 300,
+  "clients": [
+    {
+      "clientId": "einvoice-api",
+      "name": "einvoice-at API (dev)",
+      "description": "DEV/TEST ONLY confidential client. Direct access grants are enabled so dev and the ITs can fetch a token with username/password; the secret below is public and dev-only. Never reuse in a deployed environment.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "dev-einvoice-api-secret-not-for-production",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true
+    }
+  ],
+  "users": [
+    {
+      "username": "testuser",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "testuser@einvoice.test",
+      "firstName": "Test",
+      "lastName": "User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "testpass",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}
