@@ -78,7 +78,7 @@ Pages: Landing/"Prüfer" (public upload → report, German-first, SEO meta), Rep
 
 ## 7. Validation pipeline (module `validation`)
 
-`detectFormat → XSD → Schematron (profile per format/version) → business rules (AT-B2G: order reference present, IBAN valid, tax rates plausible, KZ totals) → aggregate ValidationReport`. Each stage independent + testable; golden test corpus in `validation/src/test/resources/corpus/` (valid + systematically broken samples per rule). This corpus is a portfolio asset in itself — document it.
+`detectFormat → XSD → Schematron (profile per format/version) → business rules (AT-B2G: order reference present, IBAN valid, tax rates plausible, KZ totals) → aggregate ValidationReport`. Each stage independent + testable; golden test corpus in `validation/src/test/resources/corpus/` (valid + systematically broken samples per rule). This corpus is a portfolio asset in itself — document it. For ebInterface, the Schematron stage runs project-own AT-B2G rules (see [ADR-0004](adr/0004-validation-pipeline-and-xsd-messages.md)) because AUSTRIAPRO publishes no official Schematron for ebInterface; Peppol BIS 3.0's official Schematron rule sets arrive unmodified with M4.
 
 ## 8. Data & persistence
 

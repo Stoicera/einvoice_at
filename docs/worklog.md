@@ -1,136 +1,109 @@
 # Worklog — einvoice-at
 
-## 2026-07-24 — M2 Task 8: IBAN business rule (AT-B2G-02) + full AT-B2G pipeline
+## 2026-07-24 — M2: ebInterface 6.1 generation + validation
 
 **What**
 
-- New `BusinessRuleStage` (validation): rule `AT-B2G-02` — every `IBAN` present under
-  `PaymentMethod/UniversalBankTransaction/BeneficiaryAccount` must pass the core `Iban` mod-97
-  checksum. Deliberately narrow: no payment method / non-transfer method / account without an `IBAN`
-  element is not a finding (structural presence is the XSD's job; B2G payment-completeness is a later
-  milestone). Finding never echoes the IBAN (bank PII) — `Iban` has only a throwing factory, so the
-  stage catches `InvariantViolationException`; message and location name the account by 1-based
-  position: `IBAN im Empfängerkonto <n> ist ungültig (Prüfsummenfehler).` /
-  `.../BeneficiaryAccount[<n>]/IBAN`.
-- Wired as the last stage in `EbInterface61Validator`, gated exactly like Schematron (runs only on an
-  XSD-valid tree). Report preserves pipeline order → `AT-B2G-01` then `AT-B2G-02`; facade test
-  asserts `containsExactly`.
-- Formats: new `read(org.w3c.dom.Node)` overload on `EbInterfaceVersionStrategy`, 6.1 impl unmarshals
-  a fresh `EbInterface61Marshaller` from the DOM (verified `IJAXBReader.read(Node)` via javap); both
-  read overloads share one lenient error-collection body. `ValidationContext.ebiInvoice()` now
-  unmarshals from the hardened `dom()` instead of re-reading raw bytes — closes the Task 6 review gap
-  (untrusted upload parsed exactly once, through `SecureXml`). `read(byte[])` kept for non-pipeline
-  callers (mapping).
-- ADR-0004 extended (decision 5 + Konsequenzen): business-rule stage, DOM-based `ebiInvoice()`, the
-  "parse exactly once" property now literally end-to-end, and the completeness-rule scoping note.
+- `core`: closed the five M1-deferred hygiene minors (bounded breakdown-mismatch message echo,
+  `VatExemptionReason` trim-before-cap, AE-default wording, ADR-0003 negative-380-import note,
+  message-capitalization consistency). New `com.stoicera.einvoice.core.validation` package:
+  `Severity` (ERROR/WARN/INFO), `Finding` (record — severity, ruleId, location, messageDe,
+  messageEn, aiExplanation; non-blank/length-capped invariants), `ValidationReport` (sourceFormat,
+  profile, findings, `isValid()`) — the shared contract `validation` and, later, `app` build on.
+- `formats-ebinterface`: `EbInterfaceVersionStrategy<T>` (`namespaceUri()`, `read(byte[])`,
+  `read(org.w3c.dom.Node)`, `write(T)`) wraps ph-ebinterface behind a version-strategy seam so
+  ebInterface 7.0 can be added later without touching `core`; `EbInterface61Strategy` is the 6.1
+  implementation, `ReadResult<T>` the lenient read outcome, `EbInterfaceNamespaces` the
+  namespace-to-version lookup.
+- `mapping`: `InvoiceToEbInterface61Mapper.map(Invoice) → Ebi61InvoiceType` — hand-written,
+  stateless, **no arithmetic** (copies `core`-derived amounts verbatim; ADR-0003
+  derive-don't-trust). `InvoiceJsonReader.read(InputStream) → Invoice` — a strict, Jackson-based
+  boundary reader for the canonical-invoice JSON shape (`samples/README.md`,
+  `samples/invoice-b2g-sample.json`): unknown properties rejected, money/quantity fields must be
+  JSON strings (a numeric node is rejected, never silently stringified).
+- `validation` module (new): `SecureXml` (XXE-hardened, namespace-aware DOM parse) →
+  `FormatDetectionStage` → `XsdValidationStage` (phive VES `VID_EBI_61`, XSD-only) →
+  `SchematronStage` (project-own `at-b2g-ebinterface-6.1.sch`) → `BusinessRuleStage` (IBAN mod-97),
+  orchestrated by the `EbInterface61Validator` facade with hard gating — semantic stages run only
+  on an XSD-valid tree. `ValidationContext.ebiInvoice()` unmarshals the JAXB tree from the already
+  hardened DOM via the new `read(Node)` overload, so the untrusted upload is parsed exactly once.
+- Golden-file corpus (`validation/src/test/resources/corpus/`, `valid/` + `invalid/`, own README)
+  and `CorpusTest`; `EndToEndGenerationTest` runs the full chain JSON → `InvoiceJsonReader` →
+  `InvoiceToEbInterface61Mapper` → `EbInterface61Strategy.write` → `EbInterface61Validator` and
+  pins the output byte-for-byte against the committed twin `samples/invoice-b2g-sample.ebinterface.xml`
+  — the milestone's Abnahme in code.
+- `ValidationRunner` CLI: runs the pipeline over files/directories, German-first console report
+  (English mirror per finding), exit codes `0`/`1`/`2` (`2` also covers a resolved file list that
+  came back empty, fixed in a follow-up commit after review).
+- Docs (this entry's own task): ADR-0004 extended with the own-Schematron rationale, the
+  Schematron-vs-Java rule-mechanism split, and a rule-id scheme table; new README "Validation
+  pipeline" section; glossary gained Schematron/SVRL/Storno/Prüfsumme, Lieferantennummer's entry
+  now names its ebInterface mapping target; SPEC §7 gained the own-Schematron honesty sentence;
+  two stale comments fixed (`core/pom.xml` PIT-threshold comment, `ReadResult` Javadoc).
 
 **Decisions**
 
-- Business rules that read more naturally as Java than XPath live in `BusinessRuleStage` over the
-  parsed JAXB tree; XPath-shaped rules stay in Schematron. Both gated on XSD-clean.
-- `AT-B2G-02` rule id, DE/EN message templates and location format are a fixed contract for the
-  corpus and CLI tasks (per the brief).
+- **Own Schematron, not AUSTRIAPRO's.** ebInterface ships an XSD only — no official Schematron
+  exists to consume — so `AT-B2G-01` (Auftragsreferenz) is an original `.sch` file with its
+  provenance recorded in the header, distinct from the vendored ebInterface XSD and from the
+  official Peppol Schematron/Genericode sets M4 will consume unmodified via phive-rules.
+- **XSD stage validates twice, once per locale, for genuinely bilingual `EBI61-XSD` text.** Xerces
+  bakes its diagnostic into the `SAXParseException` at validation time using whatever `Locale` that
+  run was asked for; a second `getErrorText(Locale.ENGLISH)` call on the same `IError` returns the
+  same (German) text. Running the XSD executor twice on the identical DOM and pairing errors by
+  position is the only way to get a genuine English message without hand-translating Xerces output
+  (ADR-0004).
+- **Mapper XSD-resolved choices**, each pinned against the bundled ebInterface 6.1 XSD:
+  `@Language = "de"` (the 2-letter ISO 639-1 code the XSD's `LanguageType` requires); exemption
+  reason (VAT categories AE/E) → `Tax/TaxItem[j]/Comment` (no root-level `Comment` needed);
+  `paymentTerms` → `PaymentConditions/Comment`; missing unit code defaults to `"C62"`.
+- **JSON reader: shape problems throw `InvoiceJsonException`, domain-invalid content propagates
+  `core`'s own `InvariantViolationException` untouched.** Where a JSON field maps onto an
+  already-null-checked domain constructor argument, a missing value is deliberately let through as
+  `null` so `core` produces the one clear message, rather than the reader duplicating invariant
+  logic; only reader-owned translations (enum/date/currency/decimal parsing) throw directly.
+- **CLI: an empty resolved file list is a hard exit-2 error, not silent success.** A directory
+  argument with no matching `*.xml` files (e.g. a mistyped corpus path) used to return `0` and
+  print nothing — a CI gate reading only the exit code would see "all valid" for a run that
+  validated nothing. Fixed post-review; both the empty-directory and only-non-XML-files cases are
+  covered.
+- **PIT is kept as a local gate on `mapping`** (threshold 85, measured 100 %, ~12 s wall) alongside
+  `core`'s — cheap enough that dropping it to save CI time isn't justified. **Wiring `mapping`'s PIT
+  profile into the CI `mutation` job (which today only runs `-pl core`) is explicitly handed to the
+  finish task (M2 Task 12)**, not silently left undocumented.
+- **`jaxb-runtime` is declared once, in the parent POM's `dependencyManagement`.** The ph-* stack
+  depends on the Jakarta XML Binding *API* only; a runtime provider must be supplied by the
+  consuming module, so `jaxb-runtime` is parent-managed (runtime scope) and `formats-ebinterface`
+  opts in. `formats-ubl` will need the same opt-in when M4 adds it — noted so that task doesn't
+  rediscover the gap.
 
 **Verification**
 
-- TDD: RED first — formats DOM test (compile: no `read(Node)`), facade "both rules" test
-  (`["AT-B2G-01"]` vs expected `["AT-B2G-01","AT-B2G-02"]`); GREEN after implement.
-- `./mvnw verify` green across all 9 modules. formats-ebinterface 15 tests (JaCoCo 96.15 line /
-  87.50 branch, gate 90/85); validation 46 tests (JaCoCo 96.88 / 88.89, gate 90/85). The
-  `[Fatal Error]` lines in output are Xerces stderr from the malformed/XXE negative fixtures, not
-  failures.
+- Local `./mvnw verify` green across all 9 reactor modules (parent + core, formats-ebinterface,
+  formats-ubl, mapping, validation, rendering, ai-assist, app). Measured this session:
+  - `core`: 184 tests; JaCoCo 99.54 % line / 98.09 % branch (gate 95/90); PIT 123/127 mutants
+    killed = 97 % (gate 90, ~20 s).
+  - `formats-ebinterface`: 15 tests; JaCoCo 96.15 % / 87.50 % (gate 90/85).
+  - `mapping`: 60 tests; JaCoCo 100 % / 100 % (gate 95/90); PIT 105/105 = 100 % (gate 85, ~12 s).
+  - `validation`: 66 tests; JaCoCo 94.67 % / 92.59 % (gate 90/85).
+  - `app`: 1 test (health smoke), `formats-ubl`/`rendering`/`ai-assist` still `package-info.java`
+    only.
+  - (CI run id to be appended here by the finish task after push.)
 
 **Next**
 
-- M2 Task 9 (round-trip corpus) / Task 10 (CLI): consume the `AT-B2G-*` contract and assert the
-  `AT-B2G-02` message/location text and pipeline finding order.
-
-## 2026-07-24 — M2 Task 7: own AT-B2G Schematron stage (Auftragsreferenz rule)
-
-**What**
-
-- New original Schematron `validation/src/main/resources/schematron/at-b2g-ebinterface-6.1.sch`
-  (queryBinding `xslt`, `eb` bound to `EEbInterfaceVersion.V61.getNamespaceURI()` =
-  `http://www.ebinterface.at/schema/6p1/`). Header records provenance: original AT-B2G rules, not
-  derived from any AUSTRIAPRO artefact — ebInterface ships no official Schematron. One rule so far:
-  `AT-B2G-01`, Auftragsreferenz (`InvoiceRecipient/OrderReference/OrderID` must be non-blank).
-- `SchematronStage` runs ph-schematron's pure (XPath) engine against the already-parsed DOM
-  (`applySchematronValidationToSVRL(ctx.dom(), null)`); compiled resource cached in a lazy,
-  thread-safe holder (mirrors the Task 6 registry holder). `SchematronRuleCatalog` owns the DE/EN
-  finding text per rule id (messageDe first); an uncatalogued failed assert never drops — it maps to
-  an ERROR with the raw SVRL text in both languages and the id kept as-is.
-- Wired into the facade after the XSD stop: Schematron runs only on a schema-valid tree. Facade test
-  extended to prove the gating (XSD-broken doc → no `AT-B2G` finding) plus the new business-rule
-  path (schema-valid but no order reference → invalid with `AT-B2G-01`).
-- TDD: failing tests first (RED = missing `SchematronStage`/`SchematronRuleCatalog` symbols), then
-  green. New tests: stage (4), catalog mapper incl. fallback via a synthetic `SVRLFailedAssert` (2),
-  facade (+1). Validation module 39 tests.
-
-**Decisions**
-
-- ph-schematron-pure/api stay transitive through the phive stack (phive-xml → ph-schematron-pure
-  10.0.0, phive-api → ph-schematron-api 10.0.0) — no new dependency, no free pin. This mirrors the
-  established module convention: the XSD stage already consumes ph-diagnostics transitively through
-  phive rather than redeclaring helger sub-artifacts; phive is the single governed entry point. A
-  provenance comment on the phive-xml dependency records the intent.
-- The `.sch` uses `queryBinding="xslt"`, which the pure engine accepts (it registers xslt/xslt2/
-  xslt3 alongside xpath* and evaluates XPath either way; Saxon-HE 12.10 on the classpath gives it
-  XPath 2.0+, so `normalize-space()`/`!=` are fine).
-- Assert text is the German finding text so the raw SVRL stays useful; the catalog is the single
-  source of the bilingual pair. All failed asserts map to ERROR (a failed `assert` is a hard rule).
-- Fixture `validEbInterface61()` now carries the Auftragsreferenz, so it is the minimal *fully
-  AT-B2G-valid* document; the missing/blank-order-reference variants are derived from it.
-
-**Verification**
-
-- `./mvnw verify -pl validation` green; JaCoCo 97.8 % line / 90.5 % branch (gate 90/85). Two
-  intentionally-uncovered lines: the defensive `IllegalStateException` catch for a checked
-  `applySchematronValidationToSVRL` failure that cannot occur on an XSD-clean DOM (same "cannot
-  happen" spirit as the XSD stage's `orElseThrow`). Full `./mvnw verify` green across all nine
-  modules.
-
-**Next**
-
-- M2 Task 8+: further AT-B2G rules (`AT-B2G-02` …) extend the same `.sch`/catalog; corpus + CLI
-  tasks consume the fixed `AT-B2G-01` id and its DE/EN texts.
-
-## 2026-07-24 — M2 Task 6: validation pipeline skeleton + phive XSD stage
-
-**What**
-
-- New `validation` module wired: deps `core`, `formats-ebinterface`, `phive-api`, `phive-xml`,
-  `phive-rules-ebinterface`, `ph-ebinterface` (all parent-managed); JaCoCo gate 90/85.
-- `SecureXml` (module-internal): namespace-aware `DocumentBuilderFactory`, secure-processing on,
-  `disallow-doctype-decl` on, external entities/DTD off — XXE hardening at the boundary; returns
-  `Optional<Document>` (empty for malformed / DOCTYPE).
-- Pipeline: `ValidationContext` (lazy DOM / detected version / lenient Ebi61 parse, all memoized),
-  `ValidationStage`, `FormatDetectionStage` (`FORMAT-01`/`FORMAT-02`), `XsdValidationStage` (phive
-  ebInterface 6.1 VES behind a lazy registry holder), `EbInterface61Validator` facade. Fixed order
-  and stop rules: `XML-01` → `FORMAT-01`/`FORMAT-02` → `EBI61-XSD`; `sourceFormat` `ebinterface-6.1`
-  / `unknown`; `profile` always `at-b2g`. Facade never throws (null input → `XML-01`).
-- TDD: failing tests first; 29 tests (SecureXml, context, both stages, facade integration,
-  ArchUnit). ArchUnit: no Spring/JPA, main code must not depend on `mapping..`.
-- ADR-0004 records the XSD-message honesty (parser text verbatim behind a German lead-in), the
-  pipeline order/stop rules, and the boundary hardening.
-
-**Decisions**
-
-- XSD finding text is the Xerces message as delivered; asked in `Locale.GERMAN` it is German for
-  built-in messages (may fall back to English), always behind our German lead-in — no fake
-  translation. DOM-sourced errors carry `upload.xml` as location (no line/col in a DOM).
-- `severityOf`: error-and-above → ERROR, else WARN (VES is XSD-only, so ERROR in practice).
-- Facade decides the XSD stop via the freshly built report's `isValid()` — core stays the single
-  source of validity truth.
-
-**Verification**
-
-- `./mvnw verify -pl validation` green; JaCoCo 100 % line / 100 % branch (gate 90/85). Full
-  `./mvnw verify` green across all nine modules.
-
-**Next**
-
-- M2 Task 7+: Schematron stage and Austrian B2G business rules (`AT-B2G-01`/`AT-B2G-02`), plugging
-  into the same context/stage contract; round-trip fixtures via `mapping` in test scope (Task 9).
+- Sebastian: one-time manual official portal check of `samples/invoice-b2g-sample.ebinterface.xml`
+  (formvalidation.brz.gv.at / the WKO ebInterface validator) — the milestone's Abnahme step that
+  cannot be automated.
+- Sebastian: reconcile the GitHub-Release timing — `ENGINEERING_STANDARDS.md` §2 says "GitHub
+  Releases mit Changelog ab Milestone 2", but `MILESTONES.md`'s M6 Abnahme line lists "GitHub
+  Release v0.1.0". Flagging before M2's PR rather than guessing which document is authoritative.
+- M2 Task 12: `./mvnw verify`, push `feat/m2-ebinterface`, open PR #2, watch CI green including the
+  mutation job; merge is Sebastian's call (M1 precedent).
+- M3 — REST API + persistence + security (`app`): `POST /invoices`, `POST /validate`, OpenAPI,
+  problem+json, Postgres + Flyway, Keycloak in compose (realm import), OAuth2 Resource Server +
+  API keys, rate limiting on `/validate`, Testcontainers (Postgres + Keycloak) integration tests;
+  first cross-module ArchUnit rules land here too (SPEC §2).
 
 ## 2026-07-23 — M0 Fundament: complete
 

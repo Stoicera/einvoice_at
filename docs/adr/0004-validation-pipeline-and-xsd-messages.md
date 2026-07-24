@@ -1,15 +1,16 @@
 # ADR-0004 — Validation pipeline shape and XSD finding messages
 
-Date: 2026-07-24 · Status: accepted
+Date: 2026-07-24 (extended 2026-07-24, M2 Task 11) · Status: accepted
 
 ## Kontext
 
 M2 introduces the `validation` module: it takes untrusted upload bytes and produces a
 `ValidationReport` of German-first `Finding`s. The full pipeline is format detection → XSD →
-Schematron → Austrian B2G business rules; this task (M2 / Task 6) lays the skeleton and the XSD
-stage, with Schematron and the business rules following in later tasks. Two decisions need pinning
-down now because Tasks 7–10 build on them and because they touch security and the
-"every finding has a German message" rule.
+Schematron → Austrian B2G business rules; M2 / Task 6 laid the skeleton and the XSD stage, with
+Schematron (Task 7) and the Java business rule (Task 8) following. This ADR was written at Task 6 and
+is extended here, after all four stages exist, to also cover why the Schematron stage runs
+project-own rules rather than an official rule set, and to pin down the rule-id scheme the corpus
+and CLI tasks (9–10) already depend on.
 
 The XSD stage runs the bundled ebInterface 6.1 validation-executor-set (VES) from
 `phive-rules-ebinterface` — an XSD-only VES — via phive. The underlying schema violations are
@@ -60,24 +61,59 @@ diagnostic (e.g. `cvc-complex-type.2.4.a: ...`).
    the cost is paid on first validation, not at class load, and the JVM class-init lock makes
    publication safe.
 
-5. **Java business rules operate on the parsed tree, unmarshalled from the hardened DOM, and are
-   deliberately narrow (M2 / Task 8).** Rules that read more naturally as Java than as XPath live in
-   `BusinessRuleStage`, gated exactly like Schematron: they run only on an XSD-valid document. The
-   first such rule is `AT-B2G-02` — every `IBAN` present under
-   `PaymentMethod/UniversalBankTransaction/BeneficiaryAccount` must pass the core `Iban` mod-97
+5. **Our own AT-B2G Schematron is original content, not an AUSTRIAPRO artefact — because AUSTRIAPRO
+   publishes none (M2 / Task 7).** ebInterface ships an XSD only; unlike Peppol BIS (whose official
+   Schematron and Genericode rule sets phive-rules already bundles and which land unmodified with
+   M4), there is no upstream Schematron to consume for ebInterface's Austrian B2G obligations. The
+   choice was therefore to author `validation/src/main/resources/schematron/at-b2g-ebinterface-6.1.sch`
+   ourselves rather than hand-roll something that only *looks* standards-derived; the file's header
+   records this provenance explicitly so a reviewer never mistakes it for a repackaged AUSTRIAPRO
+   file. `SchematronStage` runs it (ph-schematron's pure/XPath engine, already transitive through
+   phive) against the hardened DOM, gated to run only after the document is XSD-valid, exactly like
+   the Java business-rule stage below. `SchematronRuleCatalog` is the single source of each rule's
+   bilingual (`messageDe` first) text, keyed by assert id; an uncatalogued failed assert is a
+   programming error, never a silently dropped finding — it still surfaces as an `ERROR` with the raw
+   SVRL text in both languages.
+
+6. **Business rules split by mechanism: XPath-checkable rules in Schematron, computation-needing
+   rules in Java — one rule per best-suited tool, both extension points now demonstrated ahead of
+   Peppol (M4).** `AT-B2G-01` (Auftragsreferenz presence) is a plain existence/non-blank check,
+   naturally a Schematron `assert`. `AT-B2G-02` (IBAN mod-97) needs a real checksum computation that
+   XPath cannot express cleanly, so it lives in Java instead. Java business rules operate on the
+   parsed tree, unmarshalled from the hardened DOM, and are deliberately narrow (M2 / Task 8): rules
+   that read more naturally as Java than as XPath live in `BusinessRuleStage`, gated exactly like
+   Schematron — they run only on an XSD-valid document. `AT-B2G-02` requires every `IBAN` present
+   under `PaymentMethod/UniversalBankTransaction/BeneficiaryAccount` to pass the core `Iban` mod-97
    checksum (the 6.1 XSD only bounds an IBAN's length, so a transposed digit is schema-clean). The
    rule is intentionally about IBANs that are *present*: a missing payment method, a non-transfer
    payment method, or a beneficiary account without an `IBAN` element is **not** a finding here.
    Payment-completeness for B2G (is an IBAN *required*?) is a separate, later concern, not smuggled
-   into a checksum rule. The finding never echoes the IBAN — it is bank-account PII, so `Iban`
-   exposes only a throwing factory and the finding names the account by its 1-based position in both
+   into a checksum rule. **The finding never echoes the IBAN** — it is bank-account PII, carrying
+   forward the same no-raw-echo discipline ADR-0003 established for `core`'s own exceptions: `Iban`
+   exposes only a throwing factory, and the finding names the account by its 1-based position in both
    the message (`IBAN im Empfängerkonto <n> …`) and the location
    (`/Invoice/PaymentMethod/UniversalBankTransaction/BeneficiaryAccount[<n>]/IBAN`). To honour the
    "parse untrusted bytes exactly once" property (see Konsequenzen), `ValidationContext.ebiInvoice()`
    unmarshals the tree from the already-hardened `dom()` rather than re-reading the raw bytes: the
    formats strategy gained a `read(org.w3c.dom.Node)` overload alongside `read(byte[])`, sharing one
    lenient error-collection body, so the JAXB unmarshal reuses the XXE-safe DOM instead of opening a
-   second, unhardened parse.
+   second, unhardened parse. This is the one place in the pipeline the raw upload bytes are ever
+   parsed — the same hardened DOM feeds every downstream stage.
+
+7. **Rule-id scheme.** Every rule id names its stage and is stable across the corpus/CLI contract:
+
+   | Rule id | Stage | Mechanism | Meaning |
+   |---|---|---|---|
+   | `XML-01` | secure parse | `SecureXml` | upload is not well-formed XML (or a forbidden `DOCTYPE`) |
+   | `FORMAT-01` | format detection | namespace lookup | root namespace matches no known invoice format |
+   | `FORMAT-02` | format detection | namespace lookup | recognised ebInterface, unsupported version |
+   | `EBI61-XSD` | XSD | phive VES (Xerces) | document violates the ebInterface 6.1 schema |
+   | `AT-B2G-01` | Schematron | own `.sch`, XPath | Auftragsreferenz missing |
+   | `AT-B2G-02` | business rule | Java (`BusinessRuleStage`) | an IBAN present fails the mod-97 checksum |
+
+   `AT-B2G-*` numbers a single flat namespace across both mechanisms (Schematron and Java) — the id
+   tells a reader *what* is wrong, the stage that produced it (recoverable from pipeline order) tells
+   *how* it was checked.
 
 ## Konsequenzen
 
@@ -106,3 +142,13 @@ diagnostic (e.g. `cvc-complex-type.2.4.a: ...`).
   the hardened `dom()` through the formats `read(Node)` overload — the untrusted upload is parsed
   exactly once, by `SecureXml`. The strategy keeps `read(byte[])` for callers outside the pipeline
   (e.g. the mapping module) that legitimately start from bytes.
+- Because the AT-B2G Schematron is ours, we also own its maintenance: adding a rule means adding both
+  an `.sch` assert and a `SchematronRuleCatalog` entry, and there is no upstream release to track or
+  diverge from (contrast with the XSD, which is the vendored ebInterface 6.1 schema, and with the
+  Peppol Schematron/Genericode sets M4 will consume unmodified from phive-rules). This is a
+  deliberately small, honest rule set — one Schematron rule, one Java rule — not a claim of
+  completeness; SPEC §7's fuller Austrian B2G rule catalogue (tax-rate plausibility, KZ totals) is
+  out of M2 scope by design.
+- The rule-id table (Entscheidung 7) is now the fixed public contract the corpus (`CorpusTest`) and
+  the CLI (`ValidationRunner`) assert against; adding a rule id is additive, but renaming or
+  repurposing an existing one is a breaking change to both.
