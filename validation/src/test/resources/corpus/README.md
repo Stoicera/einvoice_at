@@ -98,8 +98,8 @@ paymentMeans. The `Country` element text is the German display name (`Österreic
 on `@CountryCode` (finding A6). **Regenerate** by re-running that chain on the same canonical input
 (see "Regenerating" below). **M3:** `Address/Email` added (`office@bau-sued.at`) so it stays valid
 under the new `AT-B2G-03` rule; not reflected in the canonical-input list above because the current
-mapper/canonical model already carries a Biller e-mail (T1/T2 of this milestone) — the addition only
-catches this hand-provenanced file up to what the pipeline now actually emits.
+mapper/canonical model already carries a Biller e-mail (M3 Tasks 1–2, earlier in this same milestone)
+— the addition only catches this hand-provenanced file up to what the pipeline now actually emits.
 
 ### `valid/exempt-invoice.xml`
 **Distinguishing feature:** the only tax-exempt document — a single line at category `E` with an
