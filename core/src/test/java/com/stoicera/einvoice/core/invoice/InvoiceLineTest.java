@@ -92,7 +92,7 @@ class InvoiceLineTest {
             () ->
                 new InvoiceLine("1", "x", BigDecimal.ONE, "", BigDecimal.ONE, VatRate.STANDARD_20))
         .isInstanceOf(InvariantViolationException.class)
-        .hasMessageContaining("unit");
+        .hasMessageContaining("Unit");
     assertThatThrownBy(() -> new InvoiceLine("1", "x", BigDecimal.ONE, "C62", BigDecimal.ONE, null))
         .isInstanceOf(InvariantViolationException.class)
         .hasMessageContaining("VAT");
@@ -213,7 +213,7 @@ class InvoiceLineTest {
                     BigDecimal.ONE,
                     VatRate.STANDARD_20))
         .isInstanceOf(InvariantViolationException.class)
-        .hasMessageContaining("unit");
+        .hasMessageContaining("Unit");
   }
 
   @Test

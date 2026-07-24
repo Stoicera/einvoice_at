@@ -57,4 +57,25 @@ class VatExemptionReasonTest {
         .isInstanceOf(InvariantViolationException.class)
         .hasMessageContaining("text");
   }
+
+  @Test
+  void codeLengthGuardAppliesToTheRawValueBeforeTrimming() {
+    // Trimmed down to 11 chars, well within the 32-char cap — but the raw, padded value is
+    // over it. The guard must reject the raw value before trim() discards the padding, the
+    // same pre-normalization-guard pattern as Address/PaymentMeans (countryCode/BIC).
+    String paddedOverLimit = " ".repeat(20) + "VATEX-EU-AE" + " ".repeat(20);
+    assertThatThrownBy(() -> new VatExemptionReason(paddedOverLimit, null))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("code");
+  }
+
+  @Test
+  void textLengthGuardAppliesToTheRawValueBeforeTrimming() {
+    // Trimmed down to 5 chars, well within the 1024-char cap — but the raw, padded value is
+    // over it. The guard must reject the raw value before trim() discards the padding.
+    String paddedOverLimit = " ".repeat(1020) + "hello" + " ".repeat(1020);
+    assertThatThrownBy(() -> new VatExemptionReason(null, paddedOverLimit))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("text");
+  }
 }

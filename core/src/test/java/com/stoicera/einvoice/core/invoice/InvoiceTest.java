@@ -15,6 +15,7 @@ import com.stoicera.einvoice.core.tax.VatExemptionReason;
 import com.stoicera.einvoice.core.tax.VatRate;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Currency;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -535,6 +536,98 @@ class InvoiceTest {
                     valid.totals()))
         .isInstanceOf(InvariantViolationException.class)
         .hasMessageContaining("breakdown");
+  }
+
+  @Test
+  void breakdownMismatchMessageBoundsTheEchoedSuppliedListToThreeEntriesPlusCount() {
+    Invoice valid = minimal().build();
+    List<VatBreakdownEntry> tenEntries = new ArrayList<>();
+    for (int i = 1; i <= 10; i++) {
+      Money taxable = Money.of(i + ".00", Money.EUR);
+      tenEntries.add(
+          new VatBreakdownEntry(VatRate.STANDARD_20, taxable, VatRate.STANDARD_20.taxOn(taxable)));
+    }
+    assertThatThrownBy(
+            () ->
+                new Invoice(
+                    valid.invoiceNumber(),
+                    valid.type(),
+                    valid.issueDate(),
+                    valid.dueDate(),
+                    valid.currency(),
+                    valid.orderReference(),
+                    valid.supplierNumber(),
+                    valid.seller(),
+                    valid.buyer(),
+                    valid.lines(),
+                    valid.paymentMeans(),
+                    valid.paymentTerms(),
+                    tenEntries,
+                    valid.totals()))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("taxableAmount=1.00 EUR")
+        .hasMessageContaining("taxableAmount=2.00 EUR")
+        .hasMessageContaining("taxableAmount=3.00 EUR")
+        .hasMessageContaining("(7 weitere)")
+        .hasMessageNotContaining("taxableAmount=4.00 EUR")
+        .hasMessageNotContaining("taxableAmount=10.00 EUR");
+  }
+
+  @Test
+  void breakdownMismatchMessageDoesNotTruncateWhenAtTheEchoLimit() {
+    Invoice valid = minimal().build();
+    List<VatBreakdownEntry> threeEntries = new ArrayList<>();
+    for (int i = 1; i <= 3; i++) {
+      Money taxable = Money.of(i + ".00", Money.EUR);
+      threeEntries.add(
+          new VatBreakdownEntry(VatRate.STANDARD_20, taxable, VatRate.STANDARD_20.taxOn(taxable)));
+    }
+    assertThatThrownBy(
+            () ->
+                new Invoice(
+                    valid.invoiceNumber(),
+                    valid.type(),
+                    valid.issueDate(),
+                    valid.dueDate(),
+                    valid.currency(),
+                    valid.orderReference(),
+                    valid.supplierNumber(),
+                    valid.seller(),
+                    valid.buyer(),
+                    valid.lines(),
+                    valid.paymentMeans(),
+                    valid.paymentTerms(),
+                    threeEntries,
+                    valid.totals()))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("taxableAmount=1.00 EUR")
+        .hasMessageContaining("taxableAmount=2.00 EUR")
+        .hasMessageContaining("taxableAmount=3.00 EUR")
+        .hasMessageNotContaining("weitere");
+  }
+
+  @Test
+  void breakdownMismatchMessageRendersNullForANullSuppliedBreakdown() {
+    Invoice valid = minimal().build();
+    assertThatThrownBy(
+            () ->
+                new Invoice(
+                    valid.invoiceNumber(),
+                    valid.type(),
+                    valid.issueDate(),
+                    valid.dueDate(),
+                    valid.currency(),
+                    valid.orderReference(),
+                    valid.supplierNumber(),
+                    valid.seller(),
+                    valid.buyer(),
+                    valid.lines(),
+                    valid.paymentMeans(),
+                    valid.paymentTerms(),
+                    null,
+                    valid.totals()))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("VAT breakdown null does not match");
   }
 
   @Test

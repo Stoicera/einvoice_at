@@ -47,12 +47,12 @@ public record InvoiceLine(
   private static final int MAX_UNIT_CODE_LENGTH = 8;
 
   public InvoiceLine {
-    requireNonBlank(id, "line id");
-    requireNonBlank(description, "line description");
-    requireNonBlank(unitCode, "unit code");
-    requireMaxLength(id, MAX_ID_LENGTH, "line id");
-    requireMaxLength(description, MAX_DESCRIPTION_LENGTH, "line description");
-    requireMaxLength(unitCode, MAX_UNIT_CODE_LENGTH, "unit code");
+    requireNonBlank(id, "Line id");
+    requireNonBlank(description, "Line description");
+    requireNonBlank(unitCode, "Unit code");
+    requireMaxLength(id, MAX_ID_LENGTH, "Line id");
+    requireMaxLength(description, MAX_DESCRIPTION_LENGTH, "Line description");
+    requireMaxLength(unitCode, MAX_UNIT_CODE_LENGTH, "Unit code");
     if (quantity == null) {
       throw new InvariantViolationException("Line quantity must not be null");
     }

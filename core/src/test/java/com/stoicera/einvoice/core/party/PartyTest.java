@@ -70,7 +70,7 @@ class PartyTest {
         .hasMessageContaining("postal");
     assertThatThrownBy(() -> new Address("Hauptplatz 1", "Linz", "4020", "Austria"))
         .isInstanceOf(InvariantViolationException.class)
-        .hasMessageContaining("country");
+        .hasMessageContaining("Country");
   }
 
   @Test
@@ -98,10 +98,10 @@ class PartyTest {
     String overLimit = "x".repeat(257);
     assertThatThrownBy(() -> new Address(overLimit, "Linz", "4020", "AT"))
         .isInstanceOf(InvariantViolationException.class)
-        .hasMessageContaining("street");
+        .hasMessageContaining("Street");
     assertThatThrownBy(() -> new Address("Hauptplatz 1", overLimit, "4020", "AT"))
         .isInstanceOf(InvariantViolationException.class)
-        .hasMessageContaining("city");
+        .hasMessageContaining("City");
   }
 
   @Test
@@ -111,7 +111,7 @@ class PartyTest {
     String overLimit = "1".repeat(17);
     assertThatThrownBy(() -> new Address("Hauptplatz 1", "Linz", overLimit, "AT"))
         .isInstanceOf(InvariantViolationException.class)
-        .hasMessageContaining("postal");
+        .hasMessageContaining("Postal");
   }
 
   @Test
