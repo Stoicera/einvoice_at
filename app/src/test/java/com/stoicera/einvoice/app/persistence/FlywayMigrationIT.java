@@ -40,13 +40,41 @@ class FlywayMigrationIT extends AbstractPostgresIT {
   }
 
   @Test
-  void invoiceTenantListingIndexExists() {
-    // The DDL creates an auto-named composite index on invoice (tenant_id, created_at desc);
-    // proving a non-primary-key index is present confirms the full migration body ran.
-    Integer indexCount =
+  void v2MigrationIsRecordedAsSuccessful() {
+    Boolean success =
         jdbcTemplate.queryForObject(
-            "select count(*) from pg_indexes where schemaname = 'public' and tablename = 'invoice'",
-            Integer.class);
-    assertThat(indexCount).isGreaterThanOrEqualTo(2);
+            "select success from flyway_schema_history where version = '2'", Boolean.class);
+    assertThat(success).isTrue();
+  }
+
+  @Test
+  void everyIndexTheListingPathsRelyOnExists() {
+    // Previously this asserted only that `invoice` carried at least two indexes — enough to show
+    // the V1 body ran, but it would not have noticed the missing report(invoice_id) index the M3
+    // hostile review found (F9). Each listing query's supporting index is now named individually,
+    // by the columns it covers, so dropping any one of them fails here.
+    assertThat(indexedColumnsFor("invoice"))
+        .as("GET /api/v1/invoices: the tenant's invoices, newest first")
+        .anyMatch(
+            definition -> definition.contains("tenant_id") && definition.contains("created_at"));
+    assertThat(indexedColumnsFor("report"))
+        .as("GET /api/v1/reports: the tenant's reports, newest first")
+        .anyMatch(
+            definition -> definition.contains("tenant_id") && definition.contains("created_at"));
+    assertThat(indexedColumnsFor("audit_event"))
+        .as("audit trail reads, newest first")
+        .anyMatch(
+            definition -> definition.contains("tenant_id") && definition.contains("occurred_at"));
+    assertThat(indexedColumnsFor("report"))
+        .as("V2: the invoice listing's report join (ReportRepository.findByInvoiceIdIn)")
+        .anyMatch(definition -> definition.contains("(invoice_id)"));
+  }
+
+  /** The {@code CREATE INDEX} definitions Postgres reports for one table. */
+  private List<String> indexedColumnsFor(String table) {
+    return jdbcTemplate.queryForList(
+        "select indexdef from pg_indexes where schemaname = 'public' and tablename = ?",
+        String.class,
+        table);
   }
 }

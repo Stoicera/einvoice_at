@@ -76,6 +76,17 @@ app:
       capacity: ${RATE_LIMIT_VALIDATE_CAPACITY:10}
       refill-per-minute: ${RATE_LIMIT_VALIDATE_REFILL_PER_MINUTE:10}
 
+# OpenAPI document and Swagger UI. Both are served anonymously (SecurityConfig permits them), which
+# is right for a portfolio/dev instance and a decision that deserves an off-switch rather than a
+# default nobody chose — springdoc itself warns on every boot when they are left on. One flag drives
+# both, so the document and the UI can never disagree about being exposed. Set API_DOCS_ENABLED=false
+# on any deployment that should not publish its full API description to anonymous callers.
+springdoc:
+  api-docs:
+    enabled: ${API_DOCS_ENABLED:true}
+  swagger-ui:
+    enabled: ${API_DOCS_ENABLED:true}
+
 server:
   port: 8080
 
