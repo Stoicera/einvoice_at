@@ -53,6 +53,16 @@
     <spotless-maven-plugin.version>3.8.0</spotless-maven-plugin.version>
     <google-java-format.version>1.35.0</google-java-format.version>
     <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
+    <jqwik.version>1.10.1</jqwik.version>
+    <archunit.version>1.4.2</archunit.version>
+    <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
+
+    <!-- Mutation testing. Versions verified against Maven Central maven-metadata.xml
+         on 2026-07-24 (the solrsearch API reports a stale latest). pitest 1.25.8 bundles
+         ASM 9.10.1, which reads class-file major version 69 (Java 25 bytecode);
+         pitest-junit5-plugin 1.2.3 requires pitest 1.19.4+, so the pair is compatible. -->
+    <pitest.version>1.25.8</pitest.version>
+    <pitest-junit5.version>1.2.3</pitest-junit5.version>
   </properties>
 
   <dependencyManagement>
@@ -87,10 +97,31 @@
         <artifactId>phive-rules-peppol</artifactId>
         <version>${phive-rules.version}</version>
       </dependency>
+      <dependency>
+        <groupId>net.jqwik</groupId>
+        <artifactId>jqwik</artifactId>
+        <version>${jqwik.version}</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>com.tngtech.archunit</groupId>
+        <artifactId>archunit</artifactId>
+        <version>${archunit.version}</version>
+        <scope>test</scope>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 
   <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.jacoco</groupId>
+          <artifactId>jacoco-maven-plugin</artifactId>
+          <version>${jacoco-maven-plugin.version}</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

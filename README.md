@@ -7,15 +7,17 @@
 
 A self-hostable Java 25 / Spring Boot platform built by [Stoicera Software Group](https://stoicera.com) as a production-grade reference system. Austria's federal government only accepts structured e-invoices (ebInterface or Peppol BIS) via e-rechnung.gv.at — and rejected invoices come back with Schematron output that non-technical users cannot read. This platform closes that gap.
 
-> **Status: Milestone M0 — foundation.** Repository skeleton, build, CI and local Docker stack. The domain model lands with M1; see [docs/MILESTONES.md](docs/MILESTONES.md).
+> **Status: Milestone M1 — canonical invoice model.** The EN 16931 core domain model with
+> Austrian VAT logic is implemented and property-tested in `core`; formats and validation
+> pipeline come next. See [docs/MILESTONES.md](docs/MILESTONES.md).
 
 ## Deutsche Kurzfassung
 
-**einvoice-at** ist eine selbst hostbare Plattform für die österreichische E-Rechnung: Sie **erzeugt** ebInterface 6.1 und Peppol BIS Billing 3.0 (UBL) aus strukturierten Rechnungsdaten, **validiert** hochgeladene XML-Rechnungen gegen XSD, Schematron und österreichische Geschäftsregeln — mit einem menschenlesbaren, deutschen Prüfbericht — und **konvertiert** zwischen beiden Formaten mit dokumentierten Mapping-Grenzen. Optional erklärt ein abschaltbarer KI-Assistent jeden Prüfungsfehler in einfacher Sprache. Aktueller Stand: Milestone M0 (Fundament).
+**einvoice-at** ist eine selbst hostbare Plattform für die österreichische E-Rechnung: Sie **erzeugt** ebInterface 6.1 und Peppol BIS Billing 3.0 (UBL) aus strukturierten Rechnungsdaten, **validiert** hochgeladene XML-Rechnungen gegen XSD, Schematron und österreichische Geschäftsregeln — mit einem menschenlesbaren, deutschen Prüfbericht — und **konvertiert** zwischen beiden Formaten mit dokumentierten Mapping-Grenzen. Optional erklärt ein abschaltbarer KI-Assistent jeden Prüfungsfehler in einfacher Sprache. Aktueller Stand: Milestone M1 (kanonisches Rechnungsmodell).
 
 ## Architecture
 
-Modular monolith, Maven multi-module, module boundaries enforced by ArchUnit (from M1). See [ADR-0002](docs/adr/0002-modular-monolith.md).
+Modular monolith, Maven multi-module; boundary rules are enforced by ArchUnit as each module gains code — the `core`-is-JDK-only rule is active since M1, cross-module rules land with M3. See [ADR-0002](docs/adr/0002-modular-monolith.md).
 
 ```
 einvoice-at
@@ -38,6 +40,7 @@ Requires Docker with Compose.
 ```bash
 git clone https://github.com/Stoicera/einvoice_at.git
 cd einvoice_at
+cp .env.example .env   # then set POSTGRES_PASSWORD (e.g. openssl rand -base64 24)
 docker compose up -d
 curl http://localhost:8080/actuator/health
 # {"groups":["liveness","readiness"],"status":"UP"}
@@ -58,7 +61,10 @@ Formatting is google-java-format, enforced by Spotless in every build and in CI.
 
 ## Testing
 
-JUnit 5 + AssertJ + Mockito for unit tests, ArchUnit for module-boundary rules, Testcontainers for integration tests, Selenium WebDriver for E2E — built out milestone by milestone per [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md). Currently: application smoke test on the health endpoint.
+JUnit 5 + AssertJ + Mockito for unit tests, ArchUnit for module-boundary rules, Testcontainers for integration tests, Selenium WebDriver for E2E — built out milestone by milestone per [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md). Currently: `core` domain model at 99.46 % line / 97.81 % branch coverage (JaCoCo gate: 95/90), including
+a [jqwik](https://jqwik.net) property suite for money/VAT arithmetic and an ArchUnit rule
+pinning `core` to JDK-only dependencies. Plus the application smoke test on the health endpoint.
+Mutation testing ([PIT](https://pitest.org)) gates the `core` module in CI, so the coverage number has teeth.
 
 ## Deployment
 

@@ -14,7 +14,7 @@ One deployable Spring Boot application, structured as a **Maven multi-module mod
 core → formats-ebinterface / formats-ubl → mapping → validation → rendering → ai-assist → app
 ```
 
-Boundary rules (ArchUnit-enforced from M1):
+Boundary rules (ArchUnit-enforced incrementally — the core rule since M1, the cross-module rules as the involved modules gain code, M2/M3):
 
 - `core` depends on nothing but the JDK.
 - `formats-*` and `mapping` never import Spring.
@@ -24,6 +24,6 @@ Boundary rules (ArchUnit-enforced from M1):
 ## Konsequenzen
 
 - One artifact to build, test, deploy and operate — honest for this scale, restart-proof on a single VPS.
-- Module boundaries are compiler- and ArchUnit-enforced, not convention-only; violations fail the build. Rules must never be weakened to make a test pass.
+- Module boundaries are compiler- and ArchUnit-enforced, not convention-only; each rule fails the build from the milestone it lands in. Rules must never be weakened to make a test pass.
 - Library modules stay Spring-free, so domain logic tests run in milliseconds and the core could be extracted as a standalone library later if a real reason appears.
 - If scale ever demands service extraction, the module seams are the cut lines — but that is a future decision with its own ADR, not a hedge we pay for now.

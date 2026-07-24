@@ -26,7 +26,7 @@ Status: v1.0 · 2026-07-23 · Language of repo: English (domain terms stay Germa
 
 ## 2. Architecture
 
-**Style: Modular monolith** (Maven multi-module, enforced by ArchUnit). Twelve microservices without a business reason are on our anti-list; a well-modularised monolith is the honest senior choice for this domain. Write ADR-0002 explaining exactly this.
+**Style: Modular monolith** (Maven multi-module; boundary rules ArchUnit-enforced as the modules gain code — see §2 Key rules). Twelve microservices without a business reason are on our anti-list; a well-modularised monolith is the honest senior choice for this domain. Write ADR-0002 explaining exactly this.
 
 ```
 einvoice-at/
@@ -42,7 +42,7 @@ einvoice-at/
 └── docs/                         # PRD, SPEC, MILESTONES, ADRs, glossary, deployment
 ```
 
-Key rules (ArchUnit-enforced):
+Key rules (ArchUnit-enforced as the involved modules gain code; the core rule is active since M1):
 - `core` depends on nothing but the JDK.
 - `formats-*` and `mapping` never import Spring.
 - Only `app` knows the database.
@@ -50,7 +50,7 @@ Key rules (ArchUnit-enforced):
 
 ## 3. Domain model (canonical, module `core`)
 
-`Invoice` (id, issueDate, dueDate, invoiceNumber, currency=EUR default, orderReference *(Auftragsreferenz — mandatory for AT federal B2G)*, supplierNumber *(Lieferantennummer)*, buyer, seller, lines[], taxSummary[], paymentTerms, paymentMeans (IBAN/BIC), totals) — validated invariants: line math, tax math (AT rates 20/13/10/0 % + reverse charge), totals consistency. Money as `BigDecimal` with scale rules; never floats. Write property-based tests (jqwik) for the arithmetic.
+`Invoice` (invoiceNumber, type *(BT-3: 380 invoice / 381 credit note)*, issueDate, dueDate, currency=EUR default, orderReference *(Auftragsreferenz — mandatory for AT federal B2G)*, supplierNumber *(Lieferantennummer)*, seller, buyer, lines[], vatBreakdown[] *(BG-23; exemption reason BT-120/BT-121 mandatory for categories AE/E)*, paymentMeans (IBAN/BIC), paymentTerms, totals) — validated invariants: line math, tax math (AT rates 20/13/10/0 % + reverse charge/exempt), totals consistency, non-negative payable. No persistence `id` — the domain model is identity-free until the persistence layer (M3, see ADR-0003). Money as `BigDecimal` with scale rules; never floats. Write property-based tests (jqwik) for the arithmetic.
 
 `ValidationReport`: source format, profile, list of `Finding` (severity ERROR/WARN/INFO, ruleId, location/XPath, messageDe, messageEn, aiExplanation?). Serialisable to JSON and rendered as German HTML report + downloadable PDF.
 
