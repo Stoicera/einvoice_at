@@ -1,7 +1,8 @@
 # ADR-0004 — Validation pipeline shape and XSD finding messages
 
 Date: 2026-07-24 (extended 2026-07-24, M2 Task 11; extended again 2026-07-24, M2 hostile-review fix
-wave — Entscheidungen 8-10, rule-id rename, size cap) · Status: accepted
+wave — Entscheidungen 8-10, rule-id rename, size cap; extended again 2026-07-24, M3 Task 3 — closes
+the three federal-MUST gaps Entscheidung 9 named, `AT-B2G-03`/`04`/`05`) · Status: accepted
 
 ## Kontext
 
@@ -124,6 +125,9 @@ diagnostic (e.g. `cvc-complex-type.2.4.a: ...`).
    | `XSD-01` | XSD | phive VES (Xerces) | document violates the ebInterface 6.1 schema |
    | `AT-B2G-01` | Schematron | own `.sch`, XPath | Auftragsreferenz missing |
    | `AT-B2G-02` | business rule | Java (`BusinessRuleStage`) | an IBAN present fails the mod-97 checksum |
+   | `AT-B2G-03` | Schematron | own `.sch`, XPath | Biller e-mail address (`Address/Email`) missing |
+   | `AT-B2G-04` | Schematron | own `.sch`, XPath | Lieferantennummer (`InvoiceRecipientsBillerID`) missing |
+   | `AT-B2G-05` | Schematron | own `.sch`, XPath | no `PaymentMethod` (`UniversalBankTransaction` or `NoPayment`) present |
 
    `AT-B2G-*` numbers a single flat namespace across both mechanisms (Schematron and Java) — the id
    tells a reader *what* is wrong, the stage that produced it (recoverable from pipeline order) tells
@@ -164,6 +168,32 @@ diagnostic (e.g. `cvc-complex-type.2.4.a: ...`).
    checks" finds the deltas documented here rather than rediscovering them. Each is a one-line
    Schematron `assert` away from being closed (the mechanism Entscheidung 5 already established); no
    milestone is committed for closing them yet.
+
+   **Update (2026-07-24, M3): all three gaps closed.** The canonical-model blocker noted above was
+   removed first, earlier in this same milestone (M3 Tasks 1–2 added `Party.email` and delivery
+   date/service period to `core` and wired both through `InvoiceToEbInterface61Mapper` — see
+   [ADR-0003](0003-canonical-model.md) Entscheidung 8, which records that landing), which is what made
+   the Biller-e-mail gap below closeable without first faking data the mapper could not yet produce.
+   M3 Task 3 then added the one-line Schematron asserts Entscheidung 5 anticipated:
+   - `AT-B2G-03` — `Biller/Address/Email` present and non-blank (mirrors `AT-B2G-01`'s
+     `normalize-space(...) != ''` idiom).
+   - `AT-B2G-04` — `Biller/InvoiceRecipientsBillerID` (Lieferantennummer) present and non-blank, same
+     idiom.
+   - `AT-B2G-05` — `PaymentMethod/UniversalBankTransaction` or `PaymentMethod/NoPayment` present
+     (existence, not a text check — deliberately narrower than the full ebInterface `PaymentMethod`
+     choice, which also allows `SEPADirectDebit`/`PaymentCard`/`OtherPayment`: the mapper (Entscheidung
+     6's Java business-rule note, `InvoiceToEbInterface61Mapper`) only ever emits the first two, so a
+     third-party document using one of the other three variants would still fail `AT-B2G-05` today —
+     a real, intentional restriction of this validator's B2G profile to what this platform itself
+     produces, not a general ebInterface payment-completeness rule).
+
+   All five `AT-B2G-*` ids are now Schematron-checked existence/non-blank rules except `AT-B2G-02`
+   (the one that needs a real checksum computation, per Entscheidung 6). The golden-file corpus
+   (`validation/src/test/resources/corpus/`) gained three new `invalid/` cases (one per new rule, each
+   `valid/b2g-full.xml` plus exactly one removed field) and all four `valid/` fixtures now carry the
+   three previously-optional fields so they stay valid under the tightened profile. SPEC §7 and this
+   ADR's Entscheidung 7 table are the sources of truth for the now-five-rule set; no further federal-
+   MUST gap is currently known and undocumented.
 
 10. **The ebInterface-version-strategy seam is real; its consumer is not polymorphic yet — softened
     from an earlier overclaim.** `EbInterfaceVersionStrategy` (module `formats-ebinterface`) exists so
@@ -216,9 +246,9 @@ diagnostic (e.g. `cvc-complex-type.2.4.a: ...`).
   an `.sch` assert and a `SchematronRuleCatalog` entry, and there is no upstream release to track or
   diverge from (contrast with the XSD, which is the vendored ebInterface 6.1 schema, and with the
   Peppol Schematron/Genericode sets M4 will consume unmodified from phive-rules). This is a
-  deliberately small, honest rule set — one Schematron rule, one Java rule — not a claim of
-  completeness; SPEC §7's fuller Austrian B2G rule catalogue (tax-rate plausibility, KZ totals) is
-  out of M2 scope by design.
+  deliberately small, honest rule set — four Schematron rules, one Java rule as of M3 Task 3 (was one
+  Schematron rule, one Java rule at M2) — not a claim of completeness; SPEC §7's fuller Austrian B2G
+  rule catalogue (tax-rate plausibility, KZ totals) is still out of scope by design.
 - The rule-id table (Entscheidung 7) is now the fixed public contract the corpus (`CorpusTest`) and
   the CLI (`ValidationRunner`) assert against; adding a rule id is additive, but renaming or
   repurposing an existing one is a breaking change to both.

@@ -79,7 +79,7 @@ The M2 modules carry the same JaCoCo discipline — `formats-ebinterface` and `v
 1. **Secure parse** — `SecureXml` parses the upload with an XXE-hardened, namespace-aware `DocumentBuilderFactory` (`disallow-doctype-decl`, external entities/DTD off). Not well-formed XML or a bare `DOCTYPE` → `XML-01`, pipeline stops.
 2. **Format detection** — the root namespace is resolved against known ebInterface versions. An unrecognised namespace → `FORMAT-01`; a recognised but unsupported version (e.g. ebInterface 6.0) → `FORMAT-02`. Either stops the pipeline.
 3. **XSD** — the bundled ebInterface 6.1 validation-executor-set (`VID_EBI_61`) runs via [phive](https://github.com/phax/phive). This VES is **XSD-only** — AUSTRIAPRO publishes no Schematron for ebInterface — so schema violations become `XSD-01` findings, each genuinely bilingual (the stage validates the document twice, once per `Locale`, because the underlying Xerces diagnostic text is baked in at validation time; see [ADR-0004](docs/adr/0004-validation-pipeline-and-xsd-messages.md)). An XSD-invalid document stops the pipeline: Schematron and business rules assume a structurally valid tree.
-4. **Own AT-B2G Schematron** — runs only once the document is XSD-valid. `AT-B2G-01` checks the Auftragsreferenz is present, required for invoices to Austrian federal bodies.
+4. **Own AT-B2G Schematron** — runs only once the document is XSD-valid. `AT-B2G-01` checks the Auftragsreferenz is present; `AT-B2G-03` checks the Biller carries a contact e-mail address (`Address/Email`); `AT-B2G-04` checks the Biller carries a Lieferantennummer (`InvoiceRecipientsBillerID`); `AT-B2G-05` checks a `PaymentMethod` (`UniversalBankTransaction` or `NoPayment`) is present — all four are required for invoices to Austrian federal bodies.
 5. **Java business rule** — runs alongside Schematron gating. `AT-B2G-02` checks every `IBAN` present under the payment method against the core `Iban` mod-97 checksum (the XSD only bounds an IBAN's length). The finding never echoes the IBAN itself — only its 1-based position in the document.
 
 Every rule id the pipeline can produce is centralised in `RuleIds` (module `validation`) — the single registry the corpus and the CLI both depend on (the corpus asserts against it, the CLI only prints it), so the id scheme (`PREFIX-NN`) stays uniform as new rules land:
@@ -93,6 +93,9 @@ Every rule id the pipeline can produce is centralised in `RuleIds` (module `vali
 | `XSD-01` | XSD | document violates the ebInterface 6.1 schema |
 | `AT-B2G-01` | own Schematron | Auftragsreferenz missing |
 | `AT-B2G-02` | Java business rule | an IBAN present fails the mod-97 checksum |
+| `AT-B2G-03` | own Schematron | Biller e-mail address (`Address/Email`) missing |
+| `AT-B2G-04` | own Schematron | Lieferantennummer (`InvoiceRecipientsBillerID`) missing |
+| `AT-B2G-05` | own Schematron | no `PaymentMethod` (`UniversalBankTransaction` or `NoPayment`) present |
 
 **Golden-file corpus.** [`validation/src/test/resources/corpus/`](validation/src/test/resources/corpus/) is the pipeline's executable specification: `valid/` documents must clear every stage cleanly, `invalid/` documents each isolate exactly one deliberate defect against one rule id. `CorpusTest` runs every file through the real validator; the corpus's own README documents the file-by-file provenance. A reported mapping/validation bug is always added here as a new failing golden file before it is fixed in code.
 
