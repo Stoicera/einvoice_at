@@ -91,9 +91,22 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         "An invoice with the same invoice number already exists for this tenant.");
   }
 
-  /** Last resort: never leak an internal message, class name, or stack trace. */
+  /**
+   * Last resort: never leak an internal message, class name, or stack trace <em>to the caller</em>
+   * — and never discard it on the server either.
+   *
+   * <p>Before the M3 hostile review this handler swallowed the exception outright, so a 500 in
+   * production left no stack trace, no message, nothing: an incident that could not be
+   * investigated. Not telling the client is a security decision; not telling the operator was a
+   * bug. The exception is logged here in full, with its stack trace, at ERROR.
+   *
+   * <p>Only genuinely unmapped failures reach this method — every exception carrying caller data in
+   * its message ({@code DuplicateInvoiceException} and its raw invoice number, the {@code
+   * core}/{@code mapping} messages) has its own handler above and is never logged here.
+   */
   @ExceptionHandler(Exception.class)
   ProblemDetail handleUnexpected(Exception ex) {
+    logger.error("Unhandled exception while processing a request; answering 500", ex);
     return problem(
         HttpStatus.INTERNAL_SERVER_ERROR,
         "internal-error",

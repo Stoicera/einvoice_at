@@ -14,6 +14,8 @@ import java.util.Comparator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -61,6 +63,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * callers cannot grow this map without limit.
  */
 public class RateLimitFilter extends OncePerRequestFilter {
+
+  private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
 
   private static final String VALIDATE_PATH = "/api/v1/validate";
 
@@ -122,6 +126,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
       filterChain.doFilter(request, response);
       return;
     }
+    // A security-relevant rejection, so it does not happen in silence. The client address is
+    // the bucket key and is already the only thing this filter knows about the caller.
+    log.warn(
+        "Rate-limited anonymous {} from {} (capacity {}/min)",
+        VALIDATE_PATH,
+        request.getRemoteAddr(),
+        refillPerMinute);
     writeRateLimited(response, ceilSeconds(probe.getNanosToWaitForRefill()));
   }
 

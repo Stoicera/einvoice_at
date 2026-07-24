@@ -82,3 +82,32 @@ management:
     health:
       probes:
         enabled: true
+
+# Security-relevant events (a rejected API key, a rate-limited caller, an oversized body, a
+# provisioned tenant, an unhandled 500) are logged by the classes that produce them; this only
+# guarantees the category is not filtered out. Hibernate's own WARN for a constraint violation the
+# application handles deliberately — the (tenant, invoiceNumber) duplicate translated into a 409,
+# and the tenant-provisioning race resolved by design — is quietened to ERROR, so a WARN in this
+# application's log stays a signal rather than expected noise.
+logging:
+  level:
+    com.stoicera.einvoice: INFO
+    org.hibernate.orm.jdbc.error: ERROR
+
+---
+# Production logging: structured JSON on stdout (ENGINEERING_STANDARDS §5), ECS field names so a
+# Grafana/Loki or Elastic pipeline can read it without a custom parser. Local development and the
+# integration tests keep the human-readable default — nothing activates this profile except a
+# deployment setting SPRING_PROFILES_ACTIVE=prod (M6).
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+logging:
+  structured:
+    format:
+      console: ecs
+    ecs:
+      service:
+        name: einvoice-at

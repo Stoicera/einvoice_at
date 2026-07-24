@@ -2,6 +2,8 @@ package com.stoicera.einvoice.app.security;
 
 import com.stoicera.einvoice.app.persistence.TenantEntity;
 import com.stoicera.einvoice.app.persistence.TenantRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
@@ -17,6 +19,8 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class TenantProvisioningService {
+
+  private static final Logger log = LoggerFactory.getLogger(TenantProvisioningService.class);
 
   private final TenantRepository tenants;
 
@@ -41,7 +45,13 @@ public class TenantProvisioningService {
       // (this method is deliberately not @Transactional), so the failed insert rolls back on its
       // own
       // and the re-read below runs in a fresh transaction that sees the committed winner.
-      return tenants.saveAndFlush(new TenantEntity(externalSubject, displayName));
+      TenantEntity provisioned =
+          tenants.saveAndFlush(new TenantEntity(externalSubject, displayName));
+      // Account creation, so it belongs in the operational log as well as in the tenant table. The
+      // external subject is an opaque Keycloak identifier, not personal data in itself.
+      log.info(
+          "Provisioned tenant {} for external subject {}", provisioned.getId(), externalSubject);
+      return provisioned;
     } catch (DataIntegrityViolationException race) {
       return tenants
           .findByExternalSubject(externalSubject)
