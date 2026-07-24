@@ -8,6 +8,7 @@ import com.stoicera.einvoice.app.persistence.ApiKeyEntity;
 import com.stoicera.einvoice.app.persistence.ApiKeyRepository;
 import com.stoicera.einvoice.app.persistence.TenantEntity;
 import com.stoicera.einvoice.app.persistence.TenantRepository;
+import com.stoicera.einvoice.validation.RuleIds;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -23,8 +24,10 @@ import org.springframework.boot.test.web.server.LocalServerPort;
  * {@code GET /api/v1/reports} and {@code GET /api/v1/reports/{id}} end to end: a report produced by
  * an ad-hoc {@code POST /api/v1/validate} appears in the caller's own listing with {@code
  * invoiceId} null, a report produced by {@code POST /api/v1/invoices} appears with its {@code
- * invoiceId} set, the detail endpoint returns the full findings array, and tenant isolation holds
- * (one tenant cannot read another's report — same 404 as an unknown id, no oracle).
+ * invoiceId} set, the detail endpoint returns the full findings array — for both an ad-hoc
+ * validation and an invoice-created report, non-empty and with the concrete AT-B2G-01 bilingual
+ * finding shape when the source document fails that rule — and tenant isolation holds (one tenant
+ * cannot read another's report — same 404 as an unknown id, no oracle).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class ReportApiIT extends AbstractKeycloakIT {
@@ -45,8 +48,7 @@ class ReportApiIT extends AbstractKeycloakIT {
   void anAdHocValidationReportAppearsInTheListingAndDetailWithNullInvoiceId() throws Exception {
     String token = fetchAccessToken(TEST_USERNAME, TEST_PASSWORD);
 
-    HttpResponse<String> validateResponse =
-        postValidate(ValidateApiIT.validFileBytes(), bearer(token));
+    HttpResponse<String> validateResponse = postValidate(Fixtures.validFileBytes(), bearer(token));
     assertThat(validateResponse.statusCode()).isEqualTo(200);
     String reportId = json.readTree(validateResponse.body()).get("id").asText();
 
@@ -84,7 +86,7 @@ class ReportApiIT extends AbstractKeycloakIT {
         send(
             "POST",
             INVOICES,
-            invoiceJson(number).getBytes(StandardCharsets.UTF_8),
+            invoiceJson(number, true).getBytes(StandardCharsets.UTF_8),
             jsonAuth(bearer(token)));
     assertThat(createResponse.statusCode()).isEqualTo(201);
     String invoiceId = json.readTree(createResponse.body()).get("id").asText();
@@ -98,9 +100,79 @@ class ReportApiIT extends AbstractKeycloakIT {
   }
 
   @Test
+  void anInvalidAdHocValidationReportDetailCarriesTheFullFindingShape() throws Exception {
+    String token = fetchAccessToken(TEST_USERNAME, TEST_PASSWORD);
+
+    HttpResponse<String> validateResponse =
+        postValidate(Fixtures.invalidFileBytes(), bearer(token));
+    assertThat(validateResponse.statusCode()).isEqualTo(200);
+    String reportId = json.readTree(validateResponse.body()).get("id").asText();
+
+    HttpResponse<String> detailResponse =
+        send("GET", REPORTS + "/" + reportId, null, bearer(token));
+    assertThat(detailResponse.statusCode()).isEqualTo(200);
+    JsonNode detail = json.readTree(detailResponse.body());
+    assertThat(detail.get("valid").asBoolean()).isFalse();
+    assertThat(detail.get("findings")).isNotEmpty();
+
+    JsonNode finding = findingFor(detail, RuleIds.AT_B2G_01);
+    assertThat(finding).as("an %s finding in the detail response", RuleIds.AT_B2G_01).isNotNull();
+    assertThat(finding.get("severity").asText()).isEqualTo("ERROR");
+    assertThat(finding.get("ruleId").asText()).isEqualTo(RuleIds.AT_B2G_01);
+    // German-first per project policy (CLAUDE.md): messageDe carries the primary, complete text;
+    // messageEn its English translation. Pinned against SchematronRuleCatalog's own catalog entry,
+    // not re-derived — a change to either place must break exactly one of the two tests.
+    assertThat(finding.get("messageDe").asText())
+        .isEqualTo(
+            "Auftragsreferenz fehlt: Rechnungen an Bundesdienststellen müssen eine"
+                + " Auftragsreferenz (OrderReference/OrderID) enthalten.");
+    assertThat(finding.get("messageEn").asText())
+        .isEqualTo(
+            "Order reference missing: invoices to Austrian federal bodies must carry an order"
+                + " reference (OrderReference/OrderID).");
+  }
+
+  @Test
+  void anInvoiceCreatedReportDetailFetchDeserializesFindingsCleanly() throws Exception {
+    String token = fetchAccessToken(TEST_USERNAME, TEST_PASSWORD);
+    String number = "RE-" + UUID.randomUUID();
+
+    // withOrderReference=false: parseable and domain-valid, but fails AT-B2G-01 — the invoice is
+    // still created (T6's "invalid-but-still-created" rule) with a non-empty findings array, giving
+    // this test a genuine JSONB round trip: InvoiceService writes the findings column with its own
+    // JsonMapper, ReportService.readFindings reads it back with its own — proving the two are wire-
+    // compatible, not just that an empty array survives.
+    HttpResponse<String> createResponse =
+        send(
+            "POST",
+            INVOICES,
+            invoiceJson(number, false).getBytes(StandardCharsets.UTF_8),
+            jsonAuth(bearer(token)));
+    assertThat(createResponse.statusCode()).isEqualTo(201);
+    JsonNode createPayload = json.readTree(createResponse.body());
+    String invoiceId = createPayload.get("id").asText();
+    assertThat(createPayload.get("report").get("findings")).isNotEmpty();
+
+    HttpResponse<String> listResponse = send("GET", REPORTS + "?size=100", null, bearer(token));
+    JsonNode row = rowForInvoiceId(json.readTree(listResponse.body()), invoiceId);
+    assertThat(row).as("a report row with invoiceId=%s", invoiceId).isNotNull();
+    String reportId = row.get("id").asText();
+
+    HttpResponse<String> detailResponse =
+        send("GET", REPORTS + "/" + reportId, null, bearer(token));
+    assertThat(detailResponse.statusCode()).isEqualTo(200);
+    JsonNode detail = json.readTree(detailResponse.body());
+    assertThat(detail.get("invoiceId").isNull()).isFalse();
+    assertThat(detail.get("invoiceId").asText()).isEqualTo(invoiceId);
+    assertThat(detail.get("valid").asBoolean()).isFalse();
+    assertThat(detail.get("findings")).isNotEmpty();
+    assertThat(findingFor(detail, RuleIds.AT_B2G_01)).isNotNull();
+  }
+
+  @Test
   void aTenantCannotReadAnotherTenantsReport() throws Exception {
     String tokenA = fetchAccessToken(TEST_USERNAME, TEST_PASSWORD);
-    HttpResponse<String> validateA = postValidate(ValidateApiIT.validFileBytes(), bearer(tokenA));
+    HttpResponse<String> validateA = postValidate(Fixtures.validFileBytes(), bearer(tokenA));
     String reportIdA = json.readTree(validateA.body()).get("id").asText();
 
     String apiKeyB = seedApiKeyTenant();
@@ -155,6 +227,18 @@ class ReportApiIT extends AbstractKeycloakIT {
     return null;
   }
 
+  /**
+   * The first finding in a report detail's {@code findings} array with the given rule id, if any.
+   */
+  private JsonNode findingFor(JsonNode detail, String ruleId) {
+    for (JsonNode finding : detail.get("findings")) {
+      if (finding.get("ruleId").asText().equals(ruleId)) {
+        return finding;
+      }
+    }
+    return null;
+  }
+
   private void assertProblem(HttpResponse<String> response, int status, String slug)
       throws Exception {
     assertThat(response.statusCode()).isEqualTo(status);
@@ -195,8 +279,13 @@ class ReportApiIT extends AbstractKeycloakIT {
     return http.send(builder.build(), HttpResponse.BodyHandlers.ofString());
   }
 
-  /** A minimal, always domain-valid canonical invoice JSON body for one invoice number. */
-  private static String invoiceJson(String number) {
+  /**
+   * A canonical invoice JSON body for one invoice number; {@code withOrderReference=false} omits
+   * the Auftragsreferenz, which keeps the invoice parseable and domain-valid but triggers AT-B2G-01
+   * (same idiom as {@code InvoiceApiIT}).
+   */
+  private static String invoiceJson(String number, boolean withOrderReference) {
+    String orderReference = withOrderReference ? "\"orderReference\": \"BBG-2026-4711\"," : "";
     return """
         {
           "invoiceNumber": "%s",
@@ -205,7 +294,7 @@ class ReportApiIT extends AbstractKeycloakIT {
           "dueDate": "2026-08-23",
           "deliveryDate": "2026-07-24",
           "currency": "EUR",
-          "orderReference": "BBG-2026-4711",
+          %s
           "supplierNumber": "L-100234",
           "seller": { "name": "Stoicera Software GesbR", "vatId": "ATU12345678", "email": "office@stoicera-software.at",
             "address": { "street": "Hauptplatz 1", "city": "Linz", "postalCode": "4020", "countryCode": "AT" } },
@@ -218,6 +307,6 @@ class ReportApiIT extends AbstractKeycloakIT {
           "paymentTerms": "Zahlbar innerhalb von 30 Tagen ohne Abzug"
         }
         """
-        .formatted(number);
+        .formatted(number, orderReference);
   }
 }

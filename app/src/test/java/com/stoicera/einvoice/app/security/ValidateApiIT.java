@@ -56,7 +56,7 @@ class ValidateApiIT extends AbstractKeycloakIT {
     long reportsBefore = reports.count();
     long auditBefore = auditEvents.count();
 
-    HttpResponse<String> response = postValidate(validFileBytes(), null);
+    HttpResponse<String> response = postValidate(Fixtures.validFileBytes(), null);
     assertThat(response.statusCode()).isEqualTo(200);
     assertThat(contentType(response)).contains("application/json");
 
@@ -77,7 +77,7 @@ class ValidateApiIT extends AbstractKeycloakIT {
     long reportsBefore = reports.count();
     long auditBefore = auditEvents.count();
 
-    HttpResponse<String> response = postValidate(invalidFileBytes(), null);
+    HttpResponse<String> response = postValidate(Fixtures.invalidFileBytes(), null);
     assertThat(response.statusCode()).isEqualTo(200);
 
     JsonNode payload = json.readTree(response.body());
@@ -115,7 +115,7 @@ class ValidateApiIT extends AbstractKeycloakIT {
   @Test
   void jwtAuthenticatedValidatePersistsReportAndAudit() throws Exception {
     String token = fetchAccessToken(TEST_USERNAME, TEST_PASSWORD);
-    byte[] fileBytes = validFileBytes();
+    byte[] fileBytes = Fixtures.validFileBytes();
 
     HttpResponse<String> response = postValidate(fileBytes, bearer(token));
     assertThat(response.statusCode()).isEqualTo(200);
@@ -148,7 +148,7 @@ class ValidateApiIT extends AbstractKeycloakIT {
     ApiKeys.GeneratedKey generated = ApiKeys.generate();
     apiKeys.save(
         new ApiKeyEntity(tenant.getId(), "validate-key", generated.keyHash(), generated.prefix()));
-    byte[] fileBytes = invalidFileBytes();
+    byte[] fileBytes = Fixtures.invalidFileBytes();
 
     HttpResponse<String> response = postValidate(fileBytes, apiKeyHeader(generated.plaintext()));
     assertThat(response.statusCode()).isEqualTo(200);
@@ -191,7 +191,8 @@ class ValidateApiIT extends AbstractKeycloakIT {
   @Test
   void aMissingFilePartIsRejectedWith400() throws Exception {
     MultipartBodies.Multipart multipart =
-        MultipartBodies.singleFilePart("not-the-file-part", "invoice.xml", validFileBytes());
+        MultipartBodies.singleFilePart(
+            "not-the-file-part", "invoice.xml", Fixtures.validFileBytes());
     HttpRequest.Builder builder =
         HttpRequest.newBuilder(URI.create("http://localhost:" + port + VALIDATE))
             .header("Content-Type", multipart.contentType())
@@ -219,23 +220,6 @@ class ValidateApiIT extends AbstractKeycloakIT {
     }
     builder.POST(HttpRequest.BodyPublishers.ofByteArray(multipart.body()));
     return http.send(builder.build(), HttpResponse.BodyHandlers.ofString());
-  }
-
-  static byte[] validFileBytes() throws Exception {
-    return readFixture("invoice-b2g-sample.ebinterface.xml");
-  }
-
-  static byte[] invalidFileBytes() throws Exception {
-    return readFixture("at-b2g-01-missing-order-reference.xml");
-  }
-
-  private static byte[] readFixture(String name) throws Exception {
-    try (var in = ValidateApiIT.class.getResourceAsStream("/fixtures/" + name)) {
-      if (in == null) {
-        throw new IllegalStateException("Fixture not found on classpath: " + name);
-      }
-      return in.readAllBytes();
-    }
   }
 
   private static String[] bearer(String token) {

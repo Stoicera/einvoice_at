@@ -34,6 +34,11 @@ class AuthMatrixIT extends AbstractKeycloakIT {
   // positive cases so this stays green once T6 gives the path a handler.
   private static final String PROTECTED_ROUTE = "/api/v1/invoices";
 
+  // T7's tenant-scoped reports API — the same /api/** → .authenticated() catch-all as
+  // PROTECTED_ROUTE, so the anonymous side of the matrix applies here too (both the listing and the
+  // detail route).
+  private static final String REPORTS = "/api/v1/reports";
+
   @LocalServerPort private int port;
   @Autowired private TenantRepository tenants;
   @Autowired private ApiKeyRepository apiKeys;
@@ -43,6 +48,16 @@ class AuthMatrixIT extends AbstractKeycloakIT {
   @Test
   void anonymousIsRejectedWithUnauthorizedOnAProtectedRoute() throws Exception {
     assertThat(get(PROTECTED_ROUTE, null, null)).isEqualTo(401);
+  }
+
+  @Test
+  void anonymousIsRejectedWithUnauthorizedOnTheReportsListingRoute() throws Exception {
+    assertThat(get(REPORTS, null, null)).isEqualTo(401);
+  }
+
+  @Test
+  void anonymousIsRejectedWithUnauthorizedOnTheReportDetailRoute() throws Exception {
+    assertThat(get(REPORTS + "/" + UUID.randomUUID(), null, null)).isEqualTo(401);
   }
 
   @Test
@@ -88,7 +103,7 @@ class AuthMatrixIT extends AbstractKeycloakIT {
     // normal 200 with a ValidationReport for a valid upload — not the 401/403 a protected route
     // would answer with, and (per ValidateApiIT) no database row is written for this call.
     MultipartBodies.Multipart multipart =
-        MultipartBodies.singleFilePart("file", "invoice.xml", ValidateApiIT.validFileBytes());
+        MultipartBodies.singleFilePart("file", "invoice.xml", Fixtures.validFileBytes());
     HttpResponse<String> response =
         http.send(
             HttpRequest.newBuilder(URI.create("http://localhost:" + port + PROTECTED_VALIDATE))
