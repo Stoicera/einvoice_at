@@ -42,6 +42,13 @@ app:
   oauth2:
     issuer-uri: ${OAUTH2_ISSUER_URI:}
     jwk-set-uri: ${OAUTH2_JWK_SET_URI:}
+    # Optional audience check (`aud` must contain this value). Signature + issuer prove a token is
+    # genuine, not that it was minted FOR this API — without this, any client in the realm can
+    # present its own token and be authenticated. Left blank by default because a single-audience
+    # dev realm needs no check and enabling it unconditionally would reject Keycloak's default
+    # `account` audience; set it (to the API's client id) for any shared or production realm.
+    # See ADR-0006 and JwtDecoderTest.
+    audience: ${OAUTH2_AUDIENCE:}
 
   # Application-layer cap on any NON-multipart request body (RequestBodySizeLimitFilter). Multipart
   # uploads are bounded by spring.servlet.multipart.* above; nothing in Boot or Tomcat bounds an

@@ -1,6 +1,7 @@
 package com.stoicera.einvoice.app.security;
 
 import com.stoicera.einvoice.app.persistence.ApiKeyRepository;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -10,7 +11,12 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtClaimNames;
+import org.springframework.security.oauth2.jwt.JwtClaimValidator;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtIssuerValidator;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
@@ -113,14 +119,29 @@ public class SecurityConfig {
   /**
    * The JWT decoder, built from the JWKS endpoint so Nimbus fetches keys lazily (on first token
    * validation): the context boots with no network round-trip, and tests that present no token need
-   * no IdP. When an issuer is configured its tokens must additionally carry a matching {@code iss}
-   * claim. With no issuer and no explicit JWKS (a persistence IT), a non-resolving placeholder URL
+   * no IdP. With no issuer and no explicit JWKS (a persistence IT), a non-resolving placeholder URL
    * is used — it is never contacted because those tests send no tokens.
+   *
+   * <p>Three validators, layered onto Nimbus's own signature check:
+   *
+   * <ul>
+   *   <li>the framework defaults, always — most importantly {@code exp}/{@code nbf} with Spring's
+   *       standard clock skew;
+   *   <li>{@code iss}, whenever an issuer is configured: a token must come from that realm;
+   *   <li>{@code aud}, whenever {@code app.oauth2.audience} is set. This closes the limit ADR-0006
+   *       recorded and called "the first hardening candidate": signature + issuer alone prove a
+   *       token is genuine, not that it was minted <em>for this API</em>, so without it any client
+   *       in the realm could present its own token and be authenticated as {@code ROLE_USER}. It
+   *       stays opt-in and off by default, because switching it on unconditionally would break a
+   *       single-audience dev realm whose tokens carry a different {@code aud}; each behaviour is
+   *       pinned by {@code JwtDecoderTest}.
+   * </ul>
    */
   @Bean
   JwtDecoder jwtDecoder(
       @Value("${app.oauth2.issuer-uri:}") String issuerUri,
-      @Value("${app.oauth2.jwk-set-uri:}") String jwkSetUri) {
+      @Value("${app.oauth2.jwk-set-uri:}") String jwkSetUri,
+      @Value("${app.oauth2.audience:}") String audience) {
     String effectiveJwkSetUri =
         StringUtils.hasText(jwkSetUri)
             ? jwkSetUri
@@ -128,9 +149,23 @@ public class SecurityConfig {
                 ? issuerUri + "/protocol/openid-connect/certs"
                 : "http://authserver.invalid/protocol/openid-connect/certs";
     NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(effectiveJwkSetUri).build();
+
+    List<OAuth2TokenValidator<Jwt>> additional = new ArrayList<>();
     if (StringUtils.hasText(issuerUri)) {
-      decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(issuerUri));
+      additional.add(new JwtIssuerValidator(issuerUri));
     }
+    if (StringUtils.hasText(audience)) {
+      additional.add(audienceValidator(audience));
+    }
+    // createDefaultWithValidators keeps the framework's own default validators and appends ours —
+    // the same set createDefaultWithIssuer would have produced when only an issuer is configured.
+    decoder.setJwtValidator(JwtValidators.createDefaultWithValidators(additional));
     return decoder;
+  }
+
+  /** Requires {@code aud} to contain the configured value; a missing {@code aud} fails. */
+  private static OAuth2TokenValidator<Jwt> audienceValidator(String audience) {
+    return new JwtClaimValidator<List<String>>(
+        JwtClaimNames.AUD, claim -> claim != null && claim.contains(audience));
   }
 }

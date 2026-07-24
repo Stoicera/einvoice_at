@@ -83,12 +83,19 @@ same shape by hand. The catch-all 500 never leaks an exception message, class na
 - Enforcement is centralised and testable rather than sprinkled through controllers: the full auth
   matrix (anonymous / API-key / OAuth2 across every route) is pinned by `AuthMatrixIT` against a
   real Keycloak (Testcontainers), not a mock.
-- **JWT audience / `azp` is not validated.** The decoder runs Spring's default validators plus issuer
-  (`JwtValidators.createDefaultWithIssuer`): signature, expiry and `iss`. It does *not* check that a
-  token was minted *for this API* — any client in the realm can obtain a signature-valid,
-  correctly-issued token and it authenticates as `ROLE_USER`. This is the Spring default and is fine
-  for a single-audience dev realm, but it is the first hardening candidate for a shared/production
-  realm: add an audience (or `azp`) validator to the decoder.
+- **JWT audience validation is available but off by default** (closed in the M3 hostile-review fix
+  wave; the entry previously recorded it as an open limit). The decoder always runs Spring's default
+  validators plus an issuer validator when an issuer is configured: signature, expiry and `iss`.
+  Those prove a token is *genuine*, not that it was minted *for this API* — without an audience
+  check, any client in the same realm can obtain a signature-valid, correctly-issued token and it
+  authenticates as `ROLE_USER`. Setting `app.oauth2.audience` (env `OAUTH2_AUDIENCE`, e.g. the API's
+  client id) adds a validator requiring `aud` to contain that value. It stays **opt-in** on purpose:
+  switching it on unconditionally would reject the tokens of a single-audience dev realm, whose
+  `aud` is Keycloak's default `account`. A shared or production realm should set it. Every branch —
+  accepted, wrong audience, wrong issuer, expired, foreign signature, and a foreign key
+  impersonating the real `kid` — is pinned by `JwtDecoderTest`, which publishes a throwaway JWKS
+  over loopback and mints its own tokens, so it can vary exactly one thing at a time in a way an IT
+  against a real Keycloak cannot.
 - **The rate limiter is single-instance, in-memory, keyed by `remoteAddr`.** It does not parse
   `X-Forwarded-For` (spoofable with no trusted proxy in front) and its buckets are per-replica state.
   Both are revisited at M6, when Traefik terminates TLS in front of the app — the full rationale and

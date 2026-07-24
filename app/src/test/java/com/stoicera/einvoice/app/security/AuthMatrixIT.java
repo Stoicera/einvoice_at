@@ -12,7 +12,9 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -95,6 +97,45 @@ class AuthMatrixIT extends AbstractKeycloakIT {
   void aValidJwtAuthenticates() throws Exception {
     String token = fetchAccessToken(TEST_USERNAME, TEST_PASSWORD);
     assertThat(get(PROTECTED_ROUTE, "Authorization", "Bearer " + token)).isNotIn(401, 403);
+  }
+
+  @Test
+  void aBearerHeaderThatIsNotAJwtIsUnauthorized() throws Exception {
+    assertThat(get(PROTECTED_ROUTE, "Authorization", "Bearer not-a-jwt-at-all")).isEqualTo(401);
+  }
+
+  @Test
+  void aStructurallyValidButUnsignedTokenIsUnauthorized() throws Exception {
+    // Three base64url segments with an empty signature — the shape of a JWT, none of the proof.
+    String unsigned =
+        base64Url("{\"alg\":\"none\",\"typ\":\"JWT\"}")
+            + "."
+            + base64Url("{\"sub\":\"attacker\",\"iss\":\"" + issuerUri() + "\"}")
+            + ".";
+
+    assertThat(get(PROTECTED_ROUTE, "Authorization", "Bearer " + unsigned)).isEqualTo(401);
+  }
+
+  @Test
+  void aRealTokenWithATamperedPayloadIsUnauthorized() throws Exception {
+    // Take a genuine Keycloak token and rewrite one claim while leaving the signature untouched.
+    // This is the attack the signature exists to stop, and the whole chain — not just the decoder
+    // unit test — has to refuse it.
+    String token = fetchAccessToken(TEST_USERNAME, TEST_PASSWORD);
+    String[] parts = token.split("\\.");
+    String payload =
+        new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8)
+            .replace("\"testuser\"", "\"someone-else\"");
+    String tampered = parts[0] + "." + base64Url(payload) + "." + parts[2];
+
+    assertThat(tampered).isNotEqualTo(token); // the rewrite actually happened
+    assertThat(get(PROTECTED_ROUTE, "Authorization", "Bearer " + tampered)).isEqualTo(401);
+  }
+
+  private static String base64Url(String json) {
+    return Base64.getUrlEncoder()
+        .withoutPadding()
+        .encodeToString(json.getBytes(StandardCharsets.UTF_8));
   }
 
   @Test
