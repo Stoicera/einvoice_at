@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="http://www.ebinterface.at/schema/6p1/"
+         GeneratingSystem="einvoice-at"
+         DocumentType="Invoice"
+         InvoiceCurrency="EUR"
+         Language="de">
+  <InvoiceNumber>993433000298</InvoiceNumber>
+  <InvoiceDate>2024-03-05</InvoiceDate>
+  <Biller>
+    <VATIdentificationNumber>ATU51507409</VATIdentificationNumber>
+  </Biller>
+  <InvoiceRecipient>
+    <VATIdentificationNumber>ATU18708634</VATIdentificationNumber>
+    <OrderReference>
+      <OrderID>4021-2024</OrderID>
+    </OrderReference>
+  </InvoiceRecipient>
+  <Details>
+    <ItemList>
+      <ListLineItem>
+        <Description>Schulungskosten</Description>
+        <Quantity Unit="STK">1.0000</Quantity>
+        <UnitPrice>100.0000</UnitPrice>
+        <TaxItem>
+          <TaxableAmount>100.00</TaxableAmount>
+          <TaxPercent TaxCategoryCode="S">20.00</TaxPercent>
+        </TaxItem>
+        <LineItemAmount>100.00</LineItemAmount>
+      </ListLineItem>
+    </ItemList>
+  </Details>
+  <Tax>
+    <TaxItem>
+      <TaxableAmount>100.00</TaxableAmount>
+      <TaxPercent TaxCategoryCode="S">20.00</TaxPercent>
+      <TaxAmount>20.00</TaxAmount>
+    </TaxItem>
+  </Tax>
+  <TotalGrossAmount>120.00</TotalGrossAmount>
+  <PayableAmount>120.00</PayableAmount>
+</Invoice>

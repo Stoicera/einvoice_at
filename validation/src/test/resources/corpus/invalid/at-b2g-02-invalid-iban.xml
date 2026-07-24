@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="http://www.ebinterface.at/schema/6p1/" GeneratingSystem="einvoice-at" DocumentType="Invoice" InvoiceCurrency="EUR" Language="de">
+  <InvoiceNumber>RE-2026-0042</InvoiceNumber>
+  <InvoiceDate>2026-07-24</InvoiceDate>
+  <Biller>
+    <VATIdentificationNumber>ATU12345678</VATIdentificationNumber>
+    <Address>
+      <Name>Stoicera Software GesbR</Name>
+      <Street>Hauptplatz 1</Street>
+      <Town>Linz</Town>
+      <ZIP>4020</ZIP>
+      <Country CountryCode="AT">AT</Country>
+    </Address>
+    <InvoiceRecipientsBillerID>L-100234</InvoiceRecipientsBillerID>
+  </Biller>
+  <InvoiceRecipient>
+    <VATIdentificationNumber>ATU87654321</VATIdentificationNumber>
+    <OrderReference>
+      <OrderID>BBG-2026-4711</OrderID>
+    </OrderReference>
+    <Address>
+      <Name>Bundesbeschaffung GmbH</Name>
+      <Street>Lassallestraße 9b</Street>
+      <Town>Wien</Town>
+      <ZIP>1020</ZIP>
+      <Country CountryCode="AT">AT</Country>
+    </Address>
+  </InvoiceRecipient>
+  <Details>
+    <ItemList>
+      <ListLineItem>
+        <PositionNumber>1</PositionNumber>
+        <Description>Softwareentwicklung Juli 2026</Description>
+        <Quantity Unit="HUR">80</Quantity>
+        <UnitPrice>120.00</UnitPrice>
+        <TaxItem>
+          <TaxableAmount>9600.00</TaxableAmount>
+          <TaxPercent TaxCategoryCode="S">20.00</TaxPercent>
+        </TaxItem>
+        <LineItemAmount>9600.00</LineItemAmount>
+      </ListLineItem>
+      <ListLineItem>
+        <PositionNumber>2</PositionNumber>
+        <Description>Fachliteratur</Description>
+        <Quantity Unit="C62">3</Quantity>
+        <UnitPrice>45.50</UnitPrice>
+        <TaxItem>
+          <TaxableAmount>136.50</TaxableAmount>
+          <TaxPercent TaxCategoryCode="S">10.00</TaxPercent>
+        </TaxItem>
+        <LineItemAmount>136.50</LineItemAmount>
+      </ListLineItem>
+    </ItemList>
+  </Details>
+  <Tax>
+    <TaxItem>
+      <TaxableAmount>9600.00</TaxableAmount>
+      <TaxPercent TaxCategoryCode="S">20.00</TaxPercent>
+      <TaxAmount>1920.00</TaxAmount>
+    </TaxItem>
+    <TaxItem>
+      <TaxableAmount>136.50</TaxableAmount>
+      <TaxPercent TaxCategoryCode="S">10.00</TaxPercent>
+      <TaxAmount>13.65</TaxAmount>
+    </TaxItem>
+  </Tax>
+  <TotalGrossAmount>11670.15</TotalGrossAmount>
+  <PayableAmount>11670.15</PayableAmount>
+  <PaymentMethod>
+    <UniversalBankTransaction>
+      <BeneficiaryAccount>
+        <BIC>BKAUATWW</BIC>
+        <IBAN>AT611904300234573202</IBAN>
+      </BeneficiaryAccount>
+    </UniversalBankTransaction>
+  </PaymentMethod>
+  <PaymentConditions>
+    <DueDate>2026-08-23</DueDate>
+    <Comment>Zahlbar innerhalb von 30 Tagen ohne Abzug</Comment>
+  </PaymentConditions>
+</Invoice>

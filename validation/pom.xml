@@ -60,6 +60,19 @@
       <artifactId>ph-ebinterface</artifactId>
     </dependency>
 
+    <!-- TEST SCOPE ONLY: the JSON reader and canonical→ebInterface 6.1 mapper drive the milestone's
+         end-to-end acceptance test (JSON → canonical → ebInterface 6.1 XML → this validator). Main
+         code must never depend on mapping — validation checks a document against its own format and
+         profile, and canonical mapping depends on validation, never the reverse (SPEC §2). The
+         ValidationArchitectureTest imports main classes only (DoNotIncludeTests), so this test-scope
+         edge is allowed by design, not a weakened rule. -->
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>mapping</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
