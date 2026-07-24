@@ -21,6 +21,16 @@ spring:
   flyway:
     enabled: true
 
+# OAuth2 resource-server (Keycloak) settings, consumed by SecurityConfig's JwtDecoder. Both come
+# from the environment; the compose stack sets OAUTH2_ISSUER_URI to the Keycloak realm. When an
+# issuer is set, tokens must carry a matching `iss`. jwk-set-uri is derived from the issuer when
+# left blank (Keycloak's standard certs path); override it only for a non-Keycloak JWKS layout. No
+# defaults here, so a misconfigured deployment fails loudly rather than trusting the wrong issuer.
+app:
+  oauth2:
+    issuer-uri: ${OAUTH2_ISSUER_URI:}
+    jwk-set-uri: ${OAUTH2_JWK_SET_URI:}
+
 server:
   port: 8080
 

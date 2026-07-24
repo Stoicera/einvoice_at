@@ -1,0 +1,66 @@
+package com.stoicera.einvoice.app.security;
+
+import com.stoicera.einvoice.app.persistence.TenantEntity;
+import com.stoicera.einvoice.app.persistence.TenantRepository;
+import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+
+/**
+ * Resolves the {@link TenantEntity} behind the current request's {@link Authentication}. This is
+ * the seam controllers (T6/T7) use to obtain their tenant boundary; it hides how the two
+ * authentication kinds map to a tenant:
+ *
+ * <ul>
+ *   <li>an {@link ApiKeyAuthenticationToken} already carries its tenant id (from the key row);
+ *   <li>a {@link JwtAuthenticationToken} is mapped by its {@code sub} claim, provisioning the
+ *       tenant on first sight ({@code preferred_username} becomes the display name, falling back to
+ *       {@code sub}).
+ * </ul>
+ */
+@Component
+public class CurrentTenant {
+
+  private final TenantProvisioningService provisioning;
+  private final TenantRepository tenants;
+
+  public CurrentTenant(TenantProvisioningService provisioning, TenantRepository tenants) {
+    this.provisioning = provisioning;
+    this.tenants = tenants;
+  }
+
+  /**
+   * Returns the tenant for {@code authentication}.
+   *
+   * @throws AuthenticationCredentialsNotFoundException if there is no authenticated principal
+   * @throws IllegalStateException if the authentication kind is unsupported, or an API key points
+   *     at a tenant that no longer exists
+   */
+  public TenantEntity require(Authentication authentication) {
+    if (authentication == null || !authentication.isAuthenticated()) {
+      throw new AuthenticationCredentialsNotFoundException(
+          "No authenticated principal on the request");
+    }
+    if (authentication instanceof ApiKeyAuthenticationToken apiKey) {
+      return tenants
+          .findById(apiKey.getTenantId())
+          .orElseThrow(
+              () ->
+                  new IllegalStateException(
+                      "API key references a tenant that no longer exists: "
+                          + apiKey.getTenantId()));
+    }
+    if (authentication instanceof JwtAuthenticationToken jwt) {
+      Jwt token = jwt.getToken();
+      String subject = token.getSubject();
+      String preferredUsername = token.getClaimAsString("preferred_username");
+      String displayName = StringUtils.hasText(preferredUsername) ? preferredUsername : subject;
+      return provisioning.provision(subject, displayName);
+    }
+    throw new IllegalStateException(
+        "Unsupported authentication type: " + authentication.getClass().getName());
+  }
+}
