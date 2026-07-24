@@ -43,6 +43,14 @@ app:
     issuer-uri: ${OAUTH2_ISSUER_URI:}
     jwk-set-uri: ${OAUTH2_JWK_SET_URI:}
 
+  # Application-layer cap on any NON-multipart request body (RequestBodySizeLimitFilter). Multipart
+  # uploads are bounded by spring.servlet.multipart.* above; nothing in Boot or Tomcat bounds an
+  # ordinary body (server.tomcat.max-http-form-post-size is form-encoded only), and POST
+  # /api/v1/invoices buffers its body whole. Same 2 MB bound as the multipart cap so "too big" means
+  # one thing across the API, and both routes answer 413 content-too-large.
+  limits:
+    max-request-body-size: ${MAX_REQUEST_BODY_SIZE:2MB}
+
   # Per-IP rate limiting on the anonymous side of POST /api/v1/validate only (SecurityConfig wires
   # RateLimitFilter; T8, SPEC section 4). A fresh IP starts with `capacity` tokens and regenerates
   # `refill-per-minute` tokens every 60s (bucket4j "greedy" refill — spread evenly across the

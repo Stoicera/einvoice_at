@@ -1,5 +1,6 @@
 package com.stoicera.einvoice.app.security;
 
+import com.stoicera.einvoice.app.problem.Problems;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.ConsumptionProbe;
 import io.github.bucket4j.TimeMeter;
@@ -10,7 +11,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -23,7 +23,6 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Per-client-IP token-bucket rate limiting for the anonymous side of {@code POST /api/v1/validate}
@@ -78,11 +77,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
   private static final RequestMatcher VALIDATE_MATCHER =
       PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, VALIDATE_PATH);
 
-  // Mirrors ApiExceptionHandler's PROBLEM_BASE + slug convention. Filters run outside Spring MVC's
-  // dispatch, so ApiExceptionHandler's @RestControllerAdvice never sees a rejection this filter
-  // makes — the problem body has to be written here, by hand, in the same vocabulary.
-  private static final String PROBLEM_TYPE =
-      "https://einvoice-at.stoicera.com/problems/rate-limited";
+  // Filters run outside Spring MVC's dispatch, so ApiExceptionHandler's @RestControllerAdvice never
+  // sees a rejection this filter makes — the problem body has to be written here, by hand. It goes
+  // through Problems so it is provably the same vocabulary the controllers speak, rather than a
+  // second copy of the type-URI convention.
+  private static final String PROBLEM_SLUG = "rate-limited";
 
   // Single-instance memory bound (see class Javadoc): 10k distinct callers tracked at once is
   // generous for one instance and cheap (a bucket is a handful of longs).
@@ -93,10 +92,6 @@ public class RateLimitFilter extends OncePerRequestFilter {
   private final long refillPerMinute;
   private final TimeMeter timeMeter;
   private final ConcurrentHashMap<String, ClientBucket> buckets = new ConcurrentHashMap<>();
-
-  // Same construction idiom as ReportService/InvoiceService's private findingsMapper: a
-  // module-local JsonMapper instance, not a Spring-managed bean pulled in through DI.
-  private final JsonMapper json = JsonMapper.builder().build();
 
   public RateLimitFilter(long capacity, long refillPerMinute) {
     this(capacity, refillPerMinute, TimeMeter.SYSTEM_MILLISECONDS);
@@ -175,22 +170,18 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
   private void writeRateLimited(HttpServletResponse response, long retryAfterSeconds)
       throws IOException {
-    // jakarta.servlet's HttpServletResponse carries no SC_TOO_MANY_REQUESTS constant (429 predates
-    // RFC 6585 in the Servlet spec's own list), so the status comes from Spring's HttpStatus enum
-    // instead — the same source ApiExceptionHandler resolves its problem statuses from.
-    int status = HttpStatus.TOO_MANY_REQUESTS.value();
-    response.setStatus(status);
-    response.setContentType("application/problem+json");
+    // Set before Problems.write, which commits the body. jakarta.servlet's HttpServletResponse
+    // carries no SC_TOO_MANY_REQUESTS constant (429 predates RFC 6585 in the Servlet spec's own
+    // list), so the status comes from Spring's HttpStatus enum instead — the same source
+    // ApiExceptionHandler resolves its problem statuses from.
     response.setHeader(HttpHeaders.RETRY_AFTER, Long.toString(retryAfterSeconds));
-    Map<String, Object> problem = new LinkedHashMap<>();
-    problem.put("type", PROBLEM_TYPE);
-    problem.put("title", "Rate limit exceeded");
-    problem.put("status", status);
-    problem.put(
-        "detail",
+    Problems.write(
+        response,
+        HttpStatus.TOO_MANY_REQUESTS,
+        PROBLEM_SLUG,
+        "Rate limit exceeded",
         "Too many anonymous validation requests from this client. Retry after the interval named"
             + " in the Retry-After header.");
-    json.writeValue(response.getWriter(), problem);
   }
 
   /** Ceiling division: the smallest whole-second count that covers {@code nanos} of wait. */

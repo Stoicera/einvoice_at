@@ -1,17 +1,20 @@
 package com.stoicera.einvoice.app.api;
 
+import com.stoicera.einvoice.app.http.RequestBodySizeLimitFilter;
+import com.stoicera.einvoice.app.http.RequestBodyTooLargeException;
 import com.stoicera.einvoice.app.invoice.DuplicateInvoiceException;
 import com.stoicera.einvoice.app.invoice.InvoiceNotFoundException;
+import com.stoicera.einvoice.app.problem.Problems;
 import com.stoicera.einvoice.app.report.ReportNotFoundException;
 import com.stoicera.einvoice.core.InvariantViolationException;
 import com.stoicera.einvoice.mapping.json.InvoiceJsonException;
-import java.net.URI;
 import java.util.Locale;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.lang.Nullable;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -22,11 +25,11 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
  * Translates every failure of the REST API into an RFC 9457 {@code application/problem+json}
  * response.
  *
- * <p>Each {@link ProblemDetail} carries a stable {@code type} URI under {@code
- * https://einvoice-at.stoicera.com/problems/}, a human {@code title}, and a {@code detail} that is
- * safe to echo. Messages from {@code core}/{@code mapping} follow the codebase's bounded-echo
- * discipline, so they are echoed verbatim to help a caller fix their request; the catch-all 500, by
- * contrast, never leaks an exception message or class.
+ * <p>Each {@link ProblemDetail} carries a stable {@code type} URI under {@link Problems#BASE}, a
+ * human {@code title}, and a {@code detail} that is safe to echo. Messages from {@code core}/{@code
+ * mapping} follow the codebase's bounded-echo discipline, so they are echoed verbatim to help a
+ * caller fix their request; the catch-all 500, by contrast, never leaks an exception message or
+ * class.
  *
  * <p>The class extends {@link ResponseEntityExceptionHandler} so Spring MVC's own exceptions (wrong
  * method, unsupported media type, unreadable body, type-mismatched path/query values, a missing
@@ -39,8 +42,6 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
  */
 @RestControllerAdvice
 public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
-
-  private static final String PROBLEM_BASE = "https://einvoice-at.stoicera.com/problems/";
 
   /** Canonical-JSON shape error (unknown field, wrong node type, unparsable amount/date, …). */
   @ExceptionHandler(InvoiceJsonException.class)
@@ -101,6 +102,41 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
   }
 
   /**
+   * Recovers the correct 413 when {@link RequestBodySizeLimitFilter}'s counting stream tripped
+   * mid-read on a chunked body.
+   *
+   * <p>That failure surfaces as an {@link java.io.IOException} from inside {@code
+   * ServletInputStream.read} (the only thing its contract allows), and Spring's message converters
+   * wrap any read failure in {@code HttpMessageNotReadableException} — which would otherwise be
+   * reported as a generic 400 "unreadable body", hiding the real reason. The cause chain is walked
+   * rather than only the immediate cause, since the number of wrapping layers is a converter
+   * implementation detail. Anything that is genuinely an unreadable body keeps its 400 by
+   * delegating to {@code super}.
+   */
+  @Override
+  protected ResponseEntity<Object> handleHttpMessageNotReadable(
+      HttpMessageNotReadableException ex,
+      HttpHeaders headers,
+      HttpStatusCode status,
+      WebRequest request) {
+    for (Throwable cause = ex; cause != null; cause = cause.getCause()) {
+      if (cause instanceof RequestBodyTooLargeException tooLarge) {
+        return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE)
+            .body(
+                problem(
+                    HttpStatus.CONTENT_TOO_LARGE,
+                    "content-too-large",
+                    HttpStatus.CONTENT_TOO_LARGE.getReasonPhrase(),
+                    "The request body exceeds the " + tooLarge.getLimitBytes() + " byte limit."));
+      }
+      if (cause.getCause() == cause) {
+        break; // defensive: a self-referential cause would otherwise loop forever
+      }
+    }
+    return super.handleHttpMessageNotReadable(ex, headers, status, request);
+  }
+
+  /**
    * Stamps the project's {@code type} URI (and a title, when missing) onto the {@link
    * ProblemDetail} that {@link ResponseEntityExceptionHandler} builds for Spring MVC's own
    * exceptions, so a framework-produced problem is not left with the default {@code about:blank}
@@ -117,7 +153,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         super.handleExceptionInternal(ex, body, headers, statusCode, request);
     if (response != null && response.getBody() instanceof ProblemDetail problem) {
       if (problem.getType() == null || "about:blank".equals(problem.getType().toString())) {
-        problem.setType(URI.create(PROBLEM_BASE + slugForStatus(statusCode)));
+        problem.setType(Problems.type(slugForStatus(statusCode)));
       }
       HttpStatus resolved = HttpStatus.resolve(statusCode.value());
       if (problem.getTitle() == null && resolved != null) {
@@ -138,7 +174,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
   private static ProblemDetail problem(
       HttpStatus status, String slug, String title, @Nullable String detail) {
     ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail == null ? "" : detail);
-    problem.setType(URI.create(PROBLEM_BASE + slug));
+    problem.setType(Problems.type(slug));
     problem.setTitle(title);
     return problem;
   }
