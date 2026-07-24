@@ -34,7 +34,7 @@ jobs:
           retention-days: 14
 
   mutation:
-    name: Mutation tests (core)
+    name: Mutation tests (core, mapping)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,8 +43,17 @@ jobs:
           distribution: temurin
           java-version: "25"
           cache: maven
-      - name: PIT mutation coverage (core)
-        run: ./mvnw -B -ntp -pl core -am -Pmutation test-compile org.pitest:pitest-maven:mutationCoverage
+      # Two steps, deliberately not one "-pl core,mapping -am -Pmutation ...": the pitest goal is
+      # invoked bare on the command line (no lifecycle-phase binding), so it runs against every
+      # project the reactor selects, not just the ones with a "mutation" profile (see mapping's own
+      # pom.xml comment and the exec-maven-plugin precedent in the root pom.xml). "-am" for mapping
+      # pulls in formats-ebinterface, which has no pitest wiring, and the bare goal fails outright
+      # on it. Installing core/mapping's dependency closure first, then re-running "-pl core,mapping"
+      # without "-am", keeps formats-ebinterface out of the second reactor entirely.
+      - name: Install dependency closure (core, formats-ebinterface, mapping)
+        run: ./mvnw -B -ntp -pl core,mapping -am install -DskipTests
+      - name: PIT mutation coverage (core, mapping)
+        run: ./mvnw -B -ntp -pl core,mapping -Pmutation test-compile org.pitest:pitest-maven:mutationCoverage
 
   docker:
     name: Docker image build

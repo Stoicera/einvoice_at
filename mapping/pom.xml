@@ -119,8 +119,9 @@
          module (core, formats-ebinterface), and formats-ebinterface has no "mutation" profile of
          its own (no pitest-junit5-plugin on its classpath), so it fails outright. Run "-pl mapping"
          alone once core/formats-ebinterface are in the local repo (any prior reactor build there
-         already put them there); core has its own PIT wiring and CI job (ci.yml) — mapping's is not
-         yet wired into CI, matching the gap left by Task 4.
+         already put them there); the CI mutation job (ci.yml) applies the same "-am" caveat — it
+         installs core/mapping's dependency closure first, then reruns "-pl core,mapping" without
+         "-am" so formats-ebinterface never enters the pitest reactor.
          Kept out of the default verify because PIT re-runs the schema-validity property test once
          per mutant, which is far slower than the ~seconds a plain verify takes. -->
     <profile>
