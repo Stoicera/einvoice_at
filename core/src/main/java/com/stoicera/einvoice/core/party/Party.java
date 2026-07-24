@@ -2,6 +2,7 @@ package com.stoicera.einvoice.core.party;
 
 import com.stoicera.einvoice.core.InvariantViolationException;
 import com.stoicera.einvoice.core.internal.Texts;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
@@ -9,13 +10,26 @@ import java.util.regex.Pattern;
  *
  * <p>{@code vatId} is optional in the model (e.g. Kleinunternehmer without UID); whether it is
  * required for a given profile is a business rule of the validation module, not a core invariant.
+ *
+ * <p>{@code email} is likewise optional here (added M3, BG-14/e-rechnung.gv.at biller contact); the
+ * AT-B2G profile's requirement that a biller carry one is a validation-module business rule, not a
+ * core invariant — see {@link #Party(String, Address, String)} for the pre-M3 shape.
  */
-public record Party(String name, Address address, String vatId) {
+public record Party(String name, Address address, String vatId, Optional<String> email) {
 
   private static final Pattern EU_VAT_ID = Pattern.compile("[A-Z]{2}[0-9A-Z]{2,13}");
 
+  /**
+   * Minimal shape check, deliberately not RFC 5322: a single {@code @} separating a non-empty local
+   * part from a non-empty domain part, neither containing whitespace.
+   */
+  private static final Pattern EMAIL_SHAPE = Pattern.compile("[^\\s@]+@[^\\s@]+");
+
   /** Defensive DoS bound, not a business rule: free-text party name must stay bounded. */
   private static final int MAX_NAME_LENGTH = 256;
+
+  /** Defensive DoS bound, not a business rule: free-text email must stay bounded. */
+  private static final int MAX_EMAIL_LENGTH = 256;
 
   public Party {
     if (name == null || name.isBlank()) {
@@ -35,5 +49,29 @@ public record Party(String name, Address address, String vatId) {
             "VAT id '%s' is not a valid EU VAT id".formatted(Texts.safeEcho(vatId)));
       }
     }
+    if (email == null) {
+      throw new InvariantViolationException(
+          "Party email must not be null; use Optional.empty() when absent");
+    }
+    if (email.isPresent()) {
+      String raw = email.get();
+      // Guard the length before trim()/matches(): a caller-supplied value must not force an
+      // unbounded copy or an unbounded regex scan before it is rejected.
+      if (raw.length() > MAX_EMAIL_LENGTH) {
+        throw new InvariantViolationException(
+            "Party email exceeds %d characters".formatted(MAX_EMAIL_LENGTH));
+      }
+      String trimmed = raw.trim();
+      if (!EMAIL_SHAPE.matcher(trimmed).matches()) {
+        throw new InvariantViolationException(
+            "Email '%s' is not a valid email address".formatted(Texts.safeEcho(trimmed)));
+      }
+      email = Optional.of(trimmed);
+    }
+  }
+
+  /** Pre-M3 shape, kept so existing callers compile unchanged: {@code email} defaults to absent. */
+  public Party(String name, Address address, String vatId) {
+    this(name, address, vatId, Optional.empty());
   }
 }

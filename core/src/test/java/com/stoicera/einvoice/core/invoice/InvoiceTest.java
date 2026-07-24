@@ -18,6 +18,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Currency;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class InvoiceTest {
@@ -369,6 +370,114 @@ class InvoiceTest {
     assertThat(invoice.supplierNumber()).isEqualTo("LIEF-7");
     assertThat(invoice.paymentMeans()).isEqualTo(paymentMeans);
     assertThat(invoice.paymentTerms()).isEqualTo("30 Tage netto");
+  }
+
+  @Test
+  void deliveryDateAndServicePeriodAreAbsentByDefault() {
+    Invoice invoice = minimal().build();
+    assertThat(invoice.deliveryDate()).isEmpty();
+    assertThat(invoice.servicePeriod()).isEmpty();
+  }
+
+  @Test
+  void deliveryDateCanBeSetViaBuilder() {
+    LocalDate delivery = LocalDate.of(2026, 7, 20);
+    Invoice invoice = minimal().deliveryDate(delivery).build();
+    assertThat(invoice.deliveryDate()).contains(delivery);
+    assertThat(invoice.servicePeriod()).isEmpty();
+  }
+
+  @Test
+  void servicePeriodCanBeSetViaBuilder() {
+    ServicePeriod period = new ServicePeriod(LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 20));
+    Invoice invoice = minimal().servicePeriod(period).build();
+    assertThat(invoice.servicePeriod()).contains(period);
+    assertThat(invoice.deliveryDate()).isEmpty();
+  }
+
+  @Test
+  void settingBothDeliveryDateAndServicePeriodIsRejected() {
+    ServicePeriod period = new ServicePeriod(LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 20));
+    assertThatThrownBy(
+            () -> minimal().deliveryDate(LocalDate.of(2026, 7, 20)).servicePeriod(period).build())
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("delivery date")
+        .hasMessageContaining("service period");
+  }
+
+  @Test
+  void canonicalConstructorRejectsNullDeliveryDateOptional() {
+    Invoice valid = minimal().build();
+    assertThatThrownBy(
+            () ->
+                new Invoice(
+                    valid.invoiceNumber(),
+                    valid.type(),
+                    valid.issueDate(),
+                    valid.dueDate(),
+                    null,
+                    Optional.empty(),
+                    valid.currency(),
+                    valid.orderReference(),
+                    valid.supplierNumber(),
+                    valid.seller(),
+                    valid.buyer(),
+                    valid.lines(),
+                    valid.paymentMeans(),
+                    valid.paymentTerms(),
+                    valid.vatBreakdown(),
+                    valid.totals()))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("deliveryDate");
+  }
+
+  @Test
+  void canonicalConstructorRejectsNullServicePeriodOptional() {
+    Invoice valid = minimal().build();
+    assertThatThrownBy(
+            () ->
+                new Invoice(
+                    valid.invoiceNumber(),
+                    valid.type(),
+                    valid.issueDate(),
+                    valid.dueDate(),
+                    Optional.empty(),
+                    null,
+                    valid.currency(),
+                    valid.orderReference(),
+                    valid.supplierNumber(),
+                    valid.seller(),
+                    valid.buyer(),
+                    valid.lines(),
+                    valid.paymentMeans(),
+                    valid.paymentTerms(),
+                    valid.vatBreakdown(),
+                    valid.totals()))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("servicePeriod");
+  }
+
+  @Test
+  void preM3ConstructorLeavesDeliveryDateAndServicePeriodAbsent() {
+    Invoice valid = minimal().build();
+    Invoice viaCompatConstructor =
+        new Invoice(
+            valid.invoiceNumber(),
+            valid.type(),
+            valid.issueDate(),
+            valid.dueDate(),
+            valid.currency(),
+            valid.orderReference(),
+            valid.supplierNumber(),
+            valid.seller(),
+            valid.buyer(),
+            valid.lines(),
+            valid.paymentMeans(),
+            valid.paymentTerms(),
+            valid.vatBreakdown(),
+            valid.totals());
+    assertThat(viaCompatConstructor.deliveryDate()).isEmpty();
+    assertThat(viaCompatConstructor.servicePeriod()).isEmpty();
   }
 
   @Test

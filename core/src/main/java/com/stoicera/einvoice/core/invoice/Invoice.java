@@ -16,6 +16,7 @@ import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 
@@ -32,6 +33,13 @@ import java.util.TreeMap;
  * <p>{@code orderReference} (Auftragsreferenz) and {@code supplierNumber} (Lieferantennummer) are
  * optional here; the Austrian federal B2G profile requires them via the validation module.
  *
+ * <p>{@code deliveryDate} (BT-72) and {@code servicePeriod} (BG-14) are mutually exclusive per § 11
+ * Abs 1 Z 4 UStG — a full invoice must carry the day of delivery *or* the service period, never
+ * both; the canonical constructor rejects an {@code Invoice} that carries both, but leaves both
+ * optional (neither is required by this model — see {@link #Invoice(String, InvoiceTypeCode,
+ * LocalDate, LocalDate, Currency, String, String, Party, Party, List, PaymentMeans, String, List,
+ * Totals) the pre-M3 constructor} for callers written before either field existed).
+ *
  * <p>{@link #type()} (BT-3) carries the EN 16931 document type code — 380 for a commercial invoice,
  * 381 for a credit note — and it, not the sign of the amounts, determines the direction of the
  * document; the canonical constructor additionally requires {@link Totals#payableAmount()} to be
@@ -42,6 +50,8 @@ public record Invoice(
     InvoiceTypeCode type,
     LocalDate issueDate,
     LocalDate dueDate,
+    Optional<LocalDate> deliveryDate,
+    Optional<ServicePeriod> servicePeriod,
     Currency currency,
     String orderReference,
     String supplierNumber,
@@ -95,6 +105,19 @@ public record Invoice(
       throw new InvariantViolationException(
           "Invoice due date %s must not be before issue date %s".formatted(dueDate, issueDate));
     }
+    if (deliveryDate == null) {
+      throw new InvariantViolationException(
+          "Invoice deliveryDate must not be null; use Optional.empty() when absent");
+    }
+    if (servicePeriod == null) {
+      throw new InvariantViolationException(
+          "Invoice servicePeriod must not be null; use Optional.empty() when absent");
+    }
+    if (deliveryDate.isPresent() && servicePeriod.isPresent()) {
+      throw new InvariantViolationException(
+          "Invoice must not carry both a delivery date and a service period (§ 11 Abs 1 Z 4"
+              + " UStG: day of delivery or service period, not both)");
+    }
     Set<String> ids = new HashSet<>();
     for (InvoiceLine line : lines) {
       if (!ids.add(line.id())) {
@@ -131,6 +154,44 @@ public record Invoice(
           "Payable amount %s must not be negative; represent credits as a type 381 credit note"
               .formatted(totals.payableAmount()));
     }
+  }
+
+  /**
+   * Pre-M3 shape, kept so existing callers compile unchanged: {@code deliveryDate} and {@code
+   * servicePeriod} (BT-72/BG-14, added M3) both default to absent.
+   */
+  public Invoice(
+      String invoiceNumber,
+      InvoiceTypeCode type,
+      LocalDate issueDate,
+      LocalDate dueDate,
+      Currency currency,
+      String orderReference,
+      String supplierNumber,
+      Party seller,
+      Party buyer,
+      List<InvoiceLine> lines,
+      PaymentMeans paymentMeans,
+      String paymentTerms,
+      List<VatBreakdownEntry> vatBreakdown,
+      Totals totals) {
+    this(
+        invoiceNumber,
+        type,
+        issueDate,
+        dueDate,
+        Optional.empty(),
+        Optional.empty(),
+        currency,
+        orderReference,
+        supplierNumber,
+        seller,
+        buyer,
+        lines,
+        paymentMeans,
+        paymentTerms,
+        vatBreakdown,
+        totals);
   }
 
   /** Groups line nets by VAT rate and taxes each category sum (EN 16931 BR-CO-17). */
@@ -208,6 +269,8 @@ public record Invoice(
     private InvoiceTypeCode type = InvoiceTypeCode.COMMERCIAL_INVOICE;
     private LocalDate issueDate;
     private LocalDate dueDate;
+    private LocalDate deliveryDate;
+    private ServicePeriod servicePeriod;
     private Currency currency = Money.EUR;
     private String orderReference;
     private String supplierNumber;
@@ -238,6 +301,25 @@ public record Invoice(
 
     public Builder dueDate(LocalDate dueDate) {
       this.dueDate = dueDate;
+      return this;
+    }
+
+    /**
+     * Day of delivery (BT-72). Mutually exclusive with {@link #servicePeriod(ServicePeriod)} — § 11
+     * Abs 1 Z 4 UStG requires the day of delivery *or* the service period, never both; setting both
+     * is rejected at {@link #build()} time.
+     */
+    public Builder deliveryDate(LocalDate deliveryDate) {
+      this.deliveryDate = deliveryDate;
+      return this;
+    }
+
+    /**
+     * Service period (BG-14). Mutually exclusive with {@link #deliveryDate(LocalDate)} — see there
+     * for the invariant.
+     */
+    public Builder servicePeriod(ServicePeriod servicePeriod) {
+      this.servicePeriod = servicePeriod;
       return this;
     }
 
@@ -317,6 +399,8 @@ public record Invoice(
           type,
           issueDate,
           dueDate,
+          Optional.ofNullable(deliveryDate),
+          Optional.ofNullable(servicePeriod),
           currency,
           orderReference,
           supplierNumber,
