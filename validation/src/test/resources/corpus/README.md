@@ -158,3 +158,7 @@ guards that they stay *valid*, not that they stay byte-identical; keep the prove
 **The `invalid/` files** are each `valid/b2g-full.xml` (or, for the whitespace case, the same base)
 with **exactly one** documented defect re-applied — re-derive them by hand after regenerating
 `b2g-full.xml`.
+
+## Maintenance caveat
+
+XSD-stage tests pin exact Xerces message phrasing (a JDK/Xerces-upgrade landmine); the mapper's schema-validity fixtures live in multiple locations (Fixtures, TestDocuments, corpus) that must be kept consistent when validation documents change.

@@ -15,7 +15,7 @@ Status: v1.0 · 2026-07-23 · Language of repo: English (domain terms stay Germa
 | Build | **Maven** (multi-module) | Enterprise default in AT; wrapper committed |
 | Persistence | PostgreSQL 17 + Spring Data JPA (Hibernate) + **Flyway** | Standard, migration-first |
 | e-invoice libs | **ph-ebinterface** (ebInterface XSD/model), **phive** + phive-rules (Schematron validation for ebInterface & Peppol), **ph-ubl** (UBL 2.1) — all MIT/Apache, actively maintained by Philip Helger; if a rule set is missing, fall back to official AUSTRIAPRO/OpenPeppol artefacts executed via ph-schematron | Don't reinvent validated standards artefacts; credit upstream in README |
-| Mapping | Dedicated `mapping` module: internal canonical model (EN 16931 core) ↔ ebInterface 6.1 ↔ UBL BIS 3.0. MapStruct where mechanical, hand-written + heavily tested where semantic | The canonical model is the heart of the system |
+| Mapping | Dedicated `mapping` module: internal canonical model (EN 16931 core) ↔ ebInterface 6.1 ↔ UBL BIS 3.0. Hand-written and heavily tested (MapStruct evaluated but unrealized as of M2; all mapping turned out semantic) | The canonical model is the heart of the system |
 | PDF | OpenPDF or Apache PDFBox via a `rendering` module (HTML→PDF acceptable: openhtmltopdf) | Print view of invoice |
 | Web UI | **Thymeleaf + htmx + Tailwind (standalone CLI)** | Java-pure server-rendered UI: exactly what enterprise Java shops respect; no SPA build complexity |
 | AuthN/Z | Spring Security (OAuth2 Resource Server) + **Keycloak** as IdP (docker compose); API keys for machine access (hashed at rest) | Answers the "do we need Keycloak?" question: Spring Security is the framework, Keycloak the IdP — document this in an ADR |
