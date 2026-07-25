@@ -42,9 +42,30 @@ app:
   oauth2:
     issuer-uri: ${OAUTH2_ISSUER_URI:}
     jwk-set-uri: ${OAUTH2_JWK_SET_URI:}
+    # Optional audience check (`aud` must contain this value). Signature + issuer prove a token is
+    # genuine, not that it was minted FOR this API — without this, any client in the realm can
+    # present its own token and be authenticated. Left blank by default because a single-audience
+    # dev realm needs no check and enabling it unconditionally would reject Keycloak's default
+    # `account` audience; set it (to the API's client id) for any shared or production realm.
+    # See ADR-0006 and JwtDecoderTest.
+    audience: ${OAUTH2_AUDIENCE:}
+
+  # Application-layer cap on any NON-multipart request body (RequestBodySizeLimitFilter). Multipart
+  # uploads are bounded by spring.servlet.multipart.* above; nothing in Boot or Tomcat bounds an
+  # ordinary body (server.tomcat.max-http-form-post-size is form-encoded only), and POST
+  # /api/v1/invoices buffers its body whole. Same 2 MB bound as the multipart cap so "too big" means
+  # one thing across the API, and both routes answer 413 content-too-large.
+  limits:
+    max-request-body-size: ${MAX_REQUEST_BODY_SIZE:2MB}
+
+  # Cap on the number of ACTIVE (non-revoked) API keys one tenant may hold. Minting was unbounded
+  # before the M3 hostile review. Revoked keys keep their rows for the audit trail but do not count,
+  # so a tenant at the cap makes room by revoking rather than by losing history.
+  api-keys:
+    max-active-per-tenant: ${API_KEYS_MAX_ACTIVE_PER_TENANT:25}
 
   # Per-IP rate limiting on the anonymous side of POST /api/v1/validate only (SecurityConfig wires
-  # RateLimitFilter; T8, SPEC section 4). A fresh IP starts with `capacity` tokens and regenerates
+  # RateLimitFilter; SPEC section 4). A fresh IP starts with `capacity` tokens and regenerates
   # `refill-per-minute` tokens every 60s (bucket4j "greedy" refill — spread evenly across the
   # minute, not released in one lump). Defaults are deliberately generous for a portfolio demo, not
   # tuned against real traffic. Test contexts override both (AbstractKeycloakIT raises the shared
@@ -54,6 +75,17 @@ app:
     validate:
       capacity: ${RATE_LIMIT_VALIDATE_CAPACITY:10}
       refill-per-minute: ${RATE_LIMIT_VALIDATE_REFILL_PER_MINUTE:10}
+
+# OpenAPI document and Swagger UI. Both are served anonymously (SecurityConfig permits them), which
+# is right for a portfolio/dev instance and a decision that deserves an off-switch rather than a
+# default nobody chose — springdoc itself warns on every boot when they are left on. One flag drives
+# both, so the document and the UI can never disagree about being exposed. Set API_DOCS_ENABLED=false
+# on any deployment that should not publish its full API description to anonymous callers.
+springdoc:
+  api-docs:
+    enabled: ${API_DOCS_ENABLED:true}
+  swagger-ui:
+    enabled: ${API_DOCS_ENABLED:true}
 
 server:
   port: 8080
@@ -67,3 +99,32 @@ management:
     health:
       probes:
         enabled: true
+
+# Security-relevant events (a rejected API key, a rate-limited caller, an oversized body, a
+# provisioned tenant, an unhandled 500) are logged by the classes that produce them; this only
+# guarantees the category is not filtered out. Hibernate's own WARN for a constraint violation the
+# application handles deliberately — the (tenant, invoiceNumber) duplicate translated into a 409,
+# and the tenant-provisioning race resolved by design — is quietened to ERROR, so a WARN in this
+# application's log stays a signal rather than expected noise.
+logging:
+  level:
+    com.stoicera.einvoice: INFO
+    org.hibernate.orm.jdbc.error: ERROR
+
+---
+# Production logging: structured JSON on stdout (ENGINEERING_STANDARDS §5), ECS field names so a
+# Grafana/Loki or Elastic pipeline can read it without a custom parser. Local development and the
+# integration tests keep the human-readable default — nothing activates this profile except a
+# deployment setting SPRING_PROFILES_ACTIVE=prod (M6).
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+logging:
+  structured:
+    format:
+      console: ecs
+    ecs:
+      service:
+        name: einvoice-at

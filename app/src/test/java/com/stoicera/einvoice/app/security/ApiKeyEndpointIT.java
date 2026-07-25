@@ -29,6 +29,7 @@ class ApiKeyEndpointIT extends AbstractKeycloakIT {
 
   private static final String API_KEYS = "/api/v1/api-keys";
   private static final String PROTECTED_ROUTE = "/api/v1/invoices";
+  private static final String PROBLEM_BASE = "https://einvoice-at.stoicera.com/problems/";
 
   @LocalServerPort private int port;
   @Autowired private TenantRepository tenants;
@@ -94,6 +95,51 @@ class ApiKeyEndpointIT extends AbstractKeycloakIT {
     // Reused, not recreated.
     assertThat(afterSecond.getId()).isEqualTo(afterFirst.getId());
     assertThat(afterSecond.getCreatedAt()).isEqualTo(afterFirst.getCreatedAt());
+  }
+
+  @Test
+  void revokingAnUnknownKeyIsAnApiKeyNotFoundProblem() throws Exception {
+    String token = fetchAccessToken(TEST_USERNAME, TEST_PASSWORD);
+
+    HttpResponse<String> response =
+        send("DELETE", API_KEYS + "/" + UUID.randomUUID(), bearer(token), null, null);
+
+    // Its own slug, like invoice-not-found and report-not-found — not the generic framework
+    // not-found ADR-0006's "one slug per condition" promise would otherwise be broken by.
+    assertThat(response.statusCode()).isEqualTo(404);
+    assertThat(response.headers().firstValue("Content-Type").orElse(""))
+        .contains("application/problem+json");
+    JsonNode problem = json.readTree(response.body());
+    assertThat(problem.get("type").asText()).isEqualTo(PROBLEM_BASE + "api-key-not-found");
+    assertThat(problem.get("status").asInt()).isEqualTo(404);
+  }
+
+  @Test
+  void aTenantCannotRevokeOrSeeAnotherTenantsKey() throws Exception {
+    // A key belonging to somebody else entirely, seeded straight into the database.
+    TenantEntity otherTenant =
+        tenants.save(new TenantEntity("kc-sub-" + UUID.randomUUID(), "Other Tenant"));
+    ApiKeys.GeneratedKey othersKey = ApiKeys.generate();
+    ApiKeyEntity othersRow =
+        apiKeys.save(
+            new ApiKeyEntity(
+                otherTenant.getId(), "not-yours", othersKey.keyHash(), othersKey.prefix()));
+
+    String token = fetchAccessToken(TEST_USERNAME, TEST_PASSWORD);
+
+    // Revoking it reads as "not found" — no oracle telling the caller the id exists elsewhere.
+    HttpResponse<String> revoke =
+        send("DELETE", API_KEYS + "/" + othersRow.getId(), bearer(token), null, null);
+    assertThat(revoke.statusCode()).isEqualTo(404);
+
+    // And it is genuinely untouched, not merely reported as missing.
+    assertThat(apiKeys.findById(othersRow.getId()).orElseThrow().isRevoked()).isFalse();
+
+    // Nor does it appear in this tenant's listing.
+    HttpResponse<String> listed = send("GET", API_KEYS, bearer(token), null, null);
+    assertThat(listed.statusCode()).isEqualTo(200);
+    assertThat(listed.body()).doesNotContain(othersRow.getId().toString());
+    assertThat(listed.body()).doesNotContain("not-yours");
   }
 
   @Test

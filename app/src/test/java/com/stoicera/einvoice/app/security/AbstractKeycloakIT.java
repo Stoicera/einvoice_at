@@ -34,7 +34,7 @@ import org.testcontainers.utility.MountableFile;
  * docs/adr/0005). Started once as a static singleton and shared across the auth ITs; the image is
  * pinned by the same digest as {@code docker-compose.yml}.
  *
- * <p>Also raises {@code RateLimitFilter}'s per-IP capacity/refill (T8) far above their production
+ * <p>Also raises {@code RateLimitFilter}'s per-IP capacity/refill far above their production
  * defaults for every subclass: the auth ITs collectively make a handful of anonymous {@code POST
  * /api/v1/validate} calls against the one Spring context Boot caches for all of them (identical
  * {@code @SpringBootTest} configuration → one shared context), and the point of that override is

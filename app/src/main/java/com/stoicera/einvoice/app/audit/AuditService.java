@@ -11,9 +11,9 @@ import org.springframework.transaction.annotation.Transactional;
  * AuditAction}, when — stamped by the entity). Only a SHA-256 hash of any payload is recorded,
  * never the payload itself; {@code payloadSha256} is null for actions that carry no payload.
  *
- * <p>The producing seam for T6/T7: those tasks call {@link #record} from the invoice and validation
- * flows. It is created here so the security/API layer can already audit key creation and
- * revocation.
+ * <p>The one seam every audited action goes through: {@link #record} is called from the invoice
+ * creation flow, the validation flow and API-key creation/revocation. Each caller invokes it inside
+ * its own transaction, so the audit row commits or rolls back with the action it records.
  */
 @Service
 public class AuditService {

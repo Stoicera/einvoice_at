@@ -14,6 +14,13 @@
 
   <name>einvoice-at :: app</name>
 
+  <properties>
+    <!-- Default so Failsafe's <argLine> resolves even when JaCoCo's prepare-agent-integration has
+         not run (e.g. `./mvnw test -pl app`, which skips the integration phases entirely). The
+         real value is injected by that execution. -->
+    <failsafeArgLine/>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -184,12 +191,120 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-failsafe-plugin</artifactId>
+        <configuration>
+          <!-- Set by JaCoCo's prepare-agent-integration below, so the integration tests run under
+               the coverage agent too (Failsafe does not pick up `argLine` the way Surefire does).
+               @{...}, not ${...}: the late-binding form is resolved when the fork is launched,
+               after prepare-agent-integration has written the property. With ${...} the value is
+               interpolated while the POM is read — before that execution runs — so the agent is
+               silently absent and the IT coverage file is never written at all. -->
+          <argLine>@{failsafeArgLine}</argLine>
+        </configuration>
         <executions>
           <execution>
             <goals>
               <goal>integration-test</goal>
               <goal>verify</goal>
             </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- Coverage gate. The other four implemented modules have carried one since M1/M2; `app`
+           shipped M3 — every line of security, tenancy, persistence and error handling — with none
+           at all, which the M3 hostile review flagged (F4).
+
+           Unlike those modules, most of app's behaviour is proven by integration tests rather than
+           unit tests, so a single prepare-agent would measure only the Surefire half and report a
+           misleadingly low number. Both runs are therefore instrumented into separate exec files
+           and merged before the report and the check, so the gate sees the coverage the whole suite
+           actually produces.
+
+           Thresholds are set from the measured value with a deliberate margin, not aspirationally:
+           they exist to catch a regression, and a gate nobody can pass gets weakened, which is
+           worse than no gate. Measured 95.24 % line / 83.33 % branch at the M3 fix wave, gated at
+           90/78. PIT is not applied here (unlike core/mapping/validation/
+           formats-ebinterface): mutating a Spring module whose tests each boot a context and two
+           containers costs minutes per mutant for little signal, and the module's genuinely
+           algorithmic parts — ApiKeys, RateLimitFilter — are the ones already covered by fast unit
+           tests. -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>prepare-agent</id>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+            <configuration>
+              <destFile>${project.build.directory}/jacoco-unit.exec</destFile>
+            </configuration>
+          </execution>
+          <execution>
+            <id>prepare-agent-integration</id>
+            <goals>
+              <goal>prepare-agent-integration</goal>
+            </goals>
+            <configuration>
+              <destFile>${project.build.directory}/jacoco-it.exec</destFile>
+              <propertyName>failsafeArgLine</propertyName>
+            </configuration>
+          </execution>
+          <execution>
+            <id>merge-coverage</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>merge</goal>
+            </goals>
+            <configuration>
+              <fileSets>
+                <fileSet>
+                  <directory>${project.build.directory}</directory>
+                  <includes>
+                    <include>jacoco-unit.exec</include>
+                    <include>jacoco-it.exec</include>
+                  </includes>
+                </fileSet>
+              </fileSets>
+              <destFile>${project.build.directory}/jacoco-merged.exec</destFile>
+            </configuration>
+          </execution>
+          <execution>
+            <id>report</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>report</goal>
+            </goals>
+            <configuration>
+              <dataFile>${project.build.directory}/jacoco-merged.exec</dataFile>
+            </configuration>
+          </execution>
+          <execution>
+            <id>check-coverage</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <configuration>
+              <dataFile>${project.build.directory}/jacoco-merged.exec</dataFile>
+              <rules>
+                <rule>
+                  <element>BUNDLE</element>
+                  <limits>
+                    <limit>
+                      <counter>LINE</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.90</minimum>
+                    </limit>
+                    <limit>
+                      <counter>BRANCH</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.78</minimum>
+                    </limit>
+                  </limits>
+                </rule>
+              </rules>
+            </configuration>
           </execution>
         </executions>
       </plugin>

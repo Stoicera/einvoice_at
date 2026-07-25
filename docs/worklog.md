@@ -1,5 +1,88 @@
 # Worklog — einvoice-at
 
+## 2026-07-25 — M3 hostile-review fix wave: complete
+
+**What**
+
+- Hostile due-diligence review of M3 (`72b9014..3f03b3b`) from the standpoint of a Viennese
+  enterprise buyer's engineer, then every finding fixed on `fix/m3-hostile-review`. Fifteen
+  findings: four P1, eight P2, three P3. Regression test first wherever the finding was a defect
+  rather than a missing test.
+- **P1 — unbounded request body.** `POST /api/v1/invoices` declares its body as `byte[]`, which
+  Spring buffers whole. Multipart was capped at 2 MB; nothing capped an ordinary body
+  (`server.tomcat.max-http-form-post-size` is form-encoded only, verified against Boot 4.1's
+  configuration metadata), so one authenticated caller could exhaust the heap and have the same
+  unbounded string written into `invoice.canonical`. `RequestBodySizeLimitFilter` checks
+  `Content-Length` and additionally counts bytes as they are read, so a chunked request cannot
+  sidestep it, and runs ahead of Spring Security so an oversized body is refused *before*
+  authentication.
+- **P1 — no negative OAuth2 leg in the auth matrix.** The suite proved a real Keycloak token
+  authenticates and never that any token is refused; the decoder could have regressed to a
+  permissive one with everything still green. `JwtDecoderTest` publishes a throwaway JWKS over
+  loopback and mints its own tokens, so wrong issuer / expired / unknown key / a foreign key
+  impersonating the real `kid` can each be varied one at a time. `AuthMatrixIT` gained the
+  end-to-end equivalents (non-JWT bearer, `alg=none`, a genuine token with a rewritten payload).
+- **P1 — a 500 left no trace.** `handleUnexpected` discarded the exception and the module had no
+  logger at all. Now logged with its stack trace, alongside the other security events (rejected
+  key, rate limit, oversized body, two credentials, provisioned tenant), with no credential ever
+  written in full. Structured ECS JSON logging under the `prod` profile.
+- **P1 — no coverage gate on `app`.** The other four modules gate; the module holding all the
+  security code did not. JaCoCo now measures unit *and* integration runs merged (Failsafe needs
+  `@{argLine}` late binding — `${...}` silently drops the agent, which is what happened first
+  time). Measured 95.24 % line / 83.33 % branch, gated 90/78. The two real gaps got tests worth
+  having rather than a lowered bar: `EntityIdentityTest` and the problem-vocabulary branches.
+- **P2** — API-key 404 now has its own slug and a domain exception instead of Spring Web's
+  `ResponseStatusException` (ArchUnit rule added to prevent a repeat); cross-tenant isolation
+  tested for api-keys; a request presenting both an API key and a bearer token refused with 400
+  instead of silently running as whichever filter went last; `API_DOCS_ENABLED` off-switch for
+  the anonymous OpenAPI/Swagger surface; `report(invoice_id)` index (V2) with per-index
+  assertions replacing a bare index count; `SecurityHeadersIT`; optional `OAUTH2_AUDIENCE`
+  validation closing ADR-0006's own recorded limit; a 25-key cap per tenant.
+- **P3** — internal task-plan vocabulary ("T6", "T7", "task 10") removed from production Javadoc;
+  `PROTECTED_VALIDATE` renamed to `PUBLIC_VALIDATE` (it names the milestone's one public route);
+  stale "arrives in T6" comments deleted; README testing section rewritten (it still ended at
+  M0's "smoke test on the health endpoint"); worklog ordering normalised to newest-first.
+
+**Decisions**
+
+- Audience validation is **opt-in**, not on by default: enabling it unconditionally would reject
+  the dev realm's tokens, whose `aud` is Keycloak's default `account`. Documented as recommended
+  for any shared realm.
+- Two credentials in one request is a **400**, per RFC 6750 §3.1 — not "last filter wins", and not
+  a silent preference for either mechanism.
+- The API-key cap is a soft anti-runaway bound, explicitly *not* a security boundary: two truly
+  simultaneous mints could both observe limit-1 under READ COMMITTED. Said so in the code rather
+  than implying a guarantee the isolation level does not give.
+- PIT is deliberately not extended to `app`: minutes per mutant against a module whose tests each
+  boot a Spring context and two containers, for little signal.
+- A bug this branch introduced was caught and fixed inside it: building the JWT validator list
+  unconditionally broke every context with no issuer configured, because
+  `JwtValidators.createDefaultWithValidators` rejects an empty list. The commit that introduced it
+  had only been verified against Keycloak-backed ITs.
+
+**Not fixed, and why**
+
+- OWASP dependency-check in CI: ENGINEERING_STANDARDS §4/§6 require it, MILESTONES M6 schedules it.
+  The two documents disagree; MILESTONES governs, and pulling M6 work into an M3 fix wave would be
+  scope creep. Recorded here so the conflict is visible rather than rediscovered.
+- OTel traces/metrics: M6. Structured logging was *not* deferred and landed above.
+- The single-instance, `remoteAddr`-keyed rate limiter: honestly argued in ADR-0005/0006 and tied
+  to the M6 Traefik work.
+
+**Verification**
+
+- `./mvnw verify` green across all modules; `app` at 48 unit + 70 integration tests (from 22 + 50
+  before the wave), 95.24 % line / 83.33 % branch coverage.
+- Each regression test verified to fail against the pre-fix behaviour before the fix landed (body
+  cap re-run with the limit at 100 MB; audience validator removed; api-key slug asserted against
+  the old generic type).
+
+**Next**
+
+- Sebastian: merge decision on this branch; portal-Abnahme re-confirmation for M3 still open.
+- M4 — UBL BIS 3.0 + Konvertierung + PDF: `formats-ubl`, two-way mapping with lossy report,
+  `POST /convert`, `rendering` (PDF print view), roundtrip golden files.
+
 ## 2026-07-24 — M3: REST API + persistence + security: complete
 
 **What**
@@ -356,71 +439,6 @@
   it actually fails closed (stricter than JAXP default on recoverable errors) — one-word precision
   fix at the next touch.
 
-## 2026-07-23 — M0 Fundament: complete
-
-**What**
-
-- Verified all pins against Maven Central before use: Spring Boot 4.1.0 (latest 4.1.x), ph-ebinterface 8.1.0, ph-ubl 10.2.0, phive 12.1.0, phive-rules 4.4.1 — the set is mutually compatible (phive-rules-parent 4.4.1 builds against exactly those ph-* versions). Also Spotless 3.8.0, google-java-format 1.35.0, Maven wrapper 3.9.16.
-- Maven multi-module skeleton per SPEC §2: parent POM (spring-boot-starter-parent, ph-* pins in dependencyManagement, enforcer, Spotless bound to `validate`) + 8 modules. `app` boots with Actuator health endpoint and a smoke test; library modules carry only `package-info.java` stating their boundary contract.
-- Spotless/google-java-format enforced in every build; `.editorconfig`.
-- GitHub Actions CI: `verify` job (build + lint + tests, Temurin 25, Maven cache) and Docker image build job (buildx, GHA cache, no push).
-- Multi-stage Dockerfile → non-root `eclipse-temurin:25-jre-alpine` runtime with container healthcheck; `docker-compose.yml` with app + postgres:17 (healthchecked, volume); `.env.example` complete.
-- README (EN + deutsche Kurzfassung, architecture, quickstart, upstream credits), LICENSE Apache-2.0, ADR-0001 (stack), ADR-0002 (modular monolith), glossary, issue forms + PR template with DoD checklist.
-- Repo public at https://github.com/Stoicera/einvoice_at (6 thematic Conventional Commits).
-
-**Decisions**
-
-- Maven wrapper pinned to 3.9.16 (newest stable; Maven 4 still RC).
-- Runtime image `eclipse-temurin:25-jre-alpine` instead of distroless: no distroless Java 25 image line; alpine keeps busybox `wget` for the healthcheck. Revisit at M6.
-- Compose stays app + postgres per M0 scope; Keycloak/Mailpit join at M3 per milestone plan.
-- ArchUnit rules deliberately deferred to M1 — there is no domain code to constrain yet.
-
-**Verification**
-
-- `./mvnw verify` green locally (1 test).
-- `docker compose up -d` → both containers healthy; `GET /actuator/health` → `{"groups":["liveness","readiness"],"status":"UP"}`.
-- CI run 30016275283 green on first push (both jobs).
-
-**Next**
-
-- M1 — Kanonisches Rechnungsmodell: EN-16931 core model in `core`, BigDecimal money arithmetic with jqwik property tests, Austrian USt logic, ArchUnit rules active, ADR-0003.
-
-## 2026-07-23 — M1 Kanonisches Rechnungsmodell: complete
-
-**What**
-
-- `core`: Money (scale-2, HALF_UP, single rounding step), Austrian VAT rates (20/13/10/0,
-  reverse charge, exempt — EN 16931 categories S/Z/AE/E), Party/Address, Iban (mod-97) +
-  PaymentMeans, InvoiceLine, Invoice aggregate with builder-derived + constructor-verified
-  VAT breakdown and totals.
-- jqwik property suite: money algebra, invoice arithmetic partition/consistency properties,
-  IBAN checksum properties. ArchUnit: core = JDK-only. JaCoCo gate 95 % line / 90 % branch.
-- ADR-0003 (derive-don't-trust canonical model). Versions verified on Maven Central:
-  jqwik 1.10.1, ArchUnit 1.4.2, JaCoCo 0.8.15.
-
-**Decisions**
-
-- Tax on category sums, not per line (BR-CO-17); pinned by property test.
-- Allowances/charges, prepaid, BT-114 rounding amount deferred until mapping needs them
-  (documented in ADR-0003).
-- ArchUnit used via plain `archunit` artifact inside Jupiter tests (no engine coupling to
-  JUnit Platform 6); cross-module rules follow in M3 when `app` gains module dependencies.
-- `*Properties` test classes are not matched by Surefire's default includes; core/pom.xml
-  lists the four default patterns plus `**/*Properties.java` explicitly so property tests
-  verifiably execute (discovered when 14 properties compiled but silently did not run).
-
-**Verification**
-
-- `./mvnw verify` green (63 core tests after the final-review fix wave: unit + property +
-  architecture; JaCoCo measured 100 % line / 100 % branch on core, gate 95/90).
-- CI run 30026798053 green (pull_request run for PR #1 — push CI covers main only); both jobs.
-
-**Next**
-
-- M2 — ebInterface 6.1 erzeugen + validieren: `formats-ebinterface` (ph-ebinterface 8.1.0),
-  `mapping` (canonical → ebInterface), validation stages XSD + Schematron (phive) + first
-  business rules (Auftragsreferenz, IBAN), golden-file corpus.
-
 ## 2026-07-24 — M1 hostile-review fix wave: complete
 
 **What**
@@ -482,3 +500,68 @@
 - Sebastian: merge decision on PR #1 (M1 + fix wave); jqwik keep-or-replace decision still
   open; enable Dependabot in the GitHub repo settings after merge.
 - M2 — ebInterface 6.1 erzeugen + validieren (unchanged from the entry above).
+## 2026-07-23 — M1 Kanonisches Rechnungsmodell: complete
+
+**What**
+
+- `core`: Money (scale-2, HALF_UP, single rounding step), Austrian VAT rates (20/13/10/0,
+  reverse charge, exempt — EN 16931 categories S/Z/AE/E), Party/Address, Iban (mod-97) +
+  PaymentMeans, InvoiceLine, Invoice aggregate with builder-derived + constructor-verified
+  VAT breakdown and totals.
+- jqwik property suite: money algebra, invoice arithmetic partition/consistency properties,
+  IBAN checksum properties. ArchUnit: core = JDK-only. JaCoCo gate 95 % line / 90 % branch.
+- ADR-0003 (derive-don't-trust canonical model). Versions verified on Maven Central:
+  jqwik 1.10.1, ArchUnit 1.4.2, JaCoCo 0.8.15.
+
+**Decisions**
+
+- Tax on category sums, not per line (BR-CO-17); pinned by property test.
+- Allowances/charges, prepaid, BT-114 rounding amount deferred until mapping needs them
+  (documented in ADR-0003).
+- ArchUnit used via plain `archunit` artifact inside Jupiter tests (no engine coupling to
+  JUnit Platform 6); cross-module rules follow in M3 when `app` gains module dependencies.
+- `*Properties` test classes are not matched by Surefire's default includes; core/pom.xml
+  lists the four default patterns plus `**/*Properties.java` explicitly so property tests
+  verifiably execute (discovered when 14 properties compiled but silently did not run).
+
+**Verification**
+
+- `./mvnw verify` green (63 core tests after the final-review fix wave: unit + property +
+  architecture; JaCoCo measured 100 % line / 100 % branch on core, gate 95/90).
+- CI run 30026798053 green (pull_request run for PR #1 — push CI covers main only); both jobs.
+
+**Next**
+
+- M2 — ebInterface 6.1 erzeugen + validieren: `formats-ebinterface` (ph-ebinterface 8.1.0),
+  `mapping` (canonical → ebInterface), validation stages XSD + Schematron (phive) + first
+  business rules (Auftragsreferenz, IBAN), golden-file corpus.
+
+## 2026-07-23 — M0 Fundament: complete
+
+**What**
+
+- Verified all pins against Maven Central before use: Spring Boot 4.1.0 (latest 4.1.x), ph-ebinterface 8.1.0, ph-ubl 10.2.0, phive 12.1.0, phive-rules 4.4.1 — the set is mutually compatible (phive-rules-parent 4.4.1 builds against exactly those ph-* versions). Also Spotless 3.8.0, google-java-format 1.35.0, Maven wrapper 3.9.16.
+- Maven multi-module skeleton per SPEC §2: parent POM (spring-boot-starter-parent, ph-* pins in dependencyManagement, enforcer, Spotless bound to `validate`) + 8 modules. `app` boots with Actuator health endpoint and a smoke test; library modules carry only `package-info.java` stating their boundary contract.
+- Spotless/google-java-format enforced in every build; `.editorconfig`.
+- GitHub Actions CI: `verify` job (build + lint + tests, Temurin 25, Maven cache) and Docker image build job (buildx, GHA cache, no push).
+- Multi-stage Dockerfile → non-root `eclipse-temurin:25-jre-alpine` runtime with container healthcheck; `docker-compose.yml` with app + postgres:17 (healthchecked, volume); `.env.example` complete.
+- README (EN + deutsche Kurzfassung, architecture, quickstart, upstream credits), LICENSE Apache-2.0, ADR-0001 (stack), ADR-0002 (modular monolith), glossary, issue forms + PR template with DoD checklist.
+- Repo public at https://github.com/Stoicera/einvoice_at (6 thematic Conventional Commits).
+
+**Decisions**
+
+- Maven wrapper pinned to 3.9.16 (newest stable; Maven 4 still RC).
+- Runtime image `eclipse-temurin:25-jre-alpine` instead of distroless: no distroless Java 25 image line; alpine keeps busybox `wget` for the healthcheck. Revisit at M6.
+- Compose stays app + postgres per M0 scope; Keycloak/Mailpit join at M3 per milestone plan.
+- ArchUnit rules deliberately deferred to M1 — there is no domain code to constrain yet.
+
+**Verification**
+
+- `./mvnw verify` green locally (1 test).
+- `docker compose up -d` → both containers healthy; `GET /actuator/health` → `{"groups":["liveness","readiness"],"status":"UP"}`.
+- CI run 30016275283 green on first push (both jobs).
+
+**Next**
+
+- M1 — Kanonisches Rechnungsmodell: EN-16931 core model in `core`, BigDecimal money arithmetic with jqwik property tests, Austrian USt logic, ArchUnit rules active, ADR-0003.
+

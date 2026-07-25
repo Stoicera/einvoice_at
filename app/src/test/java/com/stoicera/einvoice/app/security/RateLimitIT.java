@@ -16,10 +16,10 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 /**
- * End-to-end proof of {@link RateLimitFilter} against {@code POST /api/v1/validate} (T8): 3
- * anonymous requests pass, the 4th is rejected with a {@code 429} problem+json body and a positive
- * integer {@code Retry-After}, and — the bypass this whole filter exists to preserve — an
- * authenticated request still succeeds immediately after that anonymous bucket is exhausted.
+ * End-to-end proof of {@link RateLimitFilter} against {@code POST /api/v1/validate}: 3 anonymous
+ * requests pass, the 4th is rejected with a {@code 429} problem+json body and a positive integer
+ * {@code Retry-After}, and — the bypass this whole filter exists to preserve — an authenticated
+ * request still succeeds immediately after that anonymous bucket is exhausted.
  *
  * <p><b>Path-encoding bypass regression guard.</b> {@link RateLimitFilter#shouldNotFilter} used to
  * compare against {@link HttpServletRequest#getRequestURI()} with raw string equality — the

@@ -138,7 +138,7 @@ class ReportApiIT extends AbstractKeycloakIT {
     String number = "RE-" + UUID.randomUUID();
 
     // withOrderReference=false: parseable and domain-valid, but fails AT-B2G-01 — the invoice is
-    // still created (T6's "invalid-but-still-created" rule) with a non-empty findings array, giving
+    // still created (the "invalid-but-still-created" rule) with a non-empty findings array, giving
     // this test a genuine JSONB round trip: InvoiceService writes the findings column with its own
     // JsonMapper, ReportService.readFindings reads it back with its own — proving the two are wire-
     // compatible, not just that an empty array survives.

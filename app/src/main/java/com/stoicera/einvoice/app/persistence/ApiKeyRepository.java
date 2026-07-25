@@ -25,4 +25,10 @@ public interface ApiKeyRepository extends JpaRepository<ApiKeyEntity, UUID> {
    * empty when the id belongs to another tenant, so cross-tenant access reads as "not found".
    */
   Optional<ApiKeyEntity> findByIdAndTenantId(UUID id, UUID tenantId);
+
+  /**
+   * Counts a tenant's active (non-revoked) keys, backing the per-tenant minting cap. Counted in the
+   * database rather than by loading the rows, so the cap costs one aggregate query.
+   */
+  long countByTenantIdAndRevokedAtIsNull(UUID tenantId);
 }

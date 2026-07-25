@@ -22,6 +22,11 @@ services:
       # the same host.
       OAUTH2_ISSUER_URI: http://localhost:${KEYCLOAK_PORT:-8081}/realms/einvoice
       OAUTH2_JWK_SET_URI: http://keycloak:8080/realms/einvoice/protocol/openid-connect/certs
+      # Optional audience check, blank by default for the dev realm (see .env.example / ADR-0006).
+      OAUTH2_AUDIENCE: ${OAUTH2_AUDIENCE:-}
+      # OpenAPI document + Swagger UI. On for the local stack; a deployment that should not publish
+      # its API description to anonymous callers sets this to false.
+      API_DOCS_ENABLED: ${API_DOCS_ENABLED:-true}
     ports:
       - "${APP_PORT:-8080}:8080"
     restart: unless-stopped

@@ -12,8 +12,8 @@ import org.springframework.util.StringUtils;
 
 /**
  * Resolves the {@link TenantEntity} behind the current request's {@link Authentication}. This is
- * the seam controllers (T6/T7) use to obtain their tenant boundary; it hides how the two
- * authentication kinds map to a tenant:
+ * the seam every controller uses to obtain its tenant boundary; it hides how the two authentication
+ * kinds map to a tenant:
  *
  * <ul>
  *   <li>an {@link ApiKeyAuthenticationToken} already carries its tenant id (from the key row);

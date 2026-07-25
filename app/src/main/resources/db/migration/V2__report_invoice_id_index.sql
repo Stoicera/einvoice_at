@@ -1,0 +1,13 @@
+-- V2: index report(invoice_id).
+--
+-- GET /api/v1/invoices joins each listed invoice to its most recent report's `valid` flag, which
+-- InvoiceService does with a single ReportRepository.findByInvoiceIdIn(...) rather than an N+1 of
+-- per-row lookups. V1 indexed the three tenant-scoped listing paths — invoice(tenant_id,
+-- created_at), report(tenant_id, created_at), audit_event(tenant_id, occurred_at) — but not this
+-- one, so that second query sequentially scanned the whole report table on every page. The report
+-- table grows with every authenticated validation run, not just with stored invoices, so it is the
+-- fastest-growing table in the schema and the worst one to scan.
+--
+-- Named explicitly, unlike V1's auto-named indexes, so the FlywayMigrationIT assertion and any
+-- future migration can refer to it by name rather than by counting indexes on the table.
+create index report_invoice_id_idx on report (invoice_id);

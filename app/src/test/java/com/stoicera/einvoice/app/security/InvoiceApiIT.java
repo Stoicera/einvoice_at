@@ -13,6 +13,7 @@ import com.stoicera.einvoice.app.persistence.ReportEntity;
 import com.stoicera.einvoice.app.persistence.ReportRepository;
 import com.stoicera.einvoice.app.persistence.TenantEntity;
 import com.stoicera.einvoice.app.persistence.TenantRepository;
+import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -167,6 +168,55 @@ class InvoiceApiIT extends AbstractKeycloakIT {
 
     byte[] body = invoiceJson(number, true).getBytes(StandardCharsets.UTF_8);
     assertProblem(send("POST", INVOICES, body, jsonAuth(bearer(token))), 409, "duplicate-invoice");
+  }
+
+  @Test
+  void anOversizedJsonBodyIsRejectedWith413BeforeItIsBuffered() throws Exception {
+    String token = fetchAccessToken(TEST_USERNAME, TEST_PASSWORD);
+    // 3 MB of canonical JSON: above the 2 MB application-layer body cap, and the same bound the
+    // multipart validator upload is held to. Without the cap this whole array would be buffered
+    // into the controller's byte[] parameter before a single check ran.
+    byte[] oversized = oversizedInvoiceJson().getBytes(StandardCharsets.UTF_8);
+    assertThat(oversized.length).isGreaterThan(2 * 1024 * 1024);
+
+    HttpResponse<String> response = send("POST", INVOICES, oversized, jsonAuth(bearer(token)));
+
+    // Same slug the multipart cap produces (ValidateApiIT): one vocabulary for "too big",
+    // whichever route the body arrived on.
+    assertProblem(response, 413, "content-too-large");
+  }
+
+  @Test
+  void anOversizedChunkedBodyIsRejectedWith413EvenWithoutAContentLengthHeader() throws Exception {
+    String token = fetchAccessToken(TEST_USERNAME, TEST_PASSWORD);
+    byte[] oversized = oversizedInvoiceJson().getBytes(StandardCharsets.UTF_8);
+
+    // BodyPublishers.ofInputStream reports an unknown content length, so the request goes out
+    // chunked and the Content-Length pre-check cannot fire — only the counting stream can. This is
+    // the path an attacker would actually use to sidestep a header-only guard.
+    HttpRequest.Builder builder =
+        HttpRequest.newBuilder(URI.create("http://localhost:" + port + INVOICES));
+    for (String[] header :
+        List.of(bearer(token), new String[] {"Content-Type", "application/json"})) {
+      builder.header(header[0], header[1]);
+    }
+    builder.POST(
+        HttpRequest.BodyPublishers.ofInputStream(() -> new ByteArrayInputStream(oversized)));
+
+    assertProblem(
+        http.send(builder.build(), HttpResponse.BodyHandlers.ofString()), 413, "content-too-large");
+  }
+
+  @Test
+  void anOversizedBodyIsRejectedBeforeAuthenticationRatherThanAfterBuffering() throws Exception {
+    // No credential at all: the body cap runs ahead of the security chain on purpose, so an
+    // unauthenticated caller can never make the server buffer an arbitrarily large body just to be
+    // told 401 afterwards. 413 (not 401) is the assertion that pins that ordering.
+    byte[] oversized = oversizedInvoiceJson().getBytes(StandardCharsets.UTF_8);
+    HttpResponse<String> response =
+        send("POST", INVOICES, oversized, new String[] {"Content-Type", "application/json"});
+
+    assertThat(response.statusCode()).isEqualTo(413);
   }
 
   @Test
@@ -356,6 +406,16 @@ class InvoiceApiIT extends AbstractKeycloakIT {
 
   private static String uniqueNumber() {
     return "RE-" + UUID.randomUUID();
+  }
+
+  /**
+   * A canonical-invoice body padded past the 2 MB cap. The padding rides in the {@code
+   * paymentTerms} free-text field, so the document stays shape-valid JSON — the point is that the
+   * cap fires on size alone, before any parsing, not that the body is malformed.
+   */
+  private static String oversizedInvoiceJson() {
+    String padding = "X".repeat(3 * 1024 * 1024);
+    return invoiceJson(uniqueNumber(), true).replace("ohne Abzug", "ohne Abzug " + padding);
   }
 
   private static String sha256Hex(byte[] bytes) throws Exception {
