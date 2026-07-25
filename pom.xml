@@ -284,6 +284,22 @@
             <groupId>org.owasp</groupId>
             <artifactId>dependency-check-maven</artifactId>
             <version>${dependency-check-maven.version}</version>
+            <!-- ROOT MODULE ONLY — this is load-bearing, not tidiness (M4 hostile review, F1).
+
+                 A parent's <build><plugins> is inherited by every child module, and a profile
+                 defined here is injected into the parent model the children then inherit. Without
+                 this flag `-Psecurity verify` therefore ran the `aggregate` goal in all nine
+                 modules instead of once at the root: the executions share one CveDB, the first one
+                 closes it, and every execution after that fails per CVE with
+                 "Cannot invoke BasicDataSource.getConnection() because this.connectionPool is
+                 null" — hundreds of them, which is what turned the security stage red while the
+                 diagnosis pointed at a missing NVD_API_KEY instead.
+
+                 `aggregate` already walks the whole reactor's dependency closure from the root, so
+                 one execution is not a compromise: it is what the goal is for. The CI job re-checks
+                 this by asserting a child module's effective POM does not contain the plugin, so a
+                 future edit cannot silently reintroduce the inheritance. -->
+            <inherited>false</inherited>
             <configuration>
               <nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>
               <failBuildOnCVSS>${dependency-check.failBuildOnCVSS}</failBuildOnCVSS>
@@ -299,8 +315,11 @@
                    about JUnit and Testcontainers. Provided scope stays in: it is on the runtime
                    classpath of whatever container hosts the app. -->
               <skipTestScope>true</skipTestScope>
-              <!-- The scan is about this project's dependency closure, and the aggregate report is
-                   produced once at the root rather than nine times. -->
+              <!-- Provided scope is NOT skipped: a provided dependency is absent from the build's
+                   output but present on the runtime classpath of whatever container hosts the app,
+                   so an attacker reaches it exactly as they would a compile-scope one. Spelled out
+                   explicitly rather than left to the plugin default, because "provided" reads like
+                   "someone else's problem" and here it is not. -->
               <skipProvidedScope>false</skipProvidedScope>
             </configuration>
             <executions>
@@ -308,6 +327,9 @@
                 <id>dependency-check</id>
                 <phase>verify</phase>
                 <goals>
+                  <!-- `aggregate`, not `check`: it walks the whole reactor's dependency closure
+                       from the root and writes one report. Paired with <inherited>false</inherited>
+                       above, that is one execution covering nine modules. -->
                   <goal>aggregate</goal>
                 </goals>
               </execution>

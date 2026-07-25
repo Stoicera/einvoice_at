@@ -69,34 +69,84 @@ jobs:
           distribution: temurin
           java-version: "25"
           cache: maven
-      # The NVD data set is large and slow to build from scratch. Caching it keyed on the week
-      # keeps a normal run to an incremental update while still guaranteeing a full refresh at
-      # least weekly, so a stale cache can never quietly hide a new advisory for long.
+      # The dependency-check plugin must bind in the ROOT project only. A parent's
+      # <build><plugins> is inherited by every child, so without <inherited>false</inherited> the
+      # `aggregate` goal ran in all ten reactor projects; they share one CveDB, the first execution
+      # closes it, and the rest fail per CVE with "connectionPool is null". That is what made this
+      # job red while the diagnosis pointed at a missing NVD_API_KEY (M4 hostile review, F1).
+      # Asserting it here — with the scan itself skipped, so the check costs seconds and needs no
+      # NVD data — means the inheritance cannot silently come back.
+      - name: Assert the scan binds once, at the root only
+        run: |
+          bindings=$(./mvnw -B -ntp -Psecurity verify -DskipTests \
+            -Dspotless.check.skip=true -Djacoco.skip=true -Ddependency-check.skip=true \
+            | grep -cE 'dependency-check:.*:aggregate \(dependency-check\)' || true)
+          echo "aggregate goal bound in $bindings project(s)"
+          if [ "$bindings" != "1" ]; then
+            echo "::error::dependency-check must bind in exactly 1 project (the root), not $bindings."
+            echo "::error::Check <inherited>false</inherited> on the plugin in the root pom.xml."
+            exit 1
+          fi
+      # The NVD data set is large and slow to build from scratch, so it is cached — but the cache
+      # is keyed on the ISO week and NOT on run id. Two reasons, both learned the hard way:
+      #   * a run-id key never hits, so every run wrote a brand-new cache entry and `restore-keys`
+      #     just kept restoring the newest one forever — there was no weekly refresh at all,
+      #     despite the comment that used to sit here claiming there was;
+      #   * a run that dies mid-sync persists its half-written H2 database, and the next run
+      #     restores that corruption. A week-scoped key bounds how long such a cache can poison
+      #     the job, and guarantees a genuinely full refresh at least weekly so a stale copy
+      #     cannot quietly hide a new advisory.
+      - name: Compute the NVD cache week
+        id: nvd-week
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
       - name: Cache the NVD data
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.m2/repository/org/owasp/dependency-check-data
-          key: nvd-${{ runner.os }}-${{ github.run_id }}
+          key: nvd-${{ runner.os }}-${{ steps.nvd-week.outputs.week }}
           restore-keys: nvd-${{ runner.os }}-
-      # An unauthenticated NVD client is rate-limited hard enough that the first sync takes the
-      # better part of an hour and often fails outright. Saying so here means a missing secret
-      # produces an actionable message instead of a puzzling HTTP 403 deep in the plugin output.
+      # Without NVD_API_KEY the sync cannot complete: the NVD rate-limits unauthenticated clients
+      # so hard that the download stalls, the H2 database is left half-initialised, and the plugin
+      # then NPEs per CVE. Running it anyway produces a failure that says nothing about this
+      # repository's dependencies — and a stage that is permanently red for an external reason
+      # teaches everyone to ignore red, which is worse than the gap it was meant to close.
+      #
+      # So the scan is SKIPPED, loudly, when the secret is absent: a warning annotation plus a line
+      # in the job summary that nobody reviewing a run can miss. It is not silent, it is not
+      # pretended, and it turns into a real gate the moment the secret exists — no workflow edit
+      # needed. The binding assertion above still runs either way, so this job is never a no-op.
       - name: Check for the NVD API key
+        id: nvd-key
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: |
           if [ -z "$NVD_API_KEY" ]; then
-            echo "::warning::NVD_API_KEY is not set. The scan will still run, but the NVD rate-limits"
-            echo "::warning::unauthenticated clients severely and the sync may take ~1h or fail."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::NVD_API_KEY is not set — the OWASP Dependency-Check SCAN WAS SKIPPED."
             echo "::warning::Request a free key at https://nvd.nist.gov/developers/request-an-api-key"
-            echo "::warning::and add it as the repository secret NVD_API_KEY."
+            echo "::warning::and add it as the repository secret NVD_API_KEY to turn this into a real gate."
+            {
+              echo "## ⚠️ Security scan skipped"
+              echo
+              echo "\`NVD_API_KEY\` is not configured, so the NVD data sync cannot complete and the"
+              echo "dependency scan **did not run**. This job did not check this repository's"
+              echo "dependencies for known vulnerabilities."
+              echo
+              echo "Fix: add the repository secret \`NVD_API_KEY\`"
+              echo "(free, from <https://nvd.nist.gov/developers/request-an-api-key>)."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
           fi
       - name: OWASP Dependency-Check (fails on CVSS >= 7)
+        if: steps.nvd-key.outputs.present == 'true'
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: ./mvnw -B -ntp -Psecurity verify -DskipTests
+      # always() so a FAILED scan still publishes its report — that is when it is most wanted — but
+      # only when the scan actually ran, or the upload warns about a path that cannot exist.
       - name: Upload the dependency-check report
-        if: always()
+        if: always() && steps.nvd-key.outputs.present == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dependency-check-report
