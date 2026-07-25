@@ -1,7 +1,8 @@
 # Validation golden-file corpus
 
-This directory is the executable specification of the `validation` module's ebInterface 6.1 / Austrian
-B2G pipeline (`EbInterface61Validator`). Every file here is run through the real validator by
+This directory is the executable specification of the `validation` module's two pipelines — the
+ebInterface 6.1 / Austrian B2G one and the Peppol BIS Billing 3.0 (UBL) one — both reached through
+the single `InvoiceValidator` facade. Every file here is run through the real validator by
 `CorpusTest`, and the set of rule ids it is expected to fail on is asserted against the table below.
 The corpus is a regression net that grows by one discipline (CLAUDE.md): **first a failing corpus
 file, then the fix** — a reported mapping or validation bug becomes a golden file here before it is
@@ -204,3 +205,48 @@ four `valid/` files now carry the three previously-optional fields (`Biller/Addr
 validator's unit tests was extended identically so the two stay mirrors of each other. Any *new*
 `valid/` fixture added after M3 must carry all three fields from the start, or it will fail
 `CorpusTest` the moment it is added.
+
+## M4 — Peppol BIS Billing 3.0 (UBL)
+
+Three files judged not by this project's own rules but by the **official OpenPeppol rule set**,
+executed unmodified through phive at the version pinned in `PeppolValidationStage`
+(`2025.11` as of 2026-07-25). That difference matters for how they are maintained:
+
+- **`valid/peppol-ubl-invoice.xml`** and **`valid/peppol-ubl-creditnote.xml`** — output of the real
+  chain (`PeppolFixtures` → `InvoiceToUblMapper` → the UBL strategy), the UBL counterpart of
+  `valid/b2g-full.xml`. Regenerate them by re-running that chain and copying the output back.
+  A credit note is a *separate document type with a separate Peppol rule set* (a `ubl:CreditNote`
+  root, judged by `eu.peppol.bis3:creditnote`), which is why both are here rather than one standing
+  in for the other.
+- **`invalid/peppol-missing-endpoint-ids.xml`** — the same invoice with both parties' electronic
+  addresses (BT-34/BT-49) removed. One defect, but the rule set reports it **per party**, so the
+  expected id set has two entries: `PEPPOL-EN16931-R020` (seller) and `PEPPOL-EN16931-R010`
+  (buyer). That is the rules being per-party, not this file carrying two defects — the
+  one-defect-per-file convention above still holds.
+
+**Expected rule ids here are the rule set's own** (`PEPPOL-EN16931-R010`, `BR-…`, `UBL-CR-…`), not
+ids from this project's `RuleIds` registry, because the finding carries the assertion id the
+official rules publish. A reader can look those up directly in the OpenPeppol documentation.
+
+**Rule-set upgrade caveat.** Bumping the pinned Peppol version is expected to change what these
+files report — that is the whole point of pinning it. Re-run `CorpusTest` as part of any such bump
+and update the expectations deliberately; a silent change here would mean the same invoice quietly
+started or stopped being valid. The procedure is in ADR-0007.
+
+**The two `valid/peppol-ubl-*.xml` files are now pinned byte-for-byte** against their generator
+(`PeppolFixtures` → `InvoiceToUblMapper` → the UBL strategy) by `UblEndToEndGenerationTest`, exactly
+as `valid/b2g-full.xml` is against its own. Regenerate by re-running that chain and copying the
+output back — the failing test prints it as the assertion's "actual". Until the M4 hostile review
+(finding F5) the test that claimed to guard these files compared them against nothing.
+
+## Cross-format round trips
+
+`CrossFormatRoundTripTest` (module `validation`) drives every `valid/` ebInterface file here through
+the full chain **ebInterface → canonical → UBL → canonical → ebInterface** and asserts the document
+comes back byte-for-byte identical. That is the M4 acceptance criterion MILESTONES names
+("Golden-Files für Roundtrips … dokumentierte Abweichungen"), and the golden file is deliberately
+the input document itself — a corpus entry cannot drift from a golden copy of itself.
+
+It earns its keep: writing it found the exemption `Comment` growing by one category code on every
+conversion. Adding a `valid/` file here therefore also adds a round-trip case; if the new file does
+*not* survive unchanged, that is a real mapping asymmetry to document, not a test to relax.

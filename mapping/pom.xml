@@ -29,6 +29,14 @@
       <groupId>com.helger</groupId>
       <artifactId>ph-ebinterface</artifactId>
     </dependency>
+    <!-- UBL 2.1 JAXB types are the second mapping target (M4). Version pinned by the parent
+         dependencyManagement (ph-ubl 10.2.0); never redeclare it here. Same shape as the
+         ph-ebinterface dependency above: main code only constructs these JAXB POJOs and their
+         setters — it never marshals — so no JAXB runtime is needed at compile or runtime scope. -->
+    <dependency>
+      <groupId>com.helger.ubl</groupId>
+      <artifactId>ph-ubl21</artifactId>
+    </dependency>
     <!-- The ebInterface adapter is a TEST-scope dependency (finding A9): the mapper imports the
          ph-ebinterface JAXB types directly, so main code never touches formats-ebinterface — only
          the tests use EbInterface61Strategy to marshal a mapped tree back and re-read it against
@@ -37,6 +45,15 @@
     <dependency>
       <groupId>com.stoicera.einvoice</groupId>
       <artifactId>formats-ebinterface</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- The UBL adapter, TEST scope for exactly the same reason as formats-ebinterface above: the
+         UBL schema-validity property marshals a mapped tree and re-reads it against the UBL 2.1
+         XSDs, and that is the only place this module marshals anything. -->
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>formats-ubl</artifactId>
       <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
@@ -149,10 +166,10 @@
               <targetClasses>
                 <param>com.stoicera.einvoice.mapping.*</param>
               </targetClasses>
-              <!-- Measured mutation score was 100% (125/125 mutants killed) on 2026-07-24 after
-                   M3 Task 2 added delivery-date/service-period/email mapping; a full mutation run
-                   takes ~13-15 s. Gate set to 85 per the M2 task brief, mirroring core's PIT wiring,
-                   leaving generous headroom for benign survivors.
+              <!-- Measured mutation score 209/218 = 96% on 2026-07-25, after M4 added the
+                   canonical→UBL mapper (it was 125/125 = 100% on 2026-07-24, before that mapper
+                   existed); a full mutation run takes ~40 s. Gate set to 85 per the M2 task brief,
+                   mirroring core's PIT wiring, leaving generous headroom for benign survivors.
 
                    IMPORTANT: the documented "-pl mapping" invocation above (deliberately not "-am")
                    resolves core/formats-ebinterface from the LOCAL REPOSITORY, not the reactor — if

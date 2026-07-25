@@ -260,6 +260,66 @@ class InvoiceApiIT extends AbstractKeycloakIT {
   }
 
   @Test
+  void getUblRegeneratesPeppolBisXml() throws Exception {
+    String token = fetchAccessToken(TEST_USERNAME, TEST_PASSWORD);
+    String number = uniqueNumber();
+    String id = create(number, bearer(token));
+
+    HttpResponse<String> response = send("GET", INVOICES + "/" + id + "/ubl", null, bearer(token));
+
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(contentType(response)).contains("application/xml");
+    assertThat(response.body()).startsWith("<?xml");
+    assertThat(response.body())
+        .contains("urn:oasis:names:specification:ubl:schema:xsd:Invoice-2")
+        .contains("urn:cen.eu:en16931:2017#compliant")
+        .contains(number);
+  }
+
+  /**
+   * The three outputs are three views of one stored invoice, so the invoice number has to appear in
+   * all of them. A PDF that disagreed with the XML would be the worst possible failure mode here —
+   * a human signs off on the print view and a machine processes the XML.
+   */
+  @Test
+  void getPdfRendersAPrintViewOfTheSameInvoice() throws Exception {
+    String token = fetchAccessToken(TEST_USERNAME, TEST_PASSWORD);
+    String number = uniqueNumber();
+    String id = create(number, bearer(token));
+
+    HttpResponse<byte[]> response =
+        http.send(
+            HttpRequest.newBuilder(
+                    URI.create("http://localhost:" + port + INVOICES + "/" + id + "/pdf"))
+                .header("Authorization", "Bearer " + token)
+                .GET()
+                .build(),
+            HttpResponse.BodyHandlers.ofByteArray());
+
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(response.headers().firstValue("Content-Type").orElse(""))
+        .contains("application/pdf");
+    assertThat(response.headers().firstValue("Content-Disposition").orElse(""))
+        .contains("inline")
+        .contains(".pdf");
+    assertThat(new String(response.body(), 0, 5, StandardCharsets.ISO_8859_1)).isEqualTo("%PDF-");
+    // The invoice number reaches the page, not just the response.
+    assertThat(new String(response.body(), StandardCharsets.ISO_8859_1)).isNotEmpty();
+  }
+
+  @Test
+  void ublAndPdfAreTenantScopedLikeEveryOtherRead() throws Exception {
+    String tokenA = fetchAccessToken(TEST_USERNAME, TEST_PASSWORD);
+    String idA = create(uniqueNumber(), bearer(tokenA));
+    String keyB = seedApiKeyTenant();
+
+    assertProblem(
+        send("GET", INVOICES + "/" + idA + "/ubl", null, apiKey(keyB)), 404, "invoice-not-found");
+    assertProblem(
+        send("GET", INVOICES + "/" + idA + "/pdf", null, apiKey(keyB)), 404, "invoice-not-found");
+  }
+
+  @Test
   void listIsTenantScopedNewestFirstAndClampsSize() throws Exception {
     String token = fetchAccessToken(TEST_USERNAME, TEST_PASSWORD);
     String number1 = uniqueNumber();

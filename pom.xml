@@ -29,6 +29,7 @@
 
   <modules>
     <module>core</module>
+    <module>formats-api</module>
     <module>formats-ebinterface</module>
     <module>formats-ubl</module>
     <module>mapping</module>
@@ -55,6 +56,25 @@
          consuming module. glassfish jaxb-runtime 4.0.5 matches the jakarta.xml.bind-api 4.0.5
          that ph-jaxb 12.1.0 brings in. -->
     <jaxb-runtime.version>4.0.5</jaxb-runtime.version>
+
+    <!-- PDF generation for the rendering module (M4). Version verified against Maven Central
+         maven-metadata.xml on 2026-07-25: 3.0.8 is both <latest> and <release>. Apache-2.0, the
+         same licence as this repository — which is why PDFBox and not OpenPDF, whose LGPL/MPL dual
+         licence would add a licence-compatibility question to a portfolio repo for no gain. SPEC §1
+         names both as acceptable; see ADR-0008 for the full comparison, including why an HTML→PDF
+         stack (openhtmltopdf) was not chosen. -->
+    <pdfbox.version>3.0.8</pdfbox.version>
+
+    <!-- OWASP Dependency-Check (ENGINEERING_STANDARDS §4 and §6: "Dependency-Scanning in CI:
+         Dependabot + OWASP Dependency-Check"). Version verified against Maven Central
+         maven-metadata.xml on 2026-07-25: 12.2.2 is both <latest> and <release>. -->
+    <dependency-check-maven.version>12.2.2</dependency-check-maven.version>
+
+    <!-- Fail the security scan on anything CVSS 7.0 or above (the CVSS v3 "High" floor). Not 0:
+         a gate that trips on every informational advisory gets switched off, which is worse than
+         no gate. Anything below the floor still appears in the report — the scan is a report with
+         a threshold, not a filter. -->
+    <dependency-check.failBuildOnCVSS>7</dependency-check.failBuildOnCVSS>
 
     <spotless-maven-plugin.version>3.8.0</spotless-maven-plugin.version>
     <google-java-format.version>1.35.0</google-java-format.version>
@@ -150,6 +170,11 @@
         <version>${phive-rules.version}</version>
       </dependency>
       <dependency>
+        <groupId>org.apache.pdfbox</groupId>
+        <artifactId>pdfbox</artifactId>
+        <version>${pdfbox.version}</version>
+      </dependency>
+      <dependency>
         <groupId>com.bucket4j</groupId>
         <artifactId>bucket4j-core</artifactId>
         <version>${bucket4j.version}</version>
@@ -232,4 +257,86 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- Security scan, ENGINEERING_STANDARDS §4/§6. Run it with:
+             ./mvnw -Psecurity verify
+         (or the dedicated CI job, which is where it normally runs).
+
+         DELIBERATELY A PROFILE, NOT BOUND TO THE DEFAULT BUILD. Dependency-Check works against a
+         local copy of the NVD, and keeping that copy current is minutes of network I/O, not
+         seconds. Binding it to `verify` would make every local `./mvnw verify` unusable and would
+         blow ENGINEERING_STANDARDS §6's own "build under 10 minutes" budget — so it is its own
+         pipeline stage, exactly as that section lays the stages out.
+
+         NVD_API_KEY IS EFFECTIVELY REQUIRED. Since the NVD moved to its 2.0 API, an unauthenticated
+         client is rate-limited hard enough that a first sync takes the better part of an hour and
+         often fails outright. The key is free (nvd.nist.gov/developers/request-an-api-key) and is
+         read from the environment here; CI passes it from a repository secret. Without it the scan
+         still runs, just slowly and unreliably — which is a fact about the NVD, not about this
+         configuration, and is why the CI job says so out loud when the secret is missing rather
+         than failing with a puzzling HTTP 403. -->
+    <profile>
+      <id>security</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.owasp</groupId>
+            <artifactId>dependency-check-maven</artifactId>
+            <version>${dependency-check-maven.version}</version>
+            <!-- ROOT MODULE ONLY — this is load-bearing, not tidiness (M4 hostile review, F1).
+
+                 A parent's <build><plugins> is inherited by every child module, and a profile
+                 defined here is injected into the parent model the children then inherit. Without
+                 this flag `-Psecurity verify` therefore ran the `aggregate` goal in all nine
+                 modules instead of once at the root: the executions share one CveDB, the first one
+                 closes it, and every execution after that fails per CVE with
+                 "Cannot invoke BasicDataSource.getConnection() because this.connectionPool is
+                 null" — hundreds of them, which is what turned the security stage red while the
+                 diagnosis pointed at a missing NVD_API_KEY instead.
+
+                 `aggregate` already walks the whole reactor's dependency closure from the root, so
+                 one execution is not a compromise: it is what the goal is for. The CI job re-checks
+                 this by asserting a child module's effective POM does not contain the plugin, so a
+                 future edit cannot silently reintroduce the inheritance. -->
+            <inherited>false</inherited>
+            <configuration>
+              <nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>
+              <failBuildOnCVSS>${dependency-check.failBuildOnCVSS}</failBuildOnCVSS>
+              <suppressionFiles>
+                <suppressionFile>${maven.multiModuleProjectDirectory}/.owasp-suppressions.xml</suppressionFile>
+              </suppressionFiles>
+              <formats>
+                <format>HTML</format>
+                <format>SARIF</format>
+              </formats>
+              <!-- Test-only dependencies are not shipped and cannot be reached by an attacker
+                   through the running application; including them turns the report into noise
+                   about JUnit and Testcontainers. Provided scope stays in: it is on the runtime
+                   classpath of whatever container hosts the app. -->
+              <skipTestScope>true</skipTestScope>
+              <!-- Provided scope is NOT skipped: a provided dependency is absent from the build's
+                   output but present on the runtime classpath of whatever container hosts the app,
+                   so an attacker reaches it exactly as they would a compile-scope one. Spelled out
+                   explicitly rather than left to the plugin default, because "provided" reads like
+                   "someone else's problem" and here it is not. -->
+              <skipProvidedScope>false</skipProvidedScope>
+            </configuration>
+            <executions>
+              <execution>
+                <id>dependency-check</id>
+                <phase>verify</phase>
+                <goals>
+                  <!-- `aggregate`, not `check`: it walks the whole reactor's dependency closure
+                       from the root and writes one report. Paired with <inherited>false</inherited>
+                       above, that is one execution covering nine modules. -->
+                  <goal>aggregate</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

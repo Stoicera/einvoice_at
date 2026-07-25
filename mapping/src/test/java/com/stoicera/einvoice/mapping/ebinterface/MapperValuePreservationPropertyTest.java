@@ -11,6 +11,7 @@ import com.stoicera.einvoice.core.invoice.InvoiceLine;
 import com.stoicera.einvoice.core.invoice.ServicePeriod;
 import com.stoicera.einvoice.core.party.Party;
 import com.stoicera.einvoice.core.tax.VatBreakdownEntry;
+import com.stoicera.einvoice.mapping.CanonicalInvoiceArbitraries;
 import java.util.List;
 import net.jqwik.api.Arbitrary;
 import net.jqwik.api.ForAll;

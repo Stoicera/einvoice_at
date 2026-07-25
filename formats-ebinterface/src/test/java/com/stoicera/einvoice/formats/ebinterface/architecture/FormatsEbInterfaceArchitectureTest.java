@@ -13,6 +13,10 @@ import org.junit.jupiter.api.Test;
  * not depend on Spring, JPA, or the canonical {@code core} model — canonical mapping happens in the
  * {@code mapping} module, never here. Never weaken these rules to make a build pass; fix the
  * design.
+ *
+ * <p>The no-{@code core} rule is what sent the shared {@code ReadResult} to the dependency-free
+ * {@code formats-api} module in M4 rather than into {@code core}, where the second format adapter
+ * could have reached it just as easily but only by weakening this rule.
  */
 class FormatsEbInterfaceArchitectureTest {
 

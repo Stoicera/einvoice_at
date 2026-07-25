@@ -1,62 +1,23 @@
 package com.stoicera.einvoice.formats.ebinterface;
 
-import org.w3c.dom.Node;
+import com.stoicera.einvoice.formats.api.InvoiceFormatStrategy;
 
 /**
  * Read/write strategy for one concrete ebInterface version.
  *
  * <p>SPEC §10: adding ebInterface 7.0 must not touch {@code core} — a new version is a new strategy
- * implementation. Implementations wrap the ph-ebinterface JAXB marshallers and are intentionally
- * <em>lenient</em>: they do not perform XSD/Schematron validation (that is the validation module's
- * responsibility). The {@code read} overloads therefore collect, rather than throw, the diagnostics
- * the underlying parser reports.
+ * implementation. The contract itself (namespace, lenient reads, write) is the format-agnostic
+ * {@link InvoiceFormatStrategy}; this sub-interface adds nothing but a name, because "which
+ * ebInterface version" is a meaningful axis inside this module and a caller holding an {@code
+ * EbInterfaceVersionStrategy} is saying something the raw supertype cannot.
  *
- * <p><strong>Honest scope of this seam (M2).</strong> This interface exists and {@code core} never
- * imports it — that half of the claim above holds. It is not yet wired for runtime polymorphism:
- * with exactly one implementation ({@code EbInterface61Strategy}), every current caller (the {@code
- * validation} module's {@code ValidationContext}, the {@code mapping} module's mapper) references
- * the concrete 6.1 type or strategy directly rather than going through this interface. That is the
- * correct amount of seam for a single implementation; a namespace-keyed, genuinely polymorphic
- * lookup is deferred until a second implementation exists to be polymorphic over it, which lands
- * with the second ebInterface/UBL format in M4 (see ADR-0004 Entscheidung 10).
+ * <p><strong>Scope of this seam (M2 → M4).</strong> M2 recorded honestly that the interface existed
+ * without runtime polymorphism, there being exactly one implementation to be polymorphic over, and
+ * deferred the real seam to M4 (ADR-0004 Entscheidung 10). M4 delivers it one level up: the shared
+ * contract moved to {@code formats-api} so the UBL adapters implement the same one, and the
+ * dispatch that picks between them is keyed on the format detected from the document's root
+ * namespace ({@code validation}'s {@code DocumentFormat}), not on a registry of strategy objects.
  *
  * @param <T> the version-specific JAXB document type (e.g. {@code Ebi61InvoiceType})
  */
-public interface EbInterfaceVersionStrategy<T> {
-
-  /** The XML target namespace this strategy reads and writes. */
-  String namespaceUri();
-
-  /**
-   * Parses {@code xml} leniently into the version-specific document type.
-   *
-   * @param xml the raw XML bytes; the character encoding is taken from the XML declaration
-   * @return a {@link ReadResult} whose {@code document} is {@code null} when the bytes could not be
-   *     parsed into a usable document, with the collected diagnostics in {@code errors}
-   */
-  ReadResult<T> read(byte[] xml);
-
-  /**
-   * Unmarshals an already-parsed DOM {@code node} leniently into the version-specific document
-   * type.
-   *
-   * <p>This overload exists so a caller that has already parsed the untrusted bytes through a
-   * hardened, XXE-safe {@code DocumentBuilder} can reuse that DOM instead of handing the raw bytes
-   * back to the marshaller for a second, unhardened parse. Structural correctness is still the
-   * validation module's concern: the read is lenient and collects, rather than throws, diagnostics.
-   *
-   * @param node the parsed DOM node to unmarshal, typically the document or its root element
-   * @return a {@link ReadResult} whose {@code document} is {@code null} when the node could not be
-   *     unmarshalled into a usable document, with the collected diagnostics in {@code errors}
-   */
-  ReadResult<T> read(Node node);
-
-  /**
-   * Serialises {@code invoice} to formatted UTF-8 XML.
-   *
-   * @param invoice the document tree to marshal
-   * @return the XML as a string
-   * @throws IllegalStateException if the tree cannot be marshalled
-   */
-  String write(T invoice);
-}
+public interface EbInterfaceVersionStrategy<T> extends InvoiceFormatStrategy<T> {}

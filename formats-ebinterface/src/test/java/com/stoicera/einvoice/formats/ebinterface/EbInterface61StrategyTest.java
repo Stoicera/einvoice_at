@@ -1,10 +1,12 @@
 package com.stoicera.einvoice.formats.ebinterface;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.helger.ebinterface.v61.Ebi61BillerType;
 import com.helger.ebinterface.v61.Ebi61InvoiceRecipientType;
 import com.helger.ebinterface.v61.Ebi61InvoiceType;
+import com.stoicera.einvoice.formats.api.ReadResult;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -87,6 +89,29 @@ class EbInterface61StrategyTest {
     assertThat(result.isSuccess()).isFalse();
     assertThat(result.document()).isNull();
     assertThat(result.errors()).isNotEmpty();
+  }
+
+  /**
+   * The write path's "null means the marshal failed" guard, pinned rather than assumed.
+   *
+   * <p>Tested through {@link EbInterface61Strategy#requireMarshalled(String)} rather than by
+   * feeding {@code write} a tree that fails to marshal, because no such tree can be built:
+   * ph-ebinterface's writer escapes or drops even characters that XML 1.0 cannot represent — a raw
+   * {@code U+0000} and a lone surrogate were both tried, and both produced perfectly good XML. The
+   * guard stays because {@code IJAXBWriter.getAsString} is declared nullable, so the library is
+   * allowed to return null; this test pins what happens when it does.
+   *
+   * <p>The branch had been riding over the module's coverage threshold on {@code ReadResult}'s
+   * numbers until that record moved to {@code formats-api} in M4, at which point the gate exposed
+   * it. The gate doing its job; the fix is the missing test, never a lower threshold (CLAUDE.md).
+   */
+  @Test
+  void writeRejectsAFailedMarshalInsteadOfReturningNull() {
+    assertThatThrownBy(() -> EbInterface61Strategy.requireMarshalled(null))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("could not be marshalled");
+
+    assertThat(EbInterface61Strategy.requireMarshalled("<Invoice/>")).isEqualTo("<Invoice/>");
   }
 
   @Test

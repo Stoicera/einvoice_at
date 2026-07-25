@@ -15,6 +15,14 @@
   <name>einvoice-at :: formats-ebinterface</name>
 
   <dependencies>
+    <!-- The shared format-adapter vocabulary (InvoiceFormatStrategy, ReadResult). Project module;
+         its version comes from the reactor, never pinned here. Deliberately NOT core: a formats-*
+         module is a standards-only adapter and its own ArchUnit test forbids the core edge. -->
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>formats-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <!-- ebInterface 6.1 JAXB types + marshallers by Philip Helger. Version pinned by the
          parent dependencyManagement (8.1.0); never redeclare it here. -->
     <dependency>
@@ -123,11 +131,14 @@
               <targetClasses>
                 <param>com.stoicera.einvoice.formats.ebinterface.*</param>
               </targetClasses>
-              <!-- Measured mutation score 13/13 (100%) on 2026-07-24; a full run takes ~7 s. Gate
-                   set to 85 rather than 100: with only 13 mutants each is worth ~7.7 points, so a
-                   single future benign survivor would drop the score to 92 % — 85 leaves that
+              <!-- Measured mutation score 12/12 (100%) on 2026-07-25; a full run takes ~7 s. Gate
+                   set to 85 rather than 100: with only a dozen mutants each is worth ~8 points, so
+                   a single future benign survivor would drop the score below 92 % — 85 leaves that
                    headroom (mirroring mapping's gate) while still tripping on a real regression.
-                   This module runs no jqwik property tests, so the score is deterministic. -->
+                   This module runs no jqwik property tests, so the score is deterministic.
+                   (M4: was 13/13 while ReadResult still lived here; the record moved to
+                   formats-api, which carries a 100/100 JaCoCo gate and no PIT profile of its own —
+                   see that module's pom for why.) -->
               <mutationThreshold>85</mutationThreshold>
               <timestampedReports>false</timestampedReports>
             </configuration>

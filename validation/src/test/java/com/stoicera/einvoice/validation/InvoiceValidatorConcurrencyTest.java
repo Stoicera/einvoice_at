@@ -44,7 +44,7 @@ import org.junit.jupiter.params.provider.Arguments;
  * two tests cannot drift apart; the "compliance-affecting" (ERROR + WARN) semantics match {@code
  * CorpusTest} exactly.
  */
-class EbInterface61ValidatorConcurrencyTest {
+class InvoiceValidatorConcurrencyTest {
 
   private static final int THREADS = 8;
 
@@ -55,7 +55,7 @@ class EbInterface61ValidatorConcurrencyTest {
         expected.keySet().stream()
             .collect(
                 Collectors.toMap(
-                    resource -> resource, EbInterface61ValidatorConcurrencyTest::readResource));
+                    resource -> resource, InvoiceValidatorConcurrencyTest::readResource));
 
     CountDownLatch parked = new CountDownLatch(THREADS);
     CountDownLatch release = new CountDownLatch(1);
@@ -68,7 +68,7 @@ class EbInterface61ValidatorConcurrencyTest {
                 () -> {
                   // A FRESH validator per thread; the compiled Schematron is JVM-global, so every
                   // thread still contends on the same holder's (now eager) first bind.
-                  EbInterface61Validator validator = new EbInterface61Validator();
+                  InvoiceValidator validator = new InvoiceValidator();
                   parked.countDown();
                   release.await(); // block until all threads are constructed and parked
                   Map<String, Set<String>> actual = new HashMap<>();
@@ -118,9 +118,7 @@ class EbInterface61ValidatorConcurrencyTest {
 
   private static byte[] readResource(String resource) {
     try (InputStream in =
-        EbInterface61ValidatorConcurrencyTest.class
-            .getClassLoader()
-            .getResourceAsStream(resource)) {
+        InvoiceValidatorConcurrencyTest.class.getClassLoader().getResourceAsStream(resource)) {
       if (in == null) {
         throw new IllegalStateException(
             "Missing corpus resource on the test classpath: " + resource);

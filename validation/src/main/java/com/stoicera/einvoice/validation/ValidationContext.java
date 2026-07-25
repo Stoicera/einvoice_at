@@ -25,8 +25,27 @@ public final class ValidationContext {
   private boolean invoiceParsed;
   private Ebi61InvoiceType invoice;
 
+  private DocumentFormat format = DocumentFormat.UNKNOWN;
+
   public ValidationContext(byte[] xml) {
     this.xml = xml.clone();
+  }
+
+  /**
+   * The format the detection stage identified, or {@link DocumentFormat#UNKNOWN} until it has run.
+   *
+   * <p>Unlike the two memoized derivations below this is not lazily computed on demand: the format
+   * is <em>decided</em> by one stage and then <em>read</em> by everything downstream — the facade
+   * that picks the pipeline, and the Peppol stage that picks its rule set. Deriving it twice, in
+   * two places, is exactly the drift this field exists to prevent.
+   */
+  public DocumentFormat format() {
+    return format;
+  }
+
+  /** Records the detected format; called by the format-detection stage and nothing else. */
+  public void format(DocumentFormat format) {
+    this.format = format;
   }
 
   /** The securely parsed DOM, parsed at most once; empty when the bytes are not well-formed XML. */

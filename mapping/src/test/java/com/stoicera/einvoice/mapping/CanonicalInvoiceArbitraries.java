@@ -1,4 +1,4 @@
-package com.stoicera.einvoice.mapping.ebinterface;
+package com.stoicera.einvoice.mapping;
 
 import com.stoicera.einvoice.core.invoice.Invoice;
 import com.stoicera.einvoice.core.invoice.InvoiceLine;
@@ -6,6 +6,7 @@ import com.stoicera.einvoice.core.invoice.InvoiceTypeCode;
 import com.stoicera.einvoice.core.invoice.ServicePeriod;
 import com.stoicera.einvoice.core.money.Money;
 import com.stoicera.einvoice.core.party.Address;
+import com.stoicera.einvoice.core.party.ElectronicAddress;
 import com.stoicera.einvoice.core.party.Party;
 import com.stoicera.einvoice.core.payment.Iban;
 import com.stoicera.einvoice.core.payment.PaymentMeans;
@@ -22,8 +23,8 @@ import net.jqwik.api.Combinators;
 
 /**
  * Shared jqwik generators for canonical {@link Invoice}s used by the mapper property tests. Kept in
- * one place so the schema-validity property ({@link MapperSchemaValidityPropertyTest}) and the
- * value-preservation properties ({@link MapperValuePreservationPropertyTest}) exercise the
+ * one place so the schema-validity property ({@code MapperSchemaValidityPropertyTest}) and the
+ * value-preservation properties ({@code MapperValuePreservationPropertyTest}) exercise the
  * <em>same</em> input space — a single source of truth rather than two drift-prone copies.
  *
  * <p>The space is deliberately wide (finding C2): quantities and unit prices come in both scale-0/2
@@ -39,11 +40,11 @@ import net.jqwik.api.Combinators;
  * mirroring {@code core}'s own {@code Generators.deliveryArms()} so the two test suites cover the
  * same mutual-exclusion invariant without generating the illegal "both present" combination).
  */
-final class CanonicalInvoiceArbitraries {
+public final class CanonicalInvoiceArbitraries {
 
   private CanonicalInvoiceArbitraries() {}
 
-  static Arbitrary<Invoice> canonicalInvoices() {
+  public static Arbitrary<Invoice> canonicalInvoices() {
     return Combinators.combine(
             references(),
             Arbitraries.of(InvoiceTypeCode.values()),
@@ -225,7 +226,29 @@ final class CanonicalInvoiceArbitraries {
   }
 
   private static Arbitrary<Party> parties() {
-    return Combinators.combine(names(), addresses(), vatIds(), optionalEmails()).as(Party::new);
+    return Combinators.combine(
+            names(), addresses(), vatIds(), optionalEmails(), optionalElectronicAddresses())
+        .as(Party::new);
+  }
+
+  /**
+   * Absent or present arm for {@link Party#electronicAddress()} (BT-34/BT-49, added M4). Both arms
+   * matter and for different reasons: present exercises the UBL {@code cbc:EndpointID} +
+   * {@code @schemeID} mapping, absent exercises the deliberate refusal to synthesise one — and, on
+   * the ebInterface side, absent is the <em>only</em> outcome, since ebInterface 6.1 has nowhere to
+   * put a network address at all.
+   */
+  private static Arbitrary<Optional<ElectronicAddress>> optionalElectronicAddresses() {
+    Arbitrary<Optional<ElectronicAddress>> absent = Arbitraries.just(Optional.empty());
+    Arbitrary<Optional<ElectronicAddress>> present =
+        Combinators.combine(
+                Arbitraries.of("9915", "0088", "9914"),
+                Arbitraries.strings()
+                    .withChars("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:")
+                    .ofMinLength(4)
+                    .ofMaxLength(20))
+            .as((scheme, value) -> Optional.of(new ElectronicAddress(scheme, value)));
+    return Arbitraries.oneOf(absent, present);
   }
 
   private static Arbitrary<Address> addresses() {
@@ -259,6 +282,15 @@ final class CanonicalInvoiceArbitraries {
     return Arbitraries.strings()
         .withCharRange('0', '9')
         .ofLength(8)
+        // "ATU00000000" is excluded on purpose, and the exclusion is domain modelling rather than
+        // test convenience. e-rechnung.gv.at uses that exact string as the sentinel for "this party
+        // has no UID", so it is not a VAT id a party can hold — it is the absence of one, spelled
+        // inside the value space. jqwik found this by generating all-zero digits and watching the
+        // round trip turn a "VAT id" into null; the round trip is right and the generator was
+        // wrong. The genuine consequence — that an ebInterface document literally carrying
+        // ATU00000000 is read back as "no VAT id", and cannot be read back any other way — is a
+        // property of the convention itself and is documented on EbInterface61ToInvoiceMapper.
+        .filter(digits -> !digits.equals("00000000"))
         .map(digits -> "ATU" + digits)
         .injectNull(0.2);
   }

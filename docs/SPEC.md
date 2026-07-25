@@ -33,10 +33,11 @@ einvoice-at/
 ├── pom.xml                       (parent)
 ├── core/                         # canonical invoice model (EN 16931 core subset), pure Java, zero Spring deps
 ├── formats-ebinterface/          # ebInterface 6.1 read/write/validate (wraps ph-ebinterface); version-strategy interface for 7.0
-├── formats-ubl/                  # UBL BIS 3.0 read/write/validate
+├── formats-api/                  # the format adapters' shared vocabulary (M4)
+├── formats-ubl/                  # UBL BIS 3.0 read/write
 ├── mapping/                      # canonical ↔ formats; MapStruct evaluated but unrealized as of M2 (hand-written, semantic mapping); golden-file tests
 ├── validation/                   # orchestrates XSD + Schematron (phive) + own business rules; produces ValidationReport
-├── rendering/                    # invoice → PDF / HTML print view
+├── rendering/                    # invoice → PDF print view (PDFBox; HTML view not built — ADR-0008)
 ├── ai-assist/                    # LlmClient port + OpenRouter adapter; error-explanation service; prompt templates versioned
 ├── app/                          # Spring Boot app: REST API, web UI, security, persistence, audit, rate limiting
 └── docs/                         # PRD, SPEC, MILESTONES, ADRs, glossary, deployment
@@ -67,6 +68,16 @@ Security: public endpoints = `/`, `/validator`, `POST /validate` (rate-limited, 
 
 _M3 sync (2026-07-24):_ Realized under `/api/v1` as built. `POST /invoices` and `POST /validate` each answer with a two-field envelope `{"id", "report"}` — the persisted row's id (`null` for an anonymous `validate`, which persists nothing) plus the `ValidationReport`. The invoice format output shipped this milestone is `GET /invoices/{id}/ebinterface` (the `ubl`/`pdf` variants arrive with their modules, M4). API-key management (`POST`/`GET`/`DELETE /api/v1/api-keys`) is added and restricted to OAuth2 (JWT) logins, so an API key can neither mint nor revoke keys. Every problem+json `type` is a stable URI under `https://einvoice-at.stoicera.com/problems/`. Auth design and honest known limits: [ADR-0006](adr/0006-auth-and-api-security.md). `POST /convert` and `POST /reports/{id}/explain` remain later milestones (M4/M5).
 
+_M4 sync (2026-07-25):_ `POST /convert?from=&to=` is realized as a multipart upload with the two
+formats named `ebinterface` and `ubl`, answering `{"conversion", "xml", "report"}` — the conversion
+report (what the trip cost), the converted document, and a validation report **of the result**
+against the target format's own profile. `GET /invoices/{id}/ubl` and `GET /invoices/{id}/pdf` are
+live; both regenerate from the stored canonical JSON, as `…/ebinterface` already did. `POST
+/validate` now auto-detects UBL as well as ebInterface, as this section always described. Conversion
+is authenticated and audited (`CONVERSION_RUN`); only `/validate` stays public. Design and honest
+limits: [ADR-0007](adr/0007-ubl-peppol-and-conversion.md), [ADR-0008](adr/0008-pdf-rendering.md).
+`POST /reports/{id}/explain` remains M5.
+
 _M3 hostile-review fix wave (2026-07-25):_ The 2 MB cap now covers **every** request body, not only multipart uploads — no Boot or Tomcat property bounds an ordinary body, and `POST /invoices` buffers its own whole, so an application-layer filter ahead of Spring Security enforces it and answers the same 413 `content-too-large` the multipart cap does. Three further bounds/switches, all documented in `.env.example`: `OAUTH2_AUDIENCE` (optional `aud` validation, closing the limit ADR-0006 had recorded as open), `API_KEYS_MAX_ACTIVE_PER_TENANT` (default 25 active keys, revoked rows retained and uncounted), and `API_DOCS_ENABLED` (default on; `false` removes the OpenAPI document and Swagger UI).
 
 ## 5. Web UI (Thymeleaf + htmx)
@@ -82,7 +93,9 @@ Pages: Landing/"Prüfer" (public upload → report, German-first, SEO meta), Rep
 
 ## 7. Validation pipeline (module `validation`)
 
-`secure parse (XXE-hardened DOM, XML-01) → detectFormat → XSD → Schematron (profile per format/version; AT-B2G-01 order-reference-present, AT-B2G-03 Biller e-mail present, AT-B2G-04 Lieferantennummer present and AT-B2G-05 PaymentMethod present are Schematron rules, not business rules, M3) → business rules (AT-B2G-02 IBAN valid; tax rates plausible, KZ totals unimplemented — out of scope, see [ADR-0004](adr/0004-validation-pipeline-and-xsd-messages.md) Entscheidung 9) → aggregate ValidationReport`. Each stage independent + testable; golden test corpus in `validation/src/test/resources/corpus/` (valid + systematically broken samples per rule). This corpus is a portfolio asset in itself — document it. For ebInterface, the Schematron stage runs project-own AT-B2G rules (see [ADR-0004](adr/0004-validation-pipeline-and-xsd-messages.md)) because AUSTRIAPRO publishes no official Schematron for ebInterface; Peppol BIS 3.0's official Schematron rule sets arrive unmodified with M4.
+`secure parse (XXE-hardened DOM, XML-01) → detectFormat → XSD → Schematron (profile per format/version; AT-B2G-01 order-reference-present, AT-B2G-03 Biller e-mail present, AT-B2G-04 Lieferantennummer present and AT-B2G-05 PaymentMethod present are Schematron rules, not business rules, M3) → business rules (AT-B2G-02 IBAN valid; tax rates plausible, KZ totals unimplemented — out of scope, see [ADR-0004](adr/0004-validation-pipeline-and-xsd-messages.md) Entscheidung 9) → aggregate ValidationReport`. Each stage independent + testable; golden test corpus in `validation/src/test/resources/corpus/` (valid + systematically broken samples per rule). This corpus is a portfolio asset in itself — document it. For ebInterface, the Schematron stage runs project-own AT-B2G rules (see [ADR-0004](adr/0004-validation-pipeline-and-xsd-messages.md)) because AUSTRIAPRO publishes no official Schematron for ebInterface.
+
+_M4 sync (2026-07-25):_ **Peppol BIS 3.0's official Schematron rule sets arrived unmodified, as promised.** A UBL document takes a different route through the same entry point: one stage running the OpenPeppol VES (XSD + EN 16931 + BIS, already sequenced by the rule set) at a version pinned in code — 2025.11 as M4 shipped. Findings carry the rule set's own assertion ids rather than project-local ones. The dispatch between the two pipelines is `DocumentFormat`, keyed on the root namespace, which is also what closed ADR-0004's deferred polymorphism seam. See [ADR-0007](adr/0007-ubl-peppol-and-conversion.md), including the rule-set upgrade procedure.
 
 ## 8. Data & persistence
 

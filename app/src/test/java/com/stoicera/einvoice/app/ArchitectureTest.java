@@ -20,16 +20,21 @@ import org.springframework.data.repository.Repository;
 
 /**
  * SPEC §2's first cross-module rule set: "only {@code app} knows the database". Every lib module
- * (core, mapping, validation, formats-ebinterface) already asserts, from its own, narrower vantage
- * point, that it stays free of Spring/JPA and never depends on {@code app} (it cannot — {@code app}
- * is not on its compile classpath). What only {@code app}'s test classpath can see is the union of
- * all of them together with {@code app} itself, so this is the first place a rule can genuinely
- * span every module in the tree. Never weaken a rule here to make a build pass; fix the design
- * instead (CLAUDE.md).
+ * (see {@link #LIB_MODULE_PACKAGES}) already asserts, from its own, narrower vantage point, that it
+ * stays free of Spring/JPA and never depends on {@code app} (it cannot — {@code app} is not on its
+ * compile classpath). What only {@code app}'s test classpath can see is the union of all of them
+ * together with {@code app} itself, so this is the first place a rule can genuinely span every
+ * module in the tree. Never weaken a rule here to make a build pass; fix the design instead
+ * (CLAUDE.md).
  *
- * <p>Four rules:
+ * <p>The rules below:
  *
  * <ol>
+ *   <li>{@link #everyLibModuleIsListed()} — the module list the other rules are scoped to actually
+ *       covers every module on the classpath. Added by the M4 hostile review (finding F4), which
+ *       found that milestone's three new modules — {@code formats-api}, {@code formats-ubl}, {@code
+ *       rendering} — outside every rule here, because extending the lists was a step someone had to
+ *       remember and nobody did.
  *   <li>{@link #libModulesNeverDependOnApp()} — a lib module cannot see {@code app} (belt over the
  *       fact that it is not even on the compile classpath: this additionally forbids a stray
  *       test-scope dependency from creating the edge).
@@ -74,6 +79,28 @@ class ArchitectureTest {
           .importPackages("com.stoicera.einvoice");
 
   /**
+   * Every library module, i.e. every module of the tree except {@code app} itself.
+   *
+   * <p><strong>One list, used by both the rules and the vacuity guard.</strong> This was three
+   * hard-coded, separately-maintained package lists until the M4 hostile review (finding F4), and
+   * predictably they drifted: M4 added {@code formats-api}, {@code formats-ubl} and {@code
+   * rendering} and updated none of them, so a third of the tree sat outside the only cross-module
+   * rule set in the repository while CLAUDE.md went on saying "ArchUnit rules enforce module
+   * boundaries". Sharing the constant means adding a module to the list extends the rules and the
+   * guard together, and forgetting to add one is caught by {@link #everyLibModuleIsListed()} below
+   * rather than by nobody.
+   */
+  private static final String[] LIB_MODULE_PACKAGES = {
+    "com.stoicera.einvoice.core..",
+    "com.stoicera.einvoice.mapping..",
+    "com.stoicera.einvoice.validation..",
+    "com.stoicera.einvoice.formats.api..",
+    "com.stoicera.einvoice.formats.ebinterface..",
+    "com.stoicera.einvoice.formats.ubl..",
+    "com.stoicera.einvoice.rendering..",
+  };
+
+  /**
    * Classes allowed to depend on {@code jakarta.persistence..}, {@code org.springframework.data..}
    * , {@code org.springframework.dao..} or {@code org.flywaydb..} outside {@code
    * ..app.persistence..}. Each entry was found by grepping {@code app}'s main sources for those
@@ -102,24 +129,47 @@ class ArchitectureTest {
     // vacuously; assert every module segment the rules below scope to actually contributed classes
     // to the import (finding A8, applied cross-module).
     assertThat(CLASSES).isNotEmpty();
-    assertThat(countInPackage(CLASSES, "com.stoicera.einvoice.core..")).isPositive();
-    assertThat(countInPackage(CLASSES, "com.stoicera.einvoice.mapping..")).isPositive();
-    assertThat(countInPackage(CLASSES, "com.stoicera.einvoice.validation..")).isPositive();
-    assertThat(countInPackage(CLASSES, "com.stoicera.einvoice.formats.ebinterface..")).isPositive();
+    for (String libPackage : LIB_MODULE_PACKAGES) {
+      assertThat(countInPackage(CLASSES, libPackage))
+          .withFailMessage(
+              "no classes imported from %s — the rules below would pass vacuously for it."
+                  + " Is the module missing from app/pom.xml?",
+              libPackage)
+          .isPositive();
+    }
     assertThat(countInPackage(CLASSES, "com.stoicera.einvoice.app..")).isPositive();
     assertThat(countInPackage(CLASSES, "com.stoicera.einvoice.app.api..")).isPositive();
     assertThat(countInPackage(CLASSES, "com.stoicera.einvoice.app.persistence..")).isPositive();
+  }
+
+  /**
+   * Every class on the cross-module classpath belongs either to {@code app} or to a package named
+   * in {@link #LIB_MODULE_PACKAGES} — so a module added in a later milestone cannot quietly escape
+   * the rules below.
+   *
+   * <p>This is the guard that was missing when M4 added three modules and extended no rule to cover
+   * them (finding F4). Without it, "the rules list the modules" is a convention someone has to
+   * remember; with it, it is a failing test the moment a new module's first class is compiled.
+   */
+  @Test
+  void everyLibModuleIsListed() {
+    DescribedPredicate<JavaClass> covered =
+        JavaClass.Predicates.resideInAnyPackage("com.stoicera.einvoice.app..")
+            .or(JavaClass.Predicates.resideInAnyPackage(LIB_MODULE_PACKAGES));
+
+    assertThat(CLASSES.stream().filter(covered.negate()).map(JavaClass::getName).sorted().toList())
+        .withFailMessage(
+            "these classes belong to no module this test knows about; add their module to"
+                + " LIB_MODULE_PACKAGES so the cross-module rules actually cover it: %s",
+            CLASSES.stream().filter(covered.negate()).map(JavaClass::getName).sorted().toList())
+        .isEmpty();
   }
 
   @Test
   void libModulesNeverDependOnApp() {
     noClasses()
         .that()
-        .resideInAnyPackage(
-            "com.stoicera.einvoice.core..",
-            "com.stoicera.einvoice.mapping..",
-            "com.stoicera.einvoice.validation..",
-            "com.stoicera.einvoice.formats.ebinterface..")
+        .resideInAnyPackage(LIB_MODULE_PACKAGES)
         .should()
         .dependOnClassesThat()
         .resideInAnyPackage("com.stoicera.einvoice.app..")

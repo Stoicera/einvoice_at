@@ -12,10 +12,11 @@ import org.junit.jupiter.api.Test;
 /**
  * SPEC §2: {@code mapping} translates between the canonical {@code core} model and the standards
  * adapters. It is a plain-Java module — no Spring, no JPA — and its main code may depend only on
- * {@code core}, the ph-ebinterface JAXB types it maps into, Jackson (the JSON boundary) and the
- * JDK. The {@code formats-ebinterface} adapter is a test-scope dependency (used only to marshal
- * mapped trees back for the schema-validity property), so it is not on the main whitelist (finding
- * A9). Never weaken these rules to make a build pass; fix the design instead.
+ * {@code core}, the ph-ebinterface and ph-ubl JAXB types it maps into, Jackson (the JSON boundary)
+ * and the JDK. Both format adapters ({@code formats-ebinterface}, {@code formats-ubl}) are
+ * test-scope dependencies, used only to marshal mapped trees back for the schema-validity
+ * properties, so neither is on the main whitelist (finding A9). Never weaken these rules to make a
+ * build pass; fix the design instead.
  */
 class MappingArchitectureTest {
 
@@ -60,6 +61,7 @@ class MappingArchitectureTest {
             "com.stoicera.einvoice.mapping..",
             "com.stoicera.einvoice.core..",
             "com.helger..",
+            "oasis.names.specification.ubl..",
             "com.fasterxml.jackson..",
             "java..")
         .check(MODULE_CLASSES);

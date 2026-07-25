@@ -1,5 +1,254 @@
 # Worklog — einvoice-at
 
+## 2026-07-25 — M4 hostile-review fix wave: 17 findings closed
+
+**What**
+
+A hostile review of the M4 branch before merge, in the per-milestone pattern (audit → prioritised
+findings → fix all, test-first). Findings recorded in `.superpowers/m4-hostile-review-findings.md`;
+all 17 closed on the same branch. Test count 736 → 764, `./mvnw verify` green, every coverage gate
+met.
+
+**The three that mattered**
+
+- **F1 — CI was red, and the diagnosis was wrong.** The security stage failed and both the worklog
+  and the README blamed the missing `NVD_API_KEY`. The real cause: `dependency-check-maven` sat in
+  the root POM's `<build><plugins>`, which Maven inherits into every child, so `-Psecurity verify`
+  ran the `aggregate` goal in **all ten** reactor projects instead of once at the root. They share
+  one CveDB; the first execution closes it and the rest fail per CVE with `connectionPool is null`.
+  Measured before and after (`10` bindings → `1`), fixed with `<inherited>false</inherited>`, and
+  the CI job now asserts the binding count itself — with the scan skipped, so the check costs
+  seconds and needs no NVD data. The POM's own comment had claimed "produced once at the root
+  rather than nine times" the whole time.
+- **F2 — `POST /convert` answered 500 on a hostile document.** Both reverse mappers passed an
+  upload-supplied currency code straight to `Currency.getInstance`, which throws a raw
+  `IllegalArgumentException` for anything non-ISO — unmapped, so 500 plus a stack trace per
+  request, and the JDK's message echoes the offending value *unbounded*. Every other bad value on
+  that path is a 422. The same hazard was already handled one module over in
+  `InvoiceJsonReader.toCurrency`, so this was a regression of a guard the codebase had.
+- **F3 — the milestone's own acceptance criterion was unmet**, and closing it found a real bug.
+  MILESTONES asks by name for "Golden-Files für Roundtrips (ebInterface→UBL→ebInterface,
+  dokumentierte Abweichungen)"; what shipped were two *same-format* property suites. Writing
+  `CrossFormatRoundTripTest` immediately exposed **F3a**: the exemption `Comment` grew by one
+  category code on every conversion (`E |` → `E | E |` → `E | E | E |`), unboundedly, in a
+  persisted field — invisible to every existing test because they compare canonical models and the
+  corruption lived in the emitted XML.
+
+**Decisions**
+
+- **The VATEX code is recoverable, and pretending otherwise was the bug.** The reverse ebInterface
+  mapper declined to parse the code back out of `Tax/TaxItem/Comment` "because parsing it back out
+  of prose would be guesswork". It is not prose — the forward mapper writes
+  `lead-in + category + " | " + code + " | " + text`, a delimited field list of this project's own
+  design. Declining to read back what we ourselves wrote both discarded a recoverable value and
+  caused F3a. It is now parsed structurally, with every field cross-checked against something known
+  independently, so a genuinely foreign comment still falls through to text-with-a-loss-note.
+  Consequence: ebInterface → UBL → ebInterface is now **byte-for-byte lossless** for every valid
+  document in the corpus.
+- **A skipped security scan beats a permanently red one.** Making the absent `NVD_API_KEY` a hard
+  failure would have left the stage red until the owner acts — and a stage that is always red
+  teaches everyone to ignore red, which is worse than the gap. The scan is skipped with a warning
+  annotation *and* a job-summary block, becomes a real gate the moment the secret exists, and the
+  job still does real work meanwhile (the F1 binding assertion).
+- **`/convert` is rate-limited per credential, not per IP, and authenticated callers are not
+  exempt** (F9). The endpoint admits no anonymous callers, so inheriting the validator's
+  authenticated-bypass would have produced a limit covering nobody. Keying by IP would punish every
+  tenant behind a shared egress and let one tenant multiply their allowance across addresses.
+- **`@Transactional` removed from `ConversionService.convert`** (F8): it held a HikariCP connection
+  across a full Peppol XSLT run to protect one audit INSERT that already has its own transaction.
+- **`everyLibModuleIsListed()`** (F4). M4 added three modules and extended none of the cross-module
+  ArchUnit rules, because doing so was a step someone had to remember. It is now a failing test —
+  verified by unlisting `rendering` and watching it fail with an actionable message.
+- **Two removals, no replacements.** `TargetFormat.id()` had zero call sites and a Javadoc claiming
+  a role a different type filled; `ConversionReport.plus()`/`lossless()` were called only by their
+  own unit test. DoD §1 forbids dead paths, and a convenience with no caller is a reader's false
+  lead.
+
+**Next**
+
+- Merge to `main`. The `NVD_API_KEY` secret is the one outstanding owner action; adding it turns
+  the security stage from skip-with-warning into a live gate with no workflow change.
+
+## 2026-07-25 — M4: UBL BIS 3.0 + Konvertierung + PDF: complete
+
+**What**
+
+- Milestone M4 delivered on `feat/m4-ubl-convert-pdf`. The platform now speaks both Austrian
+  e-invoice formats, converts between them through the canonical model with a per-document loss
+  report, and renders a German PDF print view. Two new modules (`formats-api`, and `formats-ubl` /
+  `rendering` filled in from stubs), one deleted class, ten commits.
+- **The headline result is external, not self-asserted.** An invoice generated by this platform —
+  canonical JSON → `InvoiceToUblMapper` → UBL strategy → `InvoiceValidator` — is judged **clean by
+  the official OpenPeppol rule set**, for both the invoice and the credit-note rule sets, in CI on
+  every run (`UblEndToEndGenerationTest`, `PeppolRoundTripTest`). For ebInterface the validator
+  applies rules *this project wrote* (AUSTRIAPRO publishes none); for UBL it applies rules
+  OpenPeppol publishes and this project only executes. That makes the UBL acceptance the strongest
+  automated claim in the repository — the closest thing to the manual portal Abnahme that can run
+  unattended.
+- **`formats-api` (new module):** the shared adapter vocabulary — `ReadResult` and
+  `InvoiceFormatStrategy`. `ReadResult` could not simply move to `core`, because
+  `FormatsEbInterfaceArchitectureTest` forbids a `formats-*` module any dependency on `core` and
+  that rule is not up for weakening; the answer is a dependency-free module, the same shape ph-ubl
+  itself uses with `ph-ubl-api`. This closes ADR-0004 Entscheidung 10, which deferred a genuinely
+  polymorphic seam to M4.
+- **`formats-ubl`:** `UblDocumentKind`, `UblNamespaces`, `Ubl21InvoiceStrategy`,
+  `Ubl21CreditNoteStrategy` over ph-ubl 10.2.0, plus `UblRootElement` — see Decisions for why the
+  last one exists.
+- **`mapping`:** `InvoiceToUblMapper` (canonical → Peppol BIS 3.0 UBL, 380 → `ubl:Invoice`,
+  381 → `ubl:CreditNote` behind a sealed `UblDocument`), and both reverse mappers
+  (`EbInterface61ToInvoiceMapper`, `UblToInvoiceMapper`). New `conversion` package: `ConversionNotes`
+  (`CONV-01..04`), `ConversionReport`, `ConversionLosses`, `CanonicalResult`.
+- **`core`:** `ElectronicAddress` (BT-34/BT-49 with its mandatory EAS scheme BT-34-1/BT-49-1) and an
+  optional `Party.electronicAddress`. Both prior `Party` constructors still compile. The
+  canonical-JSON boundary reads it; `samples/invoice-b2g-sample.json` carries it, which is what makes
+  the sample Peppol-complete.
+- **`validation`:** `DocumentFormat` (the dispatch seam), UBL namespace detection,
+  `PeppolValidationStage` running the official OpenPeppol VES at a pinned version, and a new
+  `InvoiceValidator` facade that dispatches by detected format. `EbInterface61Validator` deleted
+  rather than kept alongside. Corpus gained three UBL files.
+- **`rendering`:** `InvoicePdfRenderer` on Apache PDFBox 3.0.8 — German A4 print view with sender
+  and recipient blocks, metadata, line items, the VAT breakdown as its own table (§ 11 UStG requires
+  tax per rate), totals and payment details. `PdfCanvas` holds the layout mechanics; `PrintableText`
+  the encoding safety.
+- **`app`:** `POST /api/v1/convert?from&to` (authenticated, audited `CONVERSION_RUN`),
+  `GET /invoices/{id}/ubl`, `GET /invoices/{id}/pdf`. `POST /validate` auto-detects UBL through the
+  same generalized validator.
+- **CI:** OWASP Dependency-Check as its own gated stage (ENGINEERING_STANDARDS §4/§6);
+  `formats-ubl` joined the mutation job, which now runs five modules.
+- **Docs:** ADR-0007 (UBL/Peppol + conversion, including the rule-set upgrade procedure), ADR-0008
+  (PDF rendering), README (status, module map, API table, a new Conversion and PDF section, testing,
+  credits), SPEC §2/§4/§7/§10 sync, glossary M4 section, `samples/README.md`, corpus README.
+
+**Decisions**
+
+- **The Peppol rule sets are executed, never reimplemented.** M2 had to write its own ebInterface
+  Schematron because AUSTRIAPRO publishes none; Peppol publishes complete rule sets, so they are run
+  unmodified. Consequence: the UBL pipeline has *one* stage where ebInterface has three — the VES
+  already sequences XSD, EN 16931 and BIS internally, and splitting it would be exactly what
+  "unmodified" means not doing. Findings carry the rule set's **own** assertion ids
+  (`PEPPOL-EN16931-R010`, `UBL-CR-412`), not a flat project-local code, so a reader can look the rule
+  up directly.
+- **The rule-set version is pinned in code (2025.11), not taken from a library default.**
+  `initStandard` registers four versions at phive-rules 4.4.1; picking "whatever is current" would
+  let a dependency bump silently change which rules an invoice is judged by. 2026.5 is published and
+  becomes mandatory 2026-08-17 — both read off the artefacts (`PeppolValidation2026_05.VALID_PER`),
+  not off a website. A test asserts the pin still resolves. Upgrade procedure in ADR-0007.
+- **Conversion goes through the canonical model, never syntax to syntax.** A direct transformation
+  would be a second, independent understanding of both standards. Through `core` the invoice is
+  understood once, by the model that already derives and re-verifies every amount, so a conversion
+  cannot silently change a total.
+- **A source total that disagrees with the derived one is reported, not adopted and not discarded.**
+  `CONV-04` at ERROR severity; the derived value wins. `ConversionReport.isLossless()` and
+  `isTrustworthy()` are deliberately different questions — dropping a field the target has no concept
+  of is normal, a changed amount is not.
+- **BT-34/BT-49 were added to the model rather than synthesised from the VAT id.** Synthesising was
+  the tempting option (both often carry the same number) and would route a real document to a wrong
+  or non-existent mailbox. An electronic address is a mailbox on a network; a VAT id is not one.
+- **`UblRootElement` exists because of a hole a test found.** JAXB unmarshals by declared type and
+  ph-ubl offers no way to demand a root element, so with schema validation off a `ubl:CreditNote`
+  handed to the invoice marshaller is unmarshalled into an `InvoiceType` **without a single
+  diagnostic** — the two share the same `cbc:`/`cac:` child vocabulary. Silently dropping
+  `CreditedQuantity` and keeping the wrong document kind is exactly what a converter must not do, so
+  the strategies check the root element themselves via a StAX peek. The ebInterface adapter needs no
+  equivalent and does not get one.
+- **PDFBox, not OpenPDF, and not HTML→PDF.** Licence decides: PDFBox is Apache-2.0, the same as this
+  repository, so a reviewer reading the dependency list meets no licence question at all. OpenPDF's
+  LGPL/MPL is legally fine and still worse than "no question". HTML→PDF would drag a rendering stack
+  and a second description language in for one fixed page, and openhtmltopdf itself depends on PDFBox
+  2.x. Full comparison in ADR-0008.
+- **`EbInterface61Validator` deleted, not kept.** Two facades where one supersedes the other is a
+  dead path. One deliberate contract change falls out: a document whose format could not be
+  determined now reports profile `none` instead of `at-b2g` — claiming an Austrian B2G profile for a
+  document nobody could identify was always slightly wrong, and with two profiles it would be plainly
+  wrong.
+- **`validation`'s mutation score is one point above its gate, and the gate stays.** 126/147 = 86 %
+  against a gate of 85, down from 89 % at M2: the Peppol stage added 31 mutants, and its registry,
+  holder and dispatch paths are largely unreachable from anything short of a full Peppol validation
+  run. Lowering the bar would hide exactly the signal the number is giving — that this module's next
+  change needs killing tests written with it. Recorded in the pom and handed to the hostile review.
+- **The `frecord` finding (recorded, not fixed).** PIT's `frecord` feature filters mutants in
+  compiler-generated record code, and it removes **every** mutant in `Party`'s and
+  `ElectronicAddress`'s hand-written compact constructors — where nearly all of this domain model's
+  invariants live. Measured: `core` yields 129 mutants with the filter on (98 % killed) and 392 with
+  it off (86 % killed, i.e. below the 90 gate), with the extra survivors concentrated in generated
+  `equals`/`hashCode`/`toString`, which is what the filter exists to remove. Pre-existing, not
+  introduced by M4, and not changed here: flipping the feature would force either a lowered gate
+  (never) or tests for compiler-generated methods (worthless). Handed to the M4 hostile review.
+
+**Verification**
+
+- Full `./mvnw verify` green across all 10 reactor modules. Measured this session (module, tests,
+  JaCoCo line/branch, gate):
+  - `core`: 220 tests; 99.5 % / 98 % (gate 95/90); PIT 126/129 = 98 % (gate 90).
+  - `formats-api`: 7 tests; 100 % / 100 % (gate 100/100); no PIT profile, deliberately.
+  - `formats-ebinterface`: 14 tests; 100 % / 100 % (gate 90/85, was 96.15/87.50); PIT 12/12 = 100 %.
+  - `formats-ubl`: 31 tests; 98.57 % / 96.30 % (gate 90/85); PIT 27/29 = 93 %.
+  - `mapping`: 187 tests; 98.95 % / 91.12 % (gate 95/90); PIT 390/396 = 98 %.
+  - `validation`: 112 tests; 95.13 % / 91.94 % (gate 90/85); PIT 126/147 = 86 % (gate 85) — see
+    below.
+  - `rendering`: 36 tests; 95.60 % / 88.75 % (gate 90/85).
+  - `app`: 48 unit + 81 integration tests (from 48 + 70); gates 90/78 unchanged.
+- `./mvnw spotless:apply` clean before every commit.
+- **Peppol acceptance, run in CI:** the sample invoice and its credit-note counterpart both come back
+  with **zero findings** from the official OpenPeppol rule set. The negative case
+  (`invoice-without-electronic-addresses`) is rejected with `PEPPOL-EN16931-R020` and `R010` — one
+  defect, reported per party — proving the rules genuinely execute rather than passing vacuously.
+- **ebInterface portal Abnahme re-confirmed by the owner on 2026-07-25** on the exact committed
+  bytes: *"Diese Datei ist gültig gemäß ebInterface Standard ebInterface 6.1"*. M4 added the
+  electronic addresses to the sample JSON, which does **not** change the ebInterface twin's bytes
+  (ebInterface has no element for a network address), so that Abnahme still describes the file as
+  committed. `samples/README.md` carries the dated history.
+- **The PDF was rendered and looked at**, not only asserted on. That is how two things were found
+  that no assertion would have caught: four helper methods were never called by anything (deleted
+  rather than left as dead paths), and the description column sat a hair from the right-aligned
+  quantity (gutter widened).
+- **Compose smoke (full stack, live):** `docker compose up -d` → postgres + keycloak + mailpit + app
+  healthy; `GET /actuator/health` UP. Against a real Keycloak token: `POST /invoices` on the sample
+  JSON → 201; `GET /{id}/ubl` → the Peppol document; `GET /{id}/pdf` → `application/pdf`, `inline`
+  disposition, opened and read (Abnahme: *"PDF sieht nach Rechnung aus"* — it does).
+  **`POST /convert` both ways, which is the milestone's Abnahme in one command:**
+  - `ebinterface → ubl` on the sample twin → 200, two `CONV-01` losses (the plain-text country name,
+    one per party), and the Peppol validation of the result reports `PEPPOL-EN16931-R020` and
+    `R010`: the missing electronic addresses, because the ebInterface source cannot carry them. The
+    conversion report and the validation report tell one coherent story rather than two.
+  - `ubl → ebinterface` on the UBL twin → 200, one `CONV-01` (the electronic address is dropped —
+    ebInterface has no element for it), and the resulting ebInterface document is fully AT-B2G valid.
+  Anonymous `POST /validate` auto-detects both formats (`ubl-invoice-2.1`/`peppol-bis-billing-3.0`
+  and `ebinterface-6.1`/`at-b2g`), zero findings each, `id:null` (nothing persisted). `/v3/api-docs`
+  lists the three new paths. `audit_event` carried `INVOICE_CREATED` ×1 and `CONVERSION_RUN` ×2.
+- **Security scan: wired, NOT green — and deliberately reported as such.** dependency-check-maven
+  12.2.2 resolves, runs and reaches the NVD, then fails with **HTTP 429**: the NVD rate-limits
+  unauthenticated clients. That is a property of the NVD 2.0 API, not of the configuration, and it is
+  the exact failure the pom comments and the CI pre-flight warning describe. No green security scan
+  is being claimed.
+
+**Not done, and why**
+
+- **`NVD_API_KEY` is an owner action.** Request a free key at
+  <https://nvd.nist.gov/developers/request-an-api-key> and add it as the repository secret. Until
+  then the CI security stage warns actionably and the scan is unreliable.
+- **Peppol finding messages are English.** The rule set ships English text only; translating several
+  hundred rules would be a maintenance liability and a fresh source of error, so the German message
+  is honestly a German frame around the official English wording. Translating the rules that actually
+  affect Austrian filers is deliberate work for M5, alongside the AI explanation feature that exists
+  for exactly this problem.
+- **No ZUGFeRD/Factur-X hybrid.** No XML is embedded in the PDF. A hybrid is a different artefact
+  with its own conformance rules (PDF/A-3 among them); claiming one without meeting them would be
+  worse than not offering it.
+
+**Next**
+
+- Sebastian: merge decision on this branch; add the `NVD_API_KEY` repository secret.
+- M4 hostile review (per the standing per-milestone pattern), which should start from: the PIT
+  `frecord` finding above; whether `ConversionLosses` should be exhaustive rather than the four cases
+  it covers; and the Peppol rule-set upgrade due 2026-08-17.
+- M5 — Web-UI + öffentlicher Validator + KI-Erklärungen: Thymeleaf + htmx, the public validator page,
+  report view, dashboard, `ai-assist` with the OpenRouter adapter and PII scrubbing, Selenium E2E,
+  Gatling. The German-message gap above is the natural first customer of the AI explanation feature.
+- Carried: GDPR tenant-delete endpoint + retention job (M5); OTel traces/metrics, Traefik forwarded
+  headers, `/actuator/info` git-sha (M6); `Texts.safeEcho` promotion out of `core.internal` (open
+  since M1).
+
 ## 2026-07-25 — M3 hostile-review fix wave: complete
 
 **What**

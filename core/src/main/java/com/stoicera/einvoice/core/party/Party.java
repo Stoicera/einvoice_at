@@ -15,8 +15,20 @@ import java.util.regex.Pattern;
  * biller contact); the AT-B2G profile's requirement that a biller carry one is a validation-module
  * business rule, not a core invariant — see {@link #Party(String, Address, String)} for the pre-M3
  * shape.
+ *
+ * <p>{@code electronicAddress} (added M4, BT-34/BT-49 with its mandatory scheme BT-34-1/BT-49-1) is
+ * the network routing address, a different thing from {@code email} — see {@link
+ * ElectronicAddress}. It is optional here too: Peppol BIS Billing 3.0 requires it, ebInterface 6.1
+ * has nowhere to put it, and a canonical invoice must be able to represent both worlds. Which
+ * profile demands it is the validation module's business, and a conversion that cannot carry it
+ * says so in its report rather than dropping it silently.
  */
-public record Party(String name, Address address, String vatId, Optional<String> email) {
+public record Party(
+    String name,
+    Address address,
+    String vatId,
+    Optional<String> email,
+    Optional<ElectronicAddress> electronicAddress) {
 
   private static final Pattern EU_VAT_ID = Pattern.compile("[A-Z]{2}[0-9A-Z]{2,13}");
 
@@ -69,10 +81,25 @@ public record Party(String name, Address address, String vatId, Optional<String>
       }
       email = Optional.of(trimmed);
     }
+    if (electronicAddress == null) {
+      throw new InvariantViolationException(
+          "Party electronicAddress must not be null; use Optional.empty() when absent");
+    }
   }
 
-  /** Pre-M3 shape, kept so existing callers compile unchanged: {@code email} defaults to absent. */
+  /**
+   * Pre-M4 shape, kept so existing callers compile unchanged: {@code electronicAddress} defaults to
+   * absent.
+   */
+  public Party(String name, Address address, String vatId, Optional<String> email) {
+    this(name, address, vatId, email, Optional.empty());
+  }
+
+  /**
+   * Pre-M3 shape, kept so existing callers compile unchanged: {@code email} and {@code
+   * electronicAddress} both default to absent.
+   */
   public Party(String name, Address address, String vatId) {
-    this(name, address, vatId, Optional.empty());
+    this(name, address, vatId, Optional.empty(), Optional.empty());
   }
 }

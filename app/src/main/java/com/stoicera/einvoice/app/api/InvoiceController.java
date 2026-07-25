@@ -39,6 +39,8 @@ import org.springframework.web.bind.annotation.RestController;
  *   <li>{@code GET /api/v1/invoices/{id}} — the stored canonical JSON.
  *   <li>{@code GET /api/v1/invoices/{id}/ebinterface} — the ebInterface 6.1 XML, regenerated on
  *       demand.
+ *   <li>{@code GET /api/v1/invoices/{id}/ubl} — the Peppol BIS Billing 3.0 UBL XML.
+ *   <li>{@code GET /api/v1/invoices/{id}/pdf} — a German PDF print view.
  * </ul>
  */
 @RestController
@@ -205,5 +207,76 @@ public class InvoiceController {
     return ResponseEntity.ok()
         .contentType(MediaType.APPLICATION_XML)
         .body(invoices.ebInterfaceXml(tenant.getId(), id));
+  }
+
+  /** Returns the regenerated Peppol BIS Billing 3.0 UBL XML for one of the tenant's invoices. */
+  @GetMapping(value = "/{id}/ubl", produces = MediaType.APPLICATION_XML_VALUE)
+  @Operation(
+      summary = "Get an invoice as Peppol BIS Billing 3.0 UBL XML",
+      description =
+          "The UBL XML for one of the caller's tenant's invoices, regenerated on demand. A credit"
+              + " note (BT-3 381) comes back as a ubl:CreditNote, an invoice as a ubl:Invoice —"
+              + " UBL makes the document kind the root element, so the type code decides.")
+  @ApiResponse(
+      responseCode = "200",
+      content =
+          @Content(mediaType = MediaType.APPLICATION_XML_VALUE, schema = @Schema(type = "string")))
+  @ApiResponse(
+      responseCode = "401",
+      description = "Missing or invalid credentials.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
+  @ApiResponse(
+      responseCode = "404",
+      description = "No invoice with the given id exists for this tenant.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
+  public ResponseEntity<String> ubl(@PathVariable UUID id, Authentication authentication) {
+    TenantEntity tenant = currentTenant.require(authentication);
+    return ResponseEntity.ok()
+        .contentType(MediaType.APPLICATION_XML)
+        .body(invoices.ublXml(tenant.getId(), id));
+  }
+
+  /** Returns a German PDF print view of one of the tenant's invoices. */
+  @GetMapping(value = "/{id}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
+  @Operation(
+      summary = "Get an invoice as a PDF print view",
+      description =
+          "A German A4 print view, rendered on demand from the stored canonical invoice — the same"
+              + " source the XML outputs come from, so the three cannot disagree.")
+  @ApiResponse(
+      responseCode = "200",
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_PDF_VALUE,
+              schema = @Schema(type = "string", format = "binary")))
+  @ApiResponse(
+      responseCode = "401",
+      description = "Missing or invalid credentials.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
+  @ApiResponse(
+      responseCode = "404",
+      description = "No invoice with the given id exists for this tenant.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
+  public ResponseEntity<byte[]> pdf(@PathVariable UUID id, Authentication authentication) {
+    TenantEntity tenant = currentTenant.require(authentication);
+    byte[] pdf = invoices.pdf(tenant.getId(), id);
+    return ResponseEntity.ok()
+        .contentType(MediaType.APPLICATION_PDF)
+        // inline: a print view is meant to be looked at, and a browser can show it without a
+        // download round trip. The filename still matters for the save-as dialog.
+        .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"rechnung-" + id + ".pdf\"")
+        .body(pdf);
   }
 }

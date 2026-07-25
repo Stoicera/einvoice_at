@@ -10,9 +10,14 @@ import com.stoicera.einvoice.app.persistence.ReportRepository;
 import com.stoicera.einvoice.core.invoice.Invoice;
 import com.stoicera.einvoice.core.validation.ValidationReport;
 import com.stoicera.einvoice.formats.ebinterface.EbInterface61Strategy;
+import com.stoicera.einvoice.formats.ubl.Ubl21CreditNoteStrategy;
+import com.stoicera.einvoice.formats.ubl.Ubl21InvoiceStrategy;
 import com.stoicera.einvoice.mapping.ebinterface.InvoiceToEbInterface61Mapper;
 import com.stoicera.einvoice.mapping.json.InvoiceJsonReader;
-import com.stoicera.einvoice.validation.EbInterface61Validator;
+import com.stoicera.einvoice.mapping.ubl.InvoiceToUblMapper;
+import com.stoicera.einvoice.mapping.ubl.UblDocument;
+import com.stoicera.einvoice.rendering.InvoicePdfRenderer;
+import com.stoicera.einvoice.validation.InvoiceValidator;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -52,7 +57,11 @@ public class InvoiceService {
   private final InvoiceJsonReader jsonReader;
   private final InvoiceToEbInterface61Mapper ebiMapper;
   private final EbInterface61Strategy ebiStrategy;
-  private final EbInterface61Validator validator;
+  private final InvoiceValidator validator;
+  private final InvoiceToUblMapper ublMapper;
+  private final Ubl21InvoiceStrategy ublInvoiceStrategy;
+  private final Ubl21CreditNoteStrategy ublCreditNoteStrategy;
+  private final InvoicePdfRenderer pdfRenderer;
 
   /**
    * Serializes the findings list into the report's JSONB column. A dedicated Jackson 3 mapper: the
@@ -69,7 +78,11 @@ public class InvoiceService {
       InvoiceJsonReader jsonReader,
       InvoiceToEbInterface61Mapper ebiMapper,
       EbInterface61Strategy ebiStrategy,
-      EbInterface61Validator validator) {
+      InvoiceValidator validator,
+      InvoiceToUblMapper ublMapper,
+      Ubl21InvoiceStrategy ublInvoiceStrategy,
+      Ubl21CreditNoteStrategy ublCreditNoteStrategy,
+      InvoicePdfRenderer pdfRenderer) {
     this.invoices = invoices;
     this.reports = reports;
     this.audit = audit;
@@ -77,6 +90,10 @@ public class InvoiceService {
     this.ebiMapper = ebiMapper;
     this.ebiStrategy = ebiStrategy;
     this.validator = validator;
+    this.ublMapper = ublMapper;
+    this.ublInvoiceStrategy = ublInvoiceStrategy;
+    this.ublCreditNoteStrategy = ublCreditNoteStrategy;
+    this.pdfRenderer = pdfRenderer;
   }
 
   /**
@@ -157,10 +174,38 @@ public class InvoiceService {
    */
   @Transactional(readOnly = true)
   public String ebInterfaceXml(UUID tenantId, UUID id) {
+    return ebiStrategy.write(ebiMapper.map(reread(tenantId, id)));
+  }
+
+  /**
+   * Regenerates the Peppol BIS Billing 3.0 UBL XML for one of the tenant's invoices — a {@code
+   * ubl:Invoice} or a {@code ubl:CreditNote}, decided by the invoice's own BT-3 type code. XML is
+   * never persisted, so it is always produced fresh through the reader → mapper → strategy chain.
+   */
+  @Transactional(readOnly = true)
+  public String ublXml(UUID tenantId, UUID id) {
+    return switch (ublMapper.map(reread(tenantId, id))) {
+      case UblDocument.CommercialInvoice(var document) -> ublInvoiceStrategy.write(document);
+      case UblDocument.CreditNote(var document) -> ublCreditNoteStrategy.write(document);
+    };
+  }
+
+  /**
+   * Renders one of the tenant's invoices as a German PDF print view.
+   *
+   * <p>Rendered from the stored canonical JSON, never from a generated XML document: the PDF, the
+   * ebInterface output and the UBL output are three views of one invoice, and taking them all from
+   * the same source is what keeps them from disagreeing.
+   */
+  @Transactional(readOnly = true)
+  public byte[] pdf(UUID tenantId, UUID id) {
+    return pdfRenderer.render(reread(tenantId, id));
+  }
+
+  /** The stored canonical JSON, parsed back into the domain model. */
+  private Invoice reread(UUID tenantId, UUID id) {
     String canonical = canonicalJson(tenantId, id);
-    Invoice invoice =
-        jsonReader.read(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
-    return ebiStrategy.write(ebiMapper.map(invoice));
+    return jsonReader.read(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
   }
 
   /**

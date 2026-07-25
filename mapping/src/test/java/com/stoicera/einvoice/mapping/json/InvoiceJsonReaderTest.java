@@ -10,6 +10,7 @@ import com.stoicera.einvoice.core.invoice.InvoiceTypeCode;
 import com.stoicera.einvoice.core.invoice.ServicePeriod;
 import com.stoicera.einvoice.core.money.Money;
 import com.stoicera.einvoice.core.party.Address;
+import com.stoicera.einvoice.core.party.ElectronicAddress;
 import com.stoicera.einvoice.core.party.Party;
 import com.stoicera.einvoice.core.tax.VatExemptionReason;
 import com.stoicera.einvoice.core.tax.VatRate;
@@ -523,5 +524,58 @@ class InvoiceJsonReaderTest {
 
   private static InputStream toStream(String json) {
     return new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8));
+  }
+
+  // --- Electronic address (BT-34/BT-49, M4) ----------------------------------------------------
+
+  @Test
+  void electronicAddressIsAbsentWhenTheDocumentOmitsIt() {
+    Invoice invoice = reader.read(toStream(MINIMAL_JSON));
+
+    assertThat(invoice.seller().electronicAddress()).isEmpty();
+    assertThat(invoice.buyer().electronicAddress()).isEmpty();
+  }
+
+  @Test
+  void parsesTheElectronicAddressWithItsScheme() {
+    String json =
+        MINIMAL_JSON.replace(
+            "\"vatId\": \"ATU11111111\",",
+            "\"vatId\": \"ATU11111111\","
+                + " \"electronicAddress\": { \"scheme\": \"9915\", \"value\": \"AT:VAT:ATU11111111\" },");
+
+    Invoice invoice = reader.read(toStream(json));
+
+    assertThat(invoice.seller().electronicAddress())
+        .contains(new ElectronicAddress("9915", "AT:VAT:ATU11111111"));
+    assertThat(invoice.buyer().electronicAddress()).isEmpty();
+  }
+
+  /**
+   * A malformed scheme is core's business, not the reader's: the value passes straight through to
+   * {@link ElectronicAddress}'s constructor, which owns the one clear message.
+   */
+  @Test
+  void malformedElectronicAddressPropagatesTheDomainInvariant() {
+    String json =
+        MINIMAL_JSON.replace(
+            "\"vatId\": \"ATU11111111\",",
+            "\"vatId\": \"ATU11111111\","
+                + " \"electronicAddress\": { \"scheme\": \"AT\", \"value\": \"x\" },");
+
+    assertThatThrownBy(() -> reader.read(toStream(json)))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("four-digit EAS code");
+  }
+
+  @Test
+  void rejectsAnUnknownPropertyInsideTheElectronicAddress() {
+    String json =
+        MINIMAL_JSON.replace(
+            "\"vatId\": \"ATU11111111\",",
+            "\"vatId\": \"ATU11111111\","
+                + " \"electronicAddress\": { \"scheme\": \"9915\", \"value\": \"x\", \"typo\": 1 },");
+
+    assertThatThrownBy(() -> reader.read(toStream(json))).isInstanceOf(InvoiceJsonException.class);
   }
 }

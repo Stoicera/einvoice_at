@@ -28,6 +28,38 @@ class PartyTest {
   }
 
   @Test
+  void shorterConstructorsLeaveTheElectronicAddressAbsent() {
+    assertThat(new Party("Kleinunternehmer GmbH", LINZ, null).electronicAddress()).isEmpty();
+    assertThat(new Party("Kleinunternehmer GmbH", LINZ, null, Optional.empty()).electronicAddress())
+        .isEmpty();
+  }
+
+  /**
+   * BT-34/BT-49 is a network routing address, not a contact address: a party may carry an e-mail,
+   * an electronic address, both, or neither, and the two never stand in for one another.
+   */
+  @Test
+  void electronicAddressIsIndependentOfEmail() {
+    Party p =
+        new Party(
+            "Stoicera Software Group",
+            LINZ,
+            "ATU12345678",
+            Optional.empty(),
+            Optional.of(new ElectronicAddress("9915", "ATU12345678")));
+
+    assertThat(p.email()).isEmpty();
+    assertThat(p.electronicAddress()).contains(new ElectronicAddress("9915", "ATU12345678"));
+  }
+
+  @Test
+  void nullElectronicAddressIsRejectedInFavourOfAnEmptyOptional() {
+    assertThatThrownBy(() -> new Party("Stoicera", LINZ, "ATU12345678", Optional.empty(), null))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("use Optional.empty() when absent");
+  }
+
+  @Test
   void emailIsOptionalAndAbsentWhenNotSupplied() {
     Party p = new Party("Stoicera Software Group", LINZ, "ATU12345678", Optional.empty());
     assertThat(p.email()).isEmpty();

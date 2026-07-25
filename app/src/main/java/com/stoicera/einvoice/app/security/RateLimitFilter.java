@@ -27,9 +27,17 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Per-client-IP token-bucket rate limiting for the anonymous side of {@code POST /api/v1/validate}
- * only (SPEC section 4). Authenticated callers (a JWT login or an API key) are never limited by
- * this filter.
+ * Token-bucket rate limiting for the two endpoints that cost real CPU: {@code POST
+ * /api/v1/validate} and {@code POST /api/v1/convert} (SPEC section 4).
+ *
+ * <p><b>Two routes, two policies, and the difference is the point.</b> The public validator is
+ * limited for <em>anonymous</em> callers only — the limit is there to keep an open endpoint from
+ * being abused, and a caller who has authenticated is not that threat. {@code /convert} is limited
+ * for <em>everyone</em>, because it already requires authentication: exempting authenticated
+ * callers there would leave a limit that applies to nobody at all. It was, until the M4 hostile
+ * review found the most expensive operation in the platform — read, two mappings, a write, and a
+ * full Peppol XSLT validation of the result — behind no limit of any kind (finding F9). A 2 MB
+ * upload cap bounds one request; it says nothing about a rate.
  *
  * <p><b>Authenticated bypass.</b> Reuses {@link CurrentTenant#resolveIfAuthenticated}'s allow-list
  * idiom: the authentication kind is decided by an explicit {@code instanceof} check against {@link
@@ -67,6 +75,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
   private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
 
   private static final String VALIDATE_PATH = "/api/v1/validate";
+  private static final String CONVERT_PATH = "/api/v1/convert";
 
   // Deliberately NOT request.getRequestURI().equals(VALIDATE_PATH): getRequestURI() returns the
   // raw, undecoded, un-normalized URI straight off the wire, while SecurityConfig's
@@ -81,6 +90,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
   private static final RequestMatcher VALIDATE_MATCHER =
       PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, VALIDATE_PATH);
 
+  /** Same matcher machinery, same reason, for the conversion endpoint. */
+  private static final RequestMatcher CONVERT_MATCHER =
+      PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, CONVERT_PATH);
+
   // Filters run outside Spring MVC's dispatch, so ApiExceptionHandler's @RestControllerAdvice never
   // sees a rejection this filter makes — the problem body has to be written here, by hand. It goes
   // through Problems so it is provably the same vocabulary the controllers speak, rather than a
@@ -92,62 +105,102 @@ public class RateLimitFilter extends OncePerRequestFilter {
   private static final int MAX_TRACKED_CLIENTS = 10_000;
   private static final int EVICTION_TARGET = MAX_TRACKED_CLIENTS * 3 / 4;
 
-  private final long capacity;
-  private final long refillPerMinute;
+  private final Limit validateLimit;
+  private final Limit convertLimit;
   private final TimeMeter timeMeter;
   private final ConcurrentHashMap<String, ClientBucket> buckets = new ConcurrentHashMap<>();
 
-  public RateLimitFilter(long capacity, long refillPerMinute) {
-    this(capacity, refillPerMinute, TimeMeter.SYSTEM_MILLISECONDS);
+  public RateLimitFilter(
+      long validateCapacity,
+      long validateRefillPerMinute,
+      long convertCapacity,
+      long convertRefillPerMinute) {
+    this(
+        validateCapacity,
+        validateRefillPerMinute,
+        convertCapacity,
+        convertRefillPerMinute,
+        TimeMeter.SYSTEM_MILLISECONDS);
   }
 
   /** Package-private: lets tests substitute a fake clock for deterministic refill assertions. */
-  RateLimitFilter(long capacity, long refillPerMinute, TimeMeter timeMeter) {
-    this.capacity = capacity;
-    this.refillPerMinute = refillPerMinute;
+  RateLimitFilter(
+      long validateCapacity,
+      long validateRefillPerMinute,
+      long convertCapacity,
+      long convertRefillPerMinute,
+      TimeMeter timeMeter) {
+    this.validateLimit =
+        new Limit("validate", VALIDATE_PATH, validateCapacity, validateRefillPerMinute, true);
+    this.convertLimit =
+        new Limit("convert", CONVERT_PATH, convertCapacity, convertRefillPerMinute, false);
     this.timeMeter = timeMeter;
   }
 
   @Override
   protected boolean shouldNotFilter(HttpServletRequest request) {
-    return !VALIDATE_MATCHER.matches(request);
+    return !VALIDATE_MATCHER.matches(request) && !CONVERT_MATCHER.matches(request);
   }
 
   @Override
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
       throws ServletException, IOException {
-    if (isAuthenticated()) {
+    Limit limit = VALIDATE_MATCHER.matches(request) ? validateLimit : convertLimit;
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    boolean authenticated = isAuthenticated(authentication);
+
+    if (limit.exemptsAuthenticated() && authenticated) {
       filterChain.doFilter(request, response);
       return;
     }
-    ConsumptionProbe probe = bucketFor(request.getRemoteAddr()).tryConsumeAndReturnRemaining(1);
+
+    String client = clientKey(request, authentication, authenticated);
+    ConsumptionProbe probe =
+        bucketFor(limit.name() + '|' + client, limit).tryConsumeAndReturnRemaining(1);
     if (probe.isConsumed()) {
       filterChain.doFilter(request, response);
       return;
     }
-    // A security-relevant rejection, so it does not happen in silence. The client address is
-    // the bucket key and is already the only thing this filter knows about the caller.
+    // A security-relevant rejection, so it does not happen in silence. The bucket key is already
+    // the only thing this filter knows about the caller.
     log.warn(
-        "Rate-limited anonymous {} from {} (capacity {}/min)",
-        VALIDATE_PATH,
-        request.getRemoteAddr(),
-        refillPerMinute);
-    writeRateLimited(response, ceilSeconds(probe.getNanosToWaitForRefill()));
+        "Rate-limited {} {} for {} (capacity {}/min)",
+        authenticated ? "authenticated" : "anonymous",
+        limit.path(),
+        client,
+        limit.refillPerMinute());
+    writeRateLimited(response, ceilSeconds(probe.getNanosToWaitForRefill()), limit);
   }
 
-  private static boolean isAuthenticated() {
-    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+  private static boolean isAuthenticated(Authentication authentication) {
     return authentication instanceof JwtAuthenticationToken
         || authentication instanceof ApiKeyAuthenticationToken;
   }
 
-  Bucket bucketFor(String clientIp) {
+  /**
+   * What a caller is bucketed by.
+   *
+   * <p>An authenticated caller is keyed by their <em>credential</em> — {@link
+   * Authentication#getName()}, which is the tenant id for an API key and the token subject for a
+   * JWT login — rather than by IP. That is the right unit for {@code /convert}, where the limit
+   * exists to stop one tenant monopolising the CPU: keying by IP would instead punish every tenant
+   * behind a shared egress address, and would let one tenant multiply their own allowance by
+   * calling from several. Neither value needs a database lookup, which matters in a filter.
+   *
+   * <p>An anonymous caller has no credential, so the client address is all there is.
+   */
+  private static String clientKey(
+      HttpServletRequest request, Authentication authentication, boolean authenticated) {
+    return authenticated ? authentication.getName() : request.getRemoteAddr();
+  }
+
+  Bucket bucketFor(String key, Limit limit) {
     ClientBucket tracked =
         buckets.compute(
-            clientIp,
-            (ip, existing) -> {
-              ClientBucket entry = existing != null ? existing : new ClientBucket(newBucket());
+            key,
+            (ignored, existing) -> {
+              ClientBucket entry = existing != null ? existing : new ClientBucket(newBucket(limit));
               entry.lastAccessNanos.set(System.nanoTime());
               return entry;
             });
@@ -171,15 +224,18 @@ public class RateLimitFilter extends OncePerRequestFilter {
         .forEach(buckets::remove);
   }
 
-  private Bucket newBucket() {
+  private Bucket newBucket(Limit limit) {
     return Bucket.builder()
         .addLimit(
-            limit -> limit.capacity(capacity).refillGreedy(refillPerMinute, Duration.ofMinutes(1)))
+            bandwidth ->
+                bandwidth
+                    .capacity(limit.capacity())
+                    .refillGreedy(limit.refillPerMinute(), Duration.ofMinutes(1)))
         .withCustomTimePrecision(timeMeter)
         .build();
   }
 
-  private void writeRateLimited(HttpServletResponse response, long retryAfterSeconds)
+  private void writeRateLimited(HttpServletResponse response, long retryAfterSeconds, Limit limit)
       throws IOException {
     // Set before Problems.write, which commits the body. jakarta.servlet's HttpServletResponse
     // carries no SC_TOO_MANY_REQUESTS constant (429 predates RFC 6585 in the Servlet spec's own
@@ -191,9 +247,30 @@ public class RateLimitFilter extends OncePerRequestFilter {
         HttpStatus.TOO_MANY_REQUESTS,
         PROBLEM_SLUG,
         "Rate limit exceeded",
-        "Too many anonymous validation requests from this client. Retry after the interval named"
-            + " in the Retry-After header.");
+        "Too many requests to "
+            + limit.path()
+            + " from this client. Retry after the interval named in the Retry-After header.");
   }
+
+  /**
+   * One rate-limited route: its bucket size, and who it applies to.
+   *
+   * @param name the bucket-key prefix, so a caller's allowance on one route is never spent by their
+   *     calls to the other
+   * @param exemptsAuthenticated whether presenting a credential skips the limit entirely. True for
+   *     the public validator, where the limit exists to keep anonymous abuse off a free endpoint
+   *     and a known tenant is not the threat. <strong>False for {@code /convert}</strong>: that
+   *     endpoint requires authentication, so exempting authenticated callers would make the limit
+   *     apply to precisely nobody — and a conversion is the most expensive thing this platform
+   *     does, being a read, two mappings, a write and a full Peppol XSLT run (M4 hostile review,
+   *     finding F9).
+   */
+  record Limit(
+      String name,
+      String path,
+      long capacity,
+      long refillPerMinute,
+      boolean exemptsAuthenticated) {}
 
   /** Ceiling division: the smallest whole-second count that covers {@code nanos} of wait. */
   private static long ceilSeconds(long nanos) {

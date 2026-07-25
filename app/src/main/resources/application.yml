@@ -22,7 +22,7 @@ spring:
     enabled: true
 
   # Application-layer cap on POST /api/v1/validate uploads (SPEC section 4): 2 MB, well below the
-  # validator's own defensive 20 MB guard (EbInterface61Validator.MAX_INPUT_BYTES), so an oversized
+  # validator's own defensive 20 MB guard (InvoiceValidator.MAX_INPUT_BYTES), so an oversized
   # upload is rejected by the servlet container — 413, before a byte reaches the controller — rather
   # than by the validator's internal XML-02 finding. Namespace verified against the Boot 4.1
   # spring-boot-servlet module's configuration metadata (MultipartProperties moved there in the 4.1
@@ -75,6 +75,15 @@ app:
     validate:
       capacity: ${RATE_LIMIT_VALIDATE_CAPACITY:10}
       refill-per-minute: ${RATE_LIMIT_VALIDATE_REFILL_PER_MINUTE:10}
+    # POST /api/v1/convert, limited per CREDENTIAL rather than per IP, and applied to authenticated
+    # callers too — that endpoint requires authentication, so an authenticated bypass would leave a
+    # limit covering nobody. It went unlimited until the M4 hostile review (finding F9) despite
+    # being the most expensive operation in the platform: a read, two mappings, a write, and a full
+    # Peppol XSLT validation of the result. Lower than the validate allowance for exactly that
+    # reason. Generous for a portfolio demo, not tuned against real traffic.
+    convert:
+      capacity: ${RATE_LIMIT_CONVERT_CAPACITY:20}
+      refill-per-minute: ${RATE_LIMIT_CONVERT_REFILL_PER_MINUTE:20}
 
 # OpenAPI document and Swagger UI. Both are served anonymously (SecurityConfig permits them), which
 # is right for a portfolio/dev instance and a decision that deserves an off-switch rather than a

@@ -7,16 +7,16 @@
 
 A self-hostable Java 25 / Spring Boot platform built by [Stoicera Software Group](https://stoicera.com) as a production-grade reference system. Austria's federal government only accepts structured e-invoices (ebInterface or Peppol BIS) via e-rechnung.gv.at — and rejected invoices come back with Schematron output that non-technical users cannot read. This platform closes that gap.
 
-> **Status: Milestone M3 — REST API + persistence + security.** On top of M2's ebInterface 6.1
-> generation and validation, the `app` module is now a persistent, multi-tenant REST API
-> (`/api/v1`): create and list invoices, the public anonymous validator, ebInterface XML output,
-> OpenAPI / Swagger UI, RFC 9457 problem+json, PostgreSQL + Flyway, an append-only audit log, and
-> Keycloak-backed OAuth2 alongside tenant API keys. The web UI lands in a later milestone. See
-> [docs/MILESTONES.md](docs/MILESTONES.md).
+> **Status: Milestone M4 — UBL BIS 3.0 + conversion + PDF.** The platform now speaks both Austrian
+> e-invoice formats. On top of M3's REST API it reads and writes **Peppol BIS Billing 3.0 (UBL
+> 2.1)**, validates it against the **official OpenPeppol rule set** (executed unmodified, at a
+> pinned version), **converts** between ebInterface and UBL through the canonical model with a
+> per-document loss report, and renders a **German PDF print view**. The web UI lands in a later
+> milestone. See [docs/MILESTONES.md](docs/MILESTONES.md).
 
 ## Deutsche Kurzfassung
 
-**einvoice-at** ist eine selbst hostbare Plattform für die österreichische E-Rechnung: Sie **erzeugt** ebInterface 6.1 und Peppol BIS Billing 3.0 (UBL) aus strukturierten Rechnungsdaten, **validiert** hochgeladene XML-Rechnungen gegen XSD, Schematron und österreichische Geschäftsregeln — mit einem menschenlesbaren, deutschen Prüfbericht — und **konvertiert** zwischen beiden Formaten mit dokumentierten Mapping-Grenzen. Optional erklärt ein abschaltbarer KI-Assistent jeden Prüfungsfehler in einfacher Sprache. Aktueller Stand: Milestone M3 (REST-API + Persistenz + Security; die Web-UI folgt in einem späteren Milestone).
+**einvoice-at** ist eine selbst hostbare Plattform für die österreichische E-Rechnung: Sie **erzeugt** ebInterface 6.1 und Peppol BIS Billing 3.0 (UBL) aus strukturierten Rechnungsdaten, **validiert** hochgeladene XML-Rechnungen gegen XSD, Schematron und österreichische Geschäftsregeln — mit einem menschenlesbaren, deutschen Prüfbericht — und **konvertiert** zwischen beiden Formaten mit dokumentierten Mapping-Grenzen. Optional erklärt ein abschaltbarer KI-Assistent jeden Prüfungsfehler in einfacher Sprache. Aktueller Stand: Milestone M4 (beide Formate, Konvertierung mit Verlust-Report, PDF-Druckansicht; die Web-UI folgt in einem späteren Milestone).
 
 ## Architecture
 
@@ -26,15 +26,16 @@ Modular monolith, Maven multi-module; boundary rules are enforced by ArchUnit as
 einvoice-at
 ├── core                  canonical invoice model (EN 16931 core subset), pure Java, zero Spring
 ├── formats-ebinterface   ebInterface 6.1 read/write/validate (wraps ph-ebinterface)
-├── formats-ubl           Peppol BIS 3.0 / UBL 2.1 read/write/validate (wraps ph-ubl) — planned M4
-├── mapping               canonical ↔ formats, golden-file tested
-├── validation            XSD (phive) + own AT-B2G Schematron + Austrian business rules → ValidationReport
-├── rendering             invoice → PDF / HTML print view — planned M4
+├── formats-api           the format adapters' shared vocabulary (strategy contract, read result)
+├── formats-ubl           Peppol BIS 3.0 / UBL 2.1 read/write (wraps ph-ubl)
+├── mapping               canonical ↔ formats (both directions), conversion loss report, golden-file tested
+├── validation            ebInterface: XSD + own AT-B2G Schematron + business rules; UBL: the official OpenPeppol rule set
+├── rendering             invoice → German PDF print view (Apache PDFBox)
 ├── ai-assist             LlmClient port + OpenRouter adapter, feature-flagged, degradable — planned M5
 └── app                   Spring Boot app: REST API, security, persistence, audit (live since M3); web UI planned for a later milestone
 ```
 
-`core`, `formats-ebinterface`, `mapping`, `validation` and `app` are built and tested as of M3; the remaining three rows (`formats-ubl`, `rendering`, `ai-assist`) are `package-info.java`-only stubs today (see the status note above).
+Every module except `ai-assist` is built and tested as of M4; `ai-assist` is a `package-info.java`-only stub until M5.
 
 Stack: Java 25, Spring Boot 4.1, PostgreSQL 17 + Flyway, Thymeleaf + htmx, Keycloak, Testcontainers, Selenium. Rationale in [ADR-0001](docs/adr/0001-java-spring-boot-stack.md).
 
@@ -59,11 +60,14 @@ The `app` module serves the `/api/v1` REST API (M3). Interactive docs: **Swagger
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `POST` | `/api/v1/validate` | public | Validate an uploaded ebInterface 6.1 document (multipart `file`) → `ValidationReport`. Anonymous: nothing is persisted; authenticated: the report is persisted and audited. |
+| `POST` | `/api/v1/validate` | public | Validate an uploaded ebInterface 6.1 **or** Peppol BIS 3.0 UBL document (multipart `file`, format auto-detected) → `ValidationReport`. Anonymous: nothing is persisted; authenticated: the report is persisted and audited. |
 | `POST` | `/api/v1/invoices` | JWT or API key | Create an invoice from canonical JSON → `{id, report}` (201, `Location` header). |
 | `GET` | `/api/v1/invoices` | JWT or API key | The tenant's invoices, newest first, paginated (`page`, `size`). |
 | `GET` | `/api/v1/invoices/{id}` | JWT or API key | The stored canonical JSON. |
 | `GET` | `/api/v1/invoices/{id}/ebinterface` | JWT or API key | The ebInterface 6.1 XML, regenerated on demand. |
+| `GET` | `/api/v1/invoices/{id}/ubl` | JWT or API key | The Peppol BIS Billing 3.0 UBL XML (`ubl:Invoice` or `ubl:CreditNote`, decided by BT-3). |
+| `GET` | `/api/v1/invoices/{id}/pdf` | JWT or API key | A German PDF print view, served inline. |
+| `POST` | `/api/v1/convert?from=&to=` | JWT or API key | Convert between `ebinterface` and `ubl` (multipart `file`) → converted XML + loss report + validation of the result. |
 | `GET` | `/api/v1/reports` | JWT or API key | The tenant's validation reports, paginated. |
 | `GET` | `/api/v1/reports/{id}` | JWT or API key | One stored report, findings included. |
 | `POST` | `/api/v1/api-keys` | JWT only | Mint an API key; the plaintext is returned exactly once. |
@@ -79,8 +83,12 @@ revoke keys. Full auth design and honest known limits:
 [ADR-0006](docs/adr/0006-auth-and-api-security.md).
 
 **Limits.** Request bodies are capped at 2 MB (`MAX_REQUEST_BODY_SIZE`) for multipart uploads and
-plain bodies alike, both answering 413. Anonymous `POST /validate` is rate-limited per IP. A tenant
-holds at most 25 active API keys (`API_KEYS_MAX_ACTIVE_PER_TENANT`); revoked keys keep their rows
+plain bodies alike, both answering 413. Two endpoints are rate-limited, with deliberately different
+policies: anonymous `POST /validate` **per IP** (an authenticated caller is not the threat an open
+endpoint's limit exists for), and `POST /convert` **per credential, authenticated callers
+included** — that endpoint admits no others, so an authenticated bypass would leave a limit
+covering nobody, and a conversion costs a read, two mappings, a write *and* a full Peppol XSLT run.
+Both answer 429 with `Retry-After`. A tenant holds at most 25 active API keys (`API_KEYS_MAX_ACTIVE_PER_TENANT`); revoked keys keep their rows
 for the audit trail and do not count. `OAUTH2_AUDIENCE` optionally requires every token's `aud` to
 name this API — off by default for the single-audience dev realm, recommended for any shared one.
 `API_DOCS_ENABLED=false` removes the OpenAPI document and Swagger UI entirely.
@@ -115,6 +123,19 @@ curl -s -X POST http://localhost:8080/api/v1/validate \
 # 4. Fetch the regenerated ebInterface 6.1 XML for a stored invoice.
 curl -s http://localhost:8080/api/v1/invoices/<id>/ebinterface \
   -H "Authorization: Bearer $TOKEN"
+
+# 5. The same invoice as Peppol BIS Billing 3.0 UBL, and as a PDF you can open.
+curl -s http://localhost:8080/api/v1/invoices/<id>/ubl \
+  -H "Authorization: Bearer $TOKEN"
+curl -s http://localhost:8080/api/v1/invoices/<id>/pdf \
+  -H "Authorization: Bearer $TOKEN" -o rechnung.pdf
+
+# 6. Convert an ebInterface document to UBL. The response carries the converted XML, a report of
+#    everything UBL could not carry, and a validation of the RESULT against the official
+#    OpenPeppol rules — so "can I send this?" is answered together with the document.
+curl -s -X POST "http://localhost:8080/api/v1/convert?from=ebinterface&to=ubl" \
+  -H "Authorization: Bearer $TOKEN" \
+  -F file=@samples/invoice-b2g-sample.ebinterface.xml | jq '{conversion, findings: .report.findings}'
 ```
 
 ## Development
@@ -134,13 +155,46 @@ Testcontainers, so a running Docker daemon is required for the full build. `./mv
 
 Formatting is google-java-format, enforced by Spotless in every build and in CI.
 
+**Security scan.** OWASP Dependency-Check runs as its own CI stage and gates on CVSS ≥ 7. It is a
+Maven profile rather than part of `verify`, because keeping a local NVD copy current is minutes of
+network I/O and would blow the build-time budget:
+
+```bash
+./mvnw -Psecurity verify        # needs NVD_API_KEY in the environment
+```
+
+⚠️ **One-time owner setup:** the NVD rate-limits unauthenticated clients hard enough that a first
+sync stalls, leaves its local database half-written, and then fails with an unrelated-looking error.
+Request a free key at <https://nvd.nist.gov/developers/request-an-api-key> and add it as the
+repository secret `NVD_API_KEY`.
+
+Until that secret exists the CI job **skips the scan** rather than running a doomed one — with a
+warning annotation and a job summary saying so in as many words, because a stage that is
+permanently red for an external reason only teaches people to ignore red. The job is not a no-op
+in the meantime: it still asserts that the scan binds exactly once, at the root. Adding the secret
+turns it into a real gate with no workflow change.
+
 ## Testing
 
 JUnit 5 + AssertJ + Mockito for unit tests, ArchUnit for module-boundary rules, Testcontainers for integration tests, Selenium WebDriver for E2E — built out milestone by milestone per [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md).
 
-**Domain modules.** `core` sits at 99.54 % line / 98.09 % branch coverage (JaCoCo gate 95/90), including a [jqwik](https://jqwik.net) property suite for money/VAT arithmetic and an ArchUnit rule pinning `core` to JDK-only dependencies. The M2 modules carry the same discipline — `formats-ebinterface` and `validation` gate at 90 % line / 85 % branch, `mapping` at 95/90. Mutation testing ([PIT](https://pitest.org)) gates all four in CI — `core` at 90 %, the rest at 85 % — so the coverage numbers have teeth, not just line reach. The security-critical `validation` module (the untrusted-input boundary) is gated deliberately: its surviving mutants are documented equivalent/defensive ones, not shape-asserting gaps.
+**Domain modules.** Every implemented module carries a JaCoCo gate, and five of them a [PIT](https://pitest.org) mutation gate on top, so the coverage numbers have teeth rather than just line reach. Figures below are read off the JaCoCo CSV of a full `./mvnw verify`, not estimated:
 
-**`app` module.** 95.24 % line / 83.33 % branch (JaCoCo gate 90/78, measured across unit *and* integration runs merged — most of this module's behaviour is only observable end to end). 48 unit tests and 70 integration tests across 15 IT classes, the latter against real PostgreSQL and real Keycloak via Testcontainers:
+| Module | Line | Branch | JaCoCo gate | PIT (mutations killed) |
+|---|---|---|---|---|
+| `core` | 99.6 % | 98.3 % | 95/90 | 98 % (126/129) |
+| `mapping` | 99.2 % | 90.6 % | 95/90 | 99 % (411/417) |
+| `validation` | 92.7 % | 87.7 % | 90/85 | 86 % (126/147) |
+| `formats-ebinterface` | 100 % | 100 % | 90/85 | 100 % (12/12) |
+| `formats-ubl` | 98.6 % | 96.3 % | 90/85 | 93 % (27/29) |
+| `rendering` | 95.6 % | 88.8 % | 90/85 | — |
+| `formats-api` | 100 % | 100 % | 100/100 | — |
+
+`core` carries a [jqwik](https://jqwik.net) property suite for money/VAT arithmetic; `mapping` carries round-trip properties in both directions, including one that re-emits a read document and demands byte equality. `formats-api` gates at 100/100 — one record and one interface, where anything less would be a line nobody bothered to test.
+
+**Round trips and golden files.** The two mapper pairs are exercised by jqwik round-trip properties over one shared input space, which is how the formats' asymmetries were established rather than assumed. `UblEndToEndGenerationTest` is the milestone's strongest automated claim: the sample invoice, generated through the real chain, is judged **Peppol-clean by the official OpenPeppol rule set** — an external verdict, not a self-assessment, since those rules are OpenPeppol's and this project only runs them.
+
+**`app` module.** 95.0 % line / 84.3 % branch (JaCoCo gate 90/78, measured across unit *and* integration runs merged — most of this module's behaviour is only observable end to end). 52 unit tests and 83 integration tests across 16 IT classes, the latter against real PostgreSQL and real Keycloak via Testcontainers:
 
 - **Auth matrix** (`AuthMatrixIT`) — both directions of every mechanism: anonymous, unknown key, revoked key, valid key, valid JWT, a bearer header that is not a JWT, an `alg=none` token, a genuine Keycloak token with a rewritten payload, and a request presenting two competing credentials.
 - **Token validation** (`JwtDecoderTest`) — a throwaway JWKS over loopback and self-minted tokens, so wrong issuer, expired `exp`, a foreign signing key, and a foreign key impersonating the real `kid` can each be varied one at a time.
@@ -150,9 +204,60 @@ JUnit 5 + AssertJ + Mockito for unit tests, ArchUnit for module-boundary rules, 
 
 PIT is deliberately *not* applied to `app`: mutating a module whose tests each boot a Spring context and two containers costs minutes per mutant for little signal, and its genuinely algorithmic parts are covered by fast unit tests.
 
+## Conversion and PDF
+
+Converting between the two formats runs **through the canonical model**, never syntax to syntax:
+`source → canonical → target`. The canonical model derives and re-verifies every amount
+([ADR-0003](docs/adr/0003-canonical-model.md)), so a conversion cannot silently change a total — and
+whatever the model cannot represent shows up as a reported loss instead of disappearing.
+
+Every conversion produces a **`ConversionReport`** alongside the document, German first:
+
+| Code | Severity | Means |
+|---|---|---|
+| `CONV-01` | WARN | a value was **lost** — the target format has nowhere to put it |
+| `CONV-02` | INFO | a national or format **convention** was translated |
+| `CONV-03` | INFO | a value survived, but in a **different element** than the obvious one |
+| `CONV-04` | **ERROR** | the source's own stated total **disagrees** with the one derived from its lines |
+
+`isLossless()` and `isTrustworthy()` are deliberately different questions. Dropping a field the
+target has no concept of is normal and leaves a usable document; a changed amount does not.
+`CONV-04` is the only thing that makes a conversion untrustworthy — the derived value wins, and the
+caller is told the document said something else.
+
+The formats lose different things, which is exactly why the report is per document rather than a
+paragraph here. A round trip through UBL returns line ids, exemption reason codes and electronic
+addresses. A trip through ebInterface returns the exemption code too — the code and text share one
+free-text `Comment`, but they are folded in with a structure the reverse mapper unfolds — while line
+ids do not survive (ebInterface identifies a line by position) and electronic addresses cannot,
+because the format has no element for a network address at all.
+
+**Round trips are golden-file tested in both directions** (`CrossFormatRoundTripTest`). Every valid
+ebInterface document in the corpus comes back **byte-for-byte identical** from a trip through UBL;
+the UBL → ebInterface → UBL direction is asserted to lose exactly the endpoint identifiers and
+nothing else. That test is also how the exemption-code recovery above came to exist: the M4 hostile
+review found the cross-format round trip missing, and writing it immediately exposed a defect where
+the comment grew by one category code on every conversion.
+
+`POST /api/v1/convert` also **validates the result** and returns that report too. A converter that
+hands back XML and lets the caller discover at an access point that it fails Peppol has done half a
+job.
+
+**PDF.** `GET /api/v1/invoices/{id}/pdf` renders a German A4 print view — sender and recipient
+blocks, metadata, line items, the VAT breakdown as its own table (§ 11 UStG requires the tax per
+rate, not just a total), totals, payment details. It renders the *canonical* invoice, so the PDF,
+the ebInterface XML and the UBL XML are three views of one document and cannot disagree.
+[ADR-0008](docs/adr/0008-pdf-rendering.md) covers the library choice and the deliberate limits (no
+logo, no embedded XML — this is a print view, not a ZUGFeRD hybrid).
+
 ## Validation pipeline
 
-`EbInterface61Validator` (module `validation`) validates an uploaded ebInterface 6.1 document against the Austrian B2G profile and returns a `ValidationReport` of German-first `Finding`s. The pipeline is staged with hard gating — a document must clear one stage before the next runs, and each stage stops the pipeline when continuing would be meaningless:
+`InvoiceValidator` (module `validation`) validates an uploaded document and returns a `ValidationReport` of German-first `Finding`s. It has **one entry point and two pipelines**, because the two standards are in genuinely different shape:
+
+- **ebInterface 6.1** → XSD, then this project's own AT-B2G Schematron, then hand-written business rules. Three stages, because AUSTRIAPRO publishes no Schematron at all and the profile rules had to be written here ([ADR-0004](docs/adr/0004-validation-pipeline-and-xsd-messages.md)).
+- **Peppol BIS Billing 3.0 (UBL)** → one stage running the **official OpenPeppol rule set**, executed unmodified through phive at a pinned version. That VES already contains XSD, the EN 16931 rules and the Peppol BIS rules in the right order; splitting it up would mean taking the published rule set apart. Findings carry the rule set's **own** assertion ids (`BR-01`, `PEPPOL-EN16931-R010`, `UBL-CR-412`), so a reader can look them up directly. The pinned version is **2025.11**, the set in force as M4 shipped; its successor 2026.5 becomes mandatory 2026-08-17, and the upgrade procedure is in [ADR-0007](docs/adr/0007-ubl-peppol-and-conversion.md).
+
+The ebInterface pipeline is staged with hard gating — a document must clear one stage before the next runs, and each stage stops the pipeline when continuing would be meaningless:
 
 0. **Size guard** — an upload over 20 MB is rejected as `XML-02` before a single byte is parsed: a defensive, module-level cap that protects the validator independently of any caller. This is separate from — and looser than — the stricter 2 MB application-layer cap SPEC §4 places in front of the HTTP endpoint (`POST /api/v1/validate`, live since M3).
 1. **Secure parse** — `SecureXml` parses the upload with an XXE-hardened, namespace-aware `DocumentBuilderFactory` (`disallow-doctype-decl`, external entities/DTD off). Not well-formed XML or a bare `DOCTYPE` → `XML-01`, pipeline stops.
@@ -192,7 +297,9 @@ Target: single Hetzner VPS via Dokploy (Traefik/TLS). Deployment documentation l
 
 ## Standards artefacts & credits
 
-XSD and Schematron handling for ebInterface and Peppol builds on the excellent open-source work of [Philip Helger](https://github.com/phax): [ph-ebinterface](https://github.com/phax/ph-ebinterface), [ph-ubl](https://github.com/phax/ph-ubl), [phive](https://github.com/phax/phive) and [phive-rules](https://github.com/phax/phive-rules) (Apache-2.0/MIT). ebInterface is a standard of [AUSTRIAPRO](https://www.austriapro.at/); Peppol BIS Billing 3.0 is maintained by [OpenPeppol](https://peppol.org/). The AT-B2G Schematron rules (`validation/src/main/resources/schematron/`) are original to this repository — ebInterface ships no official Schematron at all, so there is no AUSTRIAPRO artefact to build them on.
+XSD and Schematron handling for ebInterface and Peppol builds on the excellent open-source work of [Philip Helger](https://github.com/phax): [ph-ebinterface](https://github.com/phax/ph-ebinterface), [ph-ubl](https://github.com/phax/ph-ubl), [phive](https://github.com/phax/phive) and [phive-rules](https://github.com/phax/phive-rules) (Apache-2.0/MIT). PDF rendering uses [Apache PDFBox](https://pdfbox.apache.org/) (Apache-2.0).
+
+ebInterface is a standard of [AUSTRIAPRO](https://www.austriapro.at/); Peppol BIS Billing 3.0 is maintained by [OpenPeppol](https://peppol.org/). The split in how the two are validated here is worth stating plainly: the **Peppol rule sets are OpenPeppol's own, executed unmodified** at a pinned version — this project runs them, it does not reimplement them. The **AT-B2G Schematron rules** (`validation/src/main/resources/schematron/`) are original to this repository, because ebInterface ships no official Schematron at all and there is no AUSTRIAPRO artefact to build them on.
 
 ## License
 

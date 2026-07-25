@@ -117,6 +117,20 @@
       <artifactId>formats-ebinterface</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!-- UBL 2.1 read/write for the conversion endpoint and the UBL invoice output (M4).
+         Reactor-versioned sibling. -->
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>formats-ubl</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- PDF print view for GET /invoices/{id}/pdf (M4). Reactor-versioned sibling; it brings
+         PDFBox, which is why the app can render without knowing anything about PDF itself. -->
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>rendering</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <!-- ph-ebinterface pulls only the Jakarta XML Binding API; the JAXB runtime provider must be
          supplied by the module that actually marshals ebInterface XML at runtime — that is the app,
          once the invoices API writes XML. Opt-in exactly as formats-ebinterface does. Version

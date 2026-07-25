@@ -10,6 +10,8 @@ public enum AuditAction {
   INVOICE_CREATED,
   /** A validation run was executed ({@code POST /api/v1/validate}). */
   VALIDATION_RUN,
+  /** A document was converted between formats ({@code POST /api/v1/convert}). */
+  CONVERSION_RUN,
   /** A tenant API key was minted ({@code POST /api/v1/api-keys}). */
   API_KEY_CREATED,
   /** A tenant API key was revoked ({@code DELETE /api/v1/api-keys/{id}}). */

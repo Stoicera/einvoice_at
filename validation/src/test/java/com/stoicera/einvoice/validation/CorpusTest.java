@@ -17,8 +17,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * Golden-file corpus regression test. Every file under {@code src/test/resources/corpus} is run
- * through the real {@link EbInterface61Validator} and the set of rule ids it fails on is asserted
- * against the expectation documented in {@code corpus/README.md}.
+ * through the real {@link InvoiceValidator} and the set of rule ids it fails on is asserted against
+ * the expectation documented in {@code corpus/README.md}.
  *
  * <p>The corpus is the validator's living specification: it grows by "first a failing corpus file,
  * then the fix" (CLAUDE.md). Each invalid file carries exactly one deliberate defect derived from
@@ -42,7 +42,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  */
 class CorpusTest {
 
-  private final EbInterface61Validator validator = new EbInterface61Validator();
+  private final InvoiceValidator validator = new InvoiceValidator();
 
   /** The binding corpus table (file → expected compliance-affecting rule ids). */
   static List<Arguments> corpus() {
@@ -59,7 +59,18 @@ class CorpusTest {
         Arguments.of("corpus/invalid/at-b2g-02-invalid-iban.xml", Set.of("AT-B2G-02")),
         Arguments.of("corpus/invalid/at-b2g-03-missing-biller-email.xml", Set.of("AT-B2G-03")),
         Arguments.of("corpus/invalid/at-b2g-04-missing-suppliernumber.xml", Set.of("AT-B2G-04")),
-        Arguments.of("corpus/invalid/at-b2g-05-missing-payment-method.xml", Set.of("AT-B2G-05")));
+        Arguments.of("corpus/invalid/at-b2g-05-missing-payment-method.xml", Set.of("AT-B2G-05")),
+        // Peppol BIS Billing 3.0 (M4). Unlike the ebInterface entries above, these are judged by
+        // the official OpenPeppol rule set, so the expected ids are the rule set's OWN assertion
+        // ids rather than anything this project named. The invalid file carries one defect —
+        // neither party has an electronic address — which the rule set reports as two findings,
+        // one per party (R020 seller, R010 buyer); that is the rules being per-party, not the
+        // corpus file carrying two defects.
+        Arguments.of("corpus/valid/peppol-ubl-invoice.xml", Set.of()),
+        Arguments.of("corpus/valid/peppol-ubl-creditnote.xml", Set.of()),
+        Arguments.of(
+            "corpus/invalid/peppol-missing-endpoint-ids.xml",
+            Set.of("PEPPOL-EN16931-R010", "PEPPOL-EN16931-R020")));
   }
 
   @ParameterizedTest(name = "{0} → {1}")

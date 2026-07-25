@@ -40,6 +40,14 @@
       <artifactId>formats-ebinterface</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!-- ReadResult, the outcome type the lenient reader above hands back. It arrives transitively
+         through formats-ebinterface, but ValidationContext calls a method on it directly, so it is
+         declared: this module depends on what it uses. Project module; reactor-versioned. -->
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>formats-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
 
     <!-- phive: the XSD/Schematron validation engine by Philip Helger. phive-api is the executor
          model, phive-xml the XML source binding; both parent-managed (12.1.0), never redeclared.
@@ -63,6 +71,28 @@
     <dependency>
       <groupId>com.helger.phive.rules</groupId>
       <artifactId>phive-rules-ebinterface</artifactId>
+    </dependency>
+    <!-- The official OpenPeppol validation artefacts (M4): EN 16931 + Peppol BIS Billing 3.0
+         Schematron, packaged as phive VES and consumed UNMODIFIED — the promise SPEC §7 made when
+         M2 had to write its own ebInterface Schematron because AUSTRIAPRO publishes none. Which
+         rule-set version is used is pinned in code (PeppolValidationStage), not left to whatever the
+         library defaults to. Parent-managed (phive-rules 4.4.1), never redeclared. -->
+    <dependency>
+      <groupId>com.helger.phive.rules</groupId>
+      <artifactId>phive-rules-peppol</artifactId>
+    </dependency>
+    <!-- UBL 2.1 JAXB types + the marshallers the Peppol VES needs on the classpath to register its
+         executor sets. Parent-managed (ph-ubl 10.2.0), never redeclared. -->
+    <dependency>
+      <groupId>com.helger.ubl</groupId>
+      <artifactId>ph-ubl21</artifactId>
+    </dependency>
+    <!-- UBL namespace lookup and the lenient readers used by the validation context, mirroring the
+         formats-ebinterface dependency above. Project module; reactor-versioned. -->
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>formats-ubl</artifactId>
+      <version>${project.version}</version>
     </dependency>
     <!-- ebInterface 6.1 JAXB types (Ebi61InvoiceType) reached by the validation context's lenient
          reader. Parent-managed (8.1.0), never redeclared. -->
@@ -194,7 +224,15 @@
               <targetClasses>
                 <param>com.stoicera.einvoice.validation.*</param>
               </targetClasses>
-              <!-- Measured mutation score 103/116 (89%) on 2026-07-24; a full run takes ~30 s. The
+              <!-- M4 (2026-07-25): 126/147 = 86 %, a full run ~90 s. That is ONE POINT above the
+                   gate, down from 89 % at M2, because the Peppol stage added 31 mutants of which
+                   the registry/holder and dispatch paths are largely unreachable from a test that
+                   is not itself a full Peppol validation run. The gate is deliberately NOT lowered:
+                   one point of headroom is a signal that this module's next change needs killing
+                   tests with it, and hiding that by moving the bar is exactly the move this repo
+                   refuses elsewhere. Handed to the M4 hostile review.
+
+                   Historical, M2 (2026-07-24): 103/116 (89%), a full run ~30 s. The
                    13 surviving mutants are documented and left on purpose. Six live in SecureXml, in
                    three DISTINCT categories (not one blanket "dominated by disallow-doctype-decl"
                    claim, which was previously and wrongly asserted for all six):
