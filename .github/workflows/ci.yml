@@ -59,6 +59,50 @@ jobs:
       - name: PIT mutation coverage (mutation-gated modules)
         run: ./mvnw -B -ntp -pl core,mapping,validation,formats-ebinterface,formats-ubl -Pmutation test-compile org.pitest:pitest-maven:mutationCoverage
 
+  security-scan:
+    name: Security scan (OWASP Dependency-Check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+      # The NVD data set is large and slow to build from scratch. Caching it keyed on the week
+      # keeps a normal run to an incremental update while still guaranteeing a full refresh at
+      # least weekly, so a stale cache can never quietly hide a new advisory for long.
+      - name: Cache the NVD data
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.m2/repository/org/owasp/dependency-check-data
+          key: nvd-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: nvd-${{ runner.os }}-
+      # An unauthenticated NVD client is rate-limited hard enough that the first sync takes the
+      # better part of an hour and often fails outright. Saying so here means a missing secret
+      # produces an actionable message instead of a puzzling HTTP 403 deep in the plugin output.
+      - name: Check for the NVD API key
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          if [ -z "$NVD_API_KEY" ]; then
+            echo "::warning::NVD_API_KEY is not set. The scan will still run, but the NVD rate-limits"
+            echo "::warning::unauthenticated clients severely and the sync may take ~1h or fail."
+            echo "::warning::Request a free key at https://nvd.nist.gov/developers/request-an-api-key"
+            echo "::warning::and add it as the repository secret NVD_API_KEY."
+          fi
+      - name: OWASP Dependency-Check (fails on CVSS >= 7)
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: ./mvnw -B -ntp -Psecurity verify -DskipTests
+      - name: Upload the dependency-check report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dependency-check-report
+          path: target/dependency-check-report.*
+          retention-days: 14
+
   docker:
     name: Docker image build
     runs-on: ubuntu-latest

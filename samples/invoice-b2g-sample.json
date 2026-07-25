@@ -8,9 +8,11 @@
   "orderReference": "BBG-2026-4711",
   "supplierNumber": "L-100234",
   "seller": { "name": "Stoicera Software GesbR", "vatId": "ATU12345678", "email": "office@stoicera-software.at",
-    "address": { "street": "Hauptplatz 1", "city": "Linz", "postalCode": "4020", "countryCode": "AT" } },
+    "address": { "street": "Hauptplatz 1", "city": "Linz", "postalCode": "4020", "countryCode": "AT" },
+    "electronicAddress": { "scheme": "9915", "value": "ATU12345678" } },
   "buyer": { "name": "Bundesbeschaffung GmbH", "vatId": "ATU87654321",
-    "address": { "street": "Lassallestraße 9b", "city": "Wien", "postalCode": "1020", "countryCode": "AT" } },
+    "address": { "street": "Lassallestraße 9b", "city": "Wien", "postalCode": "1020", "countryCode": "AT" },
+    "electronicAddress": { "scheme": "9915", "value": "ATU87654321" } },
   "lines": [
     { "id": "1", "description": "Softwareentwicklung Juli 2026", "quantity": "80", "unitCode": "HUR", "unitPrice": "120.00", "vatCategory": "STANDARD", "vatPercent": "20" },
     { "id": "2", "description": "Fachliteratur", "quantity": "3", "unitCode": "C62", "unitPrice": "45.50", "vatCategory": "STANDARD", "vatPercent": "10" }

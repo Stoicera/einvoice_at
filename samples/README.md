@@ -61,6 +61,25 @@ pipeline output as its "actual" value; copy that verbatim over this file (and th
 and re-run the portal check. There is no generator flag or `--generate` mode — the acceptance test is
 the single source of the expected bytes.
 
+## `invoice-b2g-sample.ubl.xml`
+
+The **Peppol BIS Billing 3.0 (UBL 2.1)** twin of the same canonical invoice: what
+`InvoiceJsonReader` → `InvoiceToUblMapper` → `Ubl21InvoiceStrategy.write` produces, committed
+verbatim. `validation`'s `UblEndToEndGenerationTest` regenerates it on every run and asserts
+byte-for-byte equality, exactly as its ebInterface sibling is asserted — so this file provably *is*
+the pipeline's output and cannot drift from the mapper.
+
+**It is also validated, on every run, by the official OpenPeppol rule set** (executed unmodified
+through phive at the version pinned in `PeppolValidationStage`) and comes back with zero findings.
+That is a materially stronger claim than the ebInterface twin's automated one: for ebInterface the
+validator applies rules *this project wrote*, because AUSTRIAPRO publishes none, whereas for UBL it
+applies rules OpenPeppol publishes and this project only runs. No portal upload is needed to know
+this document is conformant — the authority's own rules say so in CI.
+
+**Regeneration.** Do not hand-edit. On an intentional mapper or writer change,
+`UblEndToEndGenerationTest.committedUblTwinMatchesTheFreshlyGeneratedXml` fails and reports the
+fresh output as its "actual" value; copy that verbatim over this file.
+
 ### JSON field reference
 
 | Field | Type | Required | Canonical target | Notes |
@@ -77,7 +96,8 @@ the single source of the expected bytes.
 | `seller` | object | yes | `Invoice.seller` (BG-4) | `name`, `vatId`, `address`, `email`. |
 | `buyer` | object | yes | `Invoice.buyer` (BG-7) | `name`, `vatId`, `address`, `email`. |
 | `seller.address` / `buyer.address` | object | yes | `Address` (BG-5 / BG-8) | `street`, `city`, `postalCode`, `countryCode` (ISO 3166-1 alpha-2). |
-| `seller.email` / `buyer.email` | string | no | `Party.email` | Business contact email; maps to `Address/Email` in the ebInterface 6.1 output. Omitted (no `Email` element) when the party carries none. |
+| `seller.email` / `buyer.email` | string | no | `Party.email` | Business contact email; maps to `Address/Email` in the ebInterface 6.1 output and to `cac:Contact/cbc:ElectronicMail` in UBL. Omitted when the party carries none. |
+| `seller.electronicAddress` / `buyer.electronicAddress` | object | no | `Party.electronicAddress` (BT-34/BT-49) | `{"scheme": "...", "value": "..."}`; the scheme is a four-digit EAS code (BT-34-1/BT-49-1). The **network routing address**, a different thing from `email`. Peppol requires it and ebInterface 6.1 has no element for it at all, so it appears in the UBL output as `cbc:EndpointID schemeID="…"` and is reported as a conversion loss when writing ebInterface. Never synthesised from the VAT id — see `ElectronicAddress`'s Javadoc for why. |
 | `lines` | array | yes, ≥1 entry | `Invoice.lines` (BG-25) | See below. |
 | `lines[].id` | string | yes | `InvoiceLine.id` | |
 | `lines[].description` | string | yes | `InvoiceLine.description` | |

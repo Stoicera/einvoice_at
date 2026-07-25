@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  OWASP Dependency-Check suppressions.
+
+  A suppression is a claim that a reported CVE does not apply to this project, and it is only
+  honest if it says why. Every entry MUST carry:
+
+    * the CVE it suppresses,
+    * a dated note explaining why this project is not affected (wrong component matched, the
+      vulnerable code path is unreachable here, fixed in the version we actually use, …),
+    * where possible, an <until> date, so the claim expires and has to be re-argued rather than
+      quietly outliving the reason it was made.
+
+  An empty file is the honest starting state: nothing has been waived. If the scan fails, the first
+  response is to upgrade the dependency, not to add an entry here. Suppressing a finding to make a
+  build green is exactly the move ENGINEERING_STANDARDS §4 exists to prevent — the same rule the
+  ArchUnit and coverage gates get.
+-->
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+</suppressions>

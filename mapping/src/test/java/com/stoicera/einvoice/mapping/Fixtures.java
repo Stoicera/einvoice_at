@@ -6,6 +6,7 @@ import com.stoicera.einvoice.core.invoice.InvoiceTypeCode;
 import com.stoicera.einvoice.core.invoice.ServicePeriod;
 import com.stoicera.einvoice.core.money.Money;
 import com.stoicera.einvoice.core.party.Address;
+import com.stoicera.einvoice.core.party.ElectronicAddress;
 import com.stoicera.einvoice.core.party.Party;
 import com.stoicera.einvoice.core.payment.Iban;
 import com.stoicera.einvoice.core.payment.PaymentMeans;
@@ -312,12 +313,15 @@ public final class Fixtures {
                 "Stoicera Software GesbR",
                 new Address("Hauptplatz 1", "Linz", "4020", "AT"),
                 "ATU12345678",
-                Optional.of("office@stoicera-software.at")))
+                Optional.of("office@stoicera-software.at"),
+                Optional.of(new ElectronicAddress("9915", "ATU12345678"))))
         .buyer(
             new Party(
                 "Bundesbeschaffung GmbH",
                 new Address("Lassallestraße 9b", "Wien", "1020", "AT"),
-                "ATU87654321"))
+                "ATU87654321",
+                Optional.empty(),
+                Optional.of(new ElectronicAddress("9915", "ATU87654321"))))
         .addLine(
             new InvoiceLine(
                 "1",
