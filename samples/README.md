@@ -35,28 +35,24 @@ ignored), so this file provably *is* the pipeline's own output and cannot silent
 mapper. The identical bytes also serve as the `valid/b2g-full.xml` entry of the validation golden-file
 corpus (`validation/src/test/resources/corpus/`).
 
-**Milestone Abnahme (owner action).** This twin is the artifact uploaded **once** to the official
-ebInterface portal check (<https://formvalidation.brz.gv.at/> / the WKO ebInterface validator) to
-confirm the platform's output passes an authoritative external validator, not only our own. That is a
-manual, one-time owner step (Sebastian); the automated acceptance lives in `EndToEndGenerationTest`.
-The portal check **passed** on 2026-07-24: *"Diese Datei ist gültig gemäß ebInterface Standard
-ebInterface 6.1"* (see `docs/worklog.md`, M2 hostile-review fix wave entry, for the full quote and
-date).
+**Milestone Abnahme (owner action).** This twin is the artifact uploaded to the official ebInterface
+portal check (<https://formvalidation.brz.gv.at/> / the WKO ebInterface validator) to confirm the
+platform's output passes an authoritative external validator, not only our own. That is a manual
+owner step (Sebastian); the automated acceptance lives in `EndToEndGenerationTest`.
 
-**IMPORTANT — re-confirmation advisable.** The Abnahme above ran against bytes that have since changed
-twice and has not itself been re-run against either change:
+**Status: PASSED, re-confirmed 2026-07-25 (owner-run) on the bytes committed here** —
+*"Diese Datei ist gültig gemäß ebInterface Standard ebInterface 6.1"*.
 
-1. The M2 hostile-review fix wave's Country-display-name change (finding A6 — the `Country` element
-   text now reads the German display name, e.g. `Österreich`, instead of echoing the ISO code).
-2. **M3 Task 2** (this task): the JSON sample gained a `deliveryDate` (BT-72) and a `Biller` contact
-   `email`, so the twin now also carries a `Delivery/Date` element (right after `InvoiceDate`) and a
-   `Biller/Address/Email` element (after `Country`) — both schema-valid, additive changes; nothing
-   else in the document moved.
+Abnahme history, so the claim above is traceable to the bytes it was made about:
 
-Both changes are schema-valid and neither is expected to regress the portal check, but the exact bytes
-the portal validated on 2026-07-24 are no longer the exact bytes committed here. Re-running the portal
-check on the current bytes is a cheap owner action worth doing before relying on the Abnahme claim for
-the current file.
+| Date | Verdict | Bytes checked |
+|---|---|---|
+| 2026-07-24 | passed | pre-M2-fix-wave twin (`Country` element text echoed the ISO code) |
+| **2026-07-25** | **passed** | **current twin** — after the M2 fix wave's German `Country` display name (finding A6) and M3 Task 2's added `Delivery/Date` (BT-72) and `Biller/Address/Email` |
+
+Re-run the check whenever the twin's bytes change again — that is, whenever
+`EndToEndGenerationTest.committedTwinMatchesTheFreshlyGeneratedXml` fails on an intentional mapper or
+writer change and this file is regenerated (see **Regeneration** below).
 
 **Regeneration.** Do not hand-edit this file. On an *intentional* mapper or writer change,
 `EndToEndGenerationTest.committedTwinMatchesTheFreshlyGeneratedXml` fails and reports the fresh
