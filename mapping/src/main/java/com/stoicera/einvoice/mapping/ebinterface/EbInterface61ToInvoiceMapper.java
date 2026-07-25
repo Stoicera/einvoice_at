@@ -15,7 +15,6 @@ import com.stoicera.einvoice.core.invoice.Invoice;
 import com.stoicera.einvoice.core.invoice.InvoiceLine;
 import com.stoicera.einvoice.core.invoice.InvoiceTypeCode;
 import com.stoicera.einvoice.core.invoice.ServicePeriod;
-import com.stoicera.einvoice.core.money.Money;
 import com.stoicera.einvoice.core.party.Address;
 import com.stoicera.einvoice.core.party.Party;
 import com.stoicera.einvoice.core.payment.Iban;
@@ -26,6 +25,7 @@ import com.stoicera.einvoice.core.tax.VatRate;
 import com.stoicera.einvoice.core.validation.Finding;
 import com.stoicera.einvoice.mapping.conversion.CanonicalResult;
 import com.stoicera.einvoice.mapping.conversion.ConversionNotes;
+import com.stoicera.einvoice.mapping.internal.Currencies;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Currency;
@@ -49,8 +49,8 @@ import java.util.Optional;
  *
  * <h2>What is read back, and what is noted</h2>
  *
- * <p>Every field {@link InvoiceToEbInterface61Mapper} writes is read back. Three of its mappings
- * are not information-preserving in reverse, and each produces a note:
+ * <p>Every field {@link InvoiceToEbInterface61Mapper} writes is read back. Two of its mappings are
+ * not information-preserving in reverse, and each produces a note:
  *
  * <ul>
  *   <li>The e-rechnung.gv.at no-UID convention {@code ATU00000000} becomes a canonical {@code null}
@@ -58,11 +58,16 @@ import java.util.Optional;
  *       it through as a literal VAT id would invent a registration.
  *   <li>The {@code Country} element's German display name is dropped; only the ISO code survives,
  *       which is all the canonical {@link Address} models ({@code CONV-01}).
- *   <li>An exemption reason arrives as one free-text {@code Comment} with a lead-in the forward
- *       mapper composed, because ebInterface has no separate code element. It is read back as the
- *       reason's text with the lead-in stripped; the {@code VATEX} code cannot be recovered
- *       reliably from prose and is noted as lost ({@code CONV-01}).
  * </ul>
+ *
+ * <p>The exemption reason is the interesting third case. ebInterface has no separate element for
+ * BT-121, so the forward mapper folds the code and the text into one {@code Tax/TaxItem/Comment}
+ * behind a lead-in — but it folds them in a <em>structured</em> way, and {@link
+ * #parseExemptionComment} unfolds exactly that structure, so a document this platform wrote
+ * round-trips with code and text intact and produces no note at all. A comment that does not follow
+ * the layout is genuinely foreign prose: it becomes BT-120 text and the missing code is reported
+ * ({@code CONV-01}). Until the M4 hostile review this method gave up on every comment alike, which
+ * both discarded a recoverable code and grew the comment on each round trip.
  *
  * <p>Stateless and safe to share.
  */
@@ -85,6 +90,12 @@ public final class EbInterface61ToInvoiceMapper {
   /** Lead-ins the forward mapper composes onto an exemption comment. */
   private static final List<String> EXEMPTION_LEAD_INS =
       List.of("Übergang der Steuerschuld: ", "Steuerbefreiung: ");
+
+  /**
+   * The prefix EN 16931 gives every BT-121 exemption reason code ({@code VATEX-EU-AE}, {@code
+   * VATEX-EU-G}, …). Used to tell a code field apart from the first words of a free-text reason.
+   */
+  private static final String VATEX_CODE_PREFIX = "VATEX-";
 
   /**
    * Reads {@code ebi} into the canonical model.
@@ -127,8 +138,7 @@ public final class EbInterface61ToInvoiceMapper {
   }
 
   private static Currency currencyOf(Ebi61InvoiceType ebi) {
-    String code = ebi.getInvoiceCurrency();
-    return code == null ? Money.EUR : Currency.getInstance(code);
+    return Currencies.parseOrDefault(ebi.getInvoiceCurrency());
   }
 
   private static InvoiceTypeCode typeOf(Ebi61InvoiceType ebi) {
@@ -237,10 +247,31 @@ public final class EbInterface61ToInvoiceMapper {
   }
 
   /**
-   * Reads exemption reasons back out of the {@code Tax/TaxItem/Comment} free text the forward
-   * mapper composed. The lead-in it prefixed is stripped; the {@code VATEX} code it joined into the
-   * same string is not recovered, because parsing it back out of prose would be guesswork — so the
-   * text survives and the code is reported lost.
+   * Reads exemption reasons back out of the {@code Tax/TaxItem/Comment} the forward mapper
+   * composed.
+   *
+   * <h2>Why this parses rather than gives up</h2>
+   *
+   * <p>This method used to strip the lead-in, keep the entire remainder as BT-120 text, and report
+   * the {@code VATEX} code (BT-121) as unrecoverable "because parsing it back out of prose would be
+   * guesswork". That was wrong on both counts, and the M4 hostile review's missing cross-format
+   * round-trip test (finding F3) is what surfaced it:
+   *
+   * <ul>
+   *   <li>It is not prose. {@link InvoiceToEbInterface61Mapper#exemptionComment} writes {@code
+   *       lead-in + category + " | " + code + " | " + text} — a delimited field list of this
+   *       project's own design. Declining to read back what we ourselves wrote is not caution.
+   *   <li>Keeping the category letter inside the text <strong>corrupted the document on every round
+   *       trip</strong>: the forward mapper prefixed the category again, so {@code
+   *       "Steuerbefreiung: E | VATEX-EU-G | …"} became {@code "E | E | VATEX-EU-G | …"}, then
+   *       {@code "E | E | E | …"} — unbounded growth of a persisted field, invisible to the
+   *       same-format property tests because those compare canonical models rather than emitted
+   *       documents.
+   * </ul>
+   *
+   * <p>A <em>foreign</em> comment is still genuine prose, and is still treated as text with the
+   * code reported lost. The two cases are told apart structurally, by {@link
+   * #parseExemptionComment}, not by guessing.
    */
   private void exemptionReasons(
       Ebi61InvoiceType ebi, Invoice.Builder builder, List<Finding> notes) {
@@ -256,17 +287,47 @@ public final class EbInterface61ToInvoiceMapper {
       if (category == null || !category.requiresExemptionReason()) {
         continue;
       }
-      builder.exemptionReason(category, new VatExemptionReason(null, stripLeadIn(comment)));
-      notes.add(
-          ConversionNotes.lost(
-              "Tax/TaxItem/Comment",
-              "Der Befreiungsgrund wurde als Freitext übernommen; ebInterface führt Code (BT-121)"
-                  + " und Text (BT-120) in einem einzigen Comment-Element, der Code ist daraus nicht"
-                  + " verlässlich rekonstruierbar.",
-              "The exemption reason was read as free text; ebInterface carries the code (BT-121) and"
-                  + " the text (BT-120) in a single Comment element, and the code cannot be"
-                  + " reliably recovered from it."));
+      VatExemptionReason reason = parseExemptionComment(comment, category);
+      builder.exemptionReason(category, reason);
+      if (reason.code() == null) {
+        notes.add(
+            ConversionNotes.lost(
+                "Tax/TaxItem/Comment",
+                "Der Befreiungsgrund wurde als Freitext übernommen; ebInterface führt Code (BT-121)"
+                    + " und Text (BT-120) in einem einzigen Comment-Element, und dieses Dokument"
+                    + " folgt nicht dem Aufbau, aus dem sich der Code verlässlich lesen ließe.",
+                "The exemption reason was read as free text; ebInterface carries the code (BT-121)"
+                    + " and the text (BT-120) in a single Comment element, and this document does"
+                    + " not follow the layout the code could be read from reliably."));
+      }
     }
+  }
+
+  /**
+   * Splits a {@code Tax/TaxItem/Comment} into BT-121 code and BT-120 text.
+   *
+   * <p>Recognised layout, and only this one: the category-specific lead-in, then the category code
+   * matching the tax item's own category, then optionally a {@code VATEX-…} code, then the text —
+   * all {@code " | "}-separated. Every element is checked against something already known
+   * independently (the lead-in against the category, the category token against the tax item's
+   * category, the code against the {@code VATEX-} prefix EN 16931 assigns), so a foreign comment
+   * that merely happens to contain a pipe cannot be mistaken for our own.
+   *
+   * @return the parsed reason; {@code code()} is {@code null} when the comment does not follow the
+   *     layout, in which case the whole comment (minus a recognised lead-in) is the text
+   */
+  private static VatExemptionReason parseExemptionComment(String comment, VatCategory category) {
+    String body = stripLeadIn(comment);
+    String[] parts = body.split(" \\| ", -1);
+
+    // Field 0 must be the category letter the tax item already declares, or this is not our layout.
+    if (parts.length < 2 || !parts[0].equals(category.code())) {
+      return new VatExemptionReason(null, body);
+    }
+    boolean hasCode = parts.length >= 3 && parts[1].startsWith(VATEX_CODE_PREFIX);
+    String text =
+        String.join(" | ", java.util.Arrays.asList(parts).subList(hasCode ? 2 : 1, parts.length));
+    return new VatExemptionReason(hasCode ? parts[1] : null, text.isBlank() ? null : text);
   }
 
   private static String stripLeadIn(String comment) {

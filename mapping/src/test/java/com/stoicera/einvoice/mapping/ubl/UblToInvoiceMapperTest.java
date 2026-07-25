@@ -13,6 +13,10 @@ import com.stoicera.einvoice.mapping.conversion.CanonicalResult;
 import com.stoicera.einvoice.mapping.conversion.ConversionNotes;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import oasis.names.specification.ubl.schema.xsd.commonaggregatecomponents_21.PartyIdentificationType;
+import oasis.names.specification.ubl.schema.xsd.commonaggregatecomponents_21.PaymentMeansType;
+import oasis.names.specification.ubl.schema.xsd.commonaggregatecomponents_21.PeriodType;
+import oasis.names.specification.ubl.schema.xsd.commonaggregatecomponents_21.TaxTotalType;
 import oasis.names.specification.ubl.schema.xsd.creditnote_21.CreditNoteType;
 import oasis.names.specification.ubl.schema.xsd.invoice_21.InvoiceType;
 import org.junit.jupiter.api.Test;
@@ -117,6 +121,103 @@ class UblToInvoiceMapperTest {
     assertThat(mapper.map(ubl).invoice().deliveryDate()).isEmpty();
   }
 
+  /**
+   * A foreign document may carry <em>both</em> a delivery date and an invoice period; the canonical
+   * model holds only one, and the one that is dropped must be reported.
+   *
+   * <p>M4 hostile review, finding F6. § 11 Abs 1 Z 4 UStG makes the two mutually exclusive and
+   * {@code core} enforces that, so our own writer never emits both and no round-trip property could
+   * ever reach this shape. UBL, however, permits both, and a converter's entire job is documents it
+   * did not write. The period was previously discarded in silence — in the one feature whose stated
+   * premise is that nothing disappears without being named.
+   */
+  @Test
+  void reportsTheInvoicePeriodItDropsWhenADeliveryDateIsAlsoPresent() {
+    InvoiceType ubl = ublInvoice(Fixtures.invoiceWithDeliveryDate());
+    PeriodType period = new PeriodType();
+    period.setStartDate(LocalDate.of(2026, 7, 1));
+    period.setEndDate(LocalDate.of(2026, 7, 31));
+    ubl.addInvoicePeriod(period);
+
+    CanonicalResult result = mapper.map(ubl);
+
+    assertThat(result.invoice().deliveryDate()).contains(LocalDate.of(2026, 7, 20));
+    assertThat(result.invoice().servicePeriod()).isEmpty();
+    assertThat(result.notes())
+        .filteredOn(note -> note.ruleId().equals(ConversionNotes.CONV_01))
+        .anySatisfy(
+            note -> {
+              assertThat(note.severity()).isEqualTo(Severity.WARN);
+              assertThat(note.location()).contains("cac:InvoicePeriod");
+              assertThat(note.messageDe()).contains("Leistungszeitraum").doesNotContain("%s");
+              assertThat(note.messageEn()).doesNotContain("%s");
+            });
+  }
+
+  /**
+   * Peppol allows a second {@code cac:TaxTotal} carrying the total in the tax accounting currency.
+   * Only the first is read; that the second exists at all must not vanish (finding F6).
+   */
+  @Test
+  void reportsASecondTaxTotalItDoesNotRead() {
+    InvoiceType ubl = ublInvoice(Fixtures.sampleB2gInvoice());
+    TaxTotalType second = new TaxTotalType();
+    second.setTaxAmount(new BigDecimal("42.00")).setCurrencyID("CHF");
+    ubl.addTaxTotal(second);
+
+    assertThat(mapper.map(ubl).notes())
+        .filteredOn(note -> note.ruleId().equals(ConversionNotes.CONV_01))
+        .anySatisfy(note -> assertThat(note.location()).contains("cac:TaxTotal"));
+  }
+
+  /** A document offering two ways to pay keeps one; the other is a reportable loss (finding F6). */
+  @Test
+  void reportsASecondPaymentMeansItDoesNotRead() {
+    InvoiceType ubl = ublInvoice(Fixtures.sampleB2gInvoice());
+    ubl.addPaymentMeans(new PaymentMeansType());
+
+    assertThat(mapper.map(ubl).notes())
+        .filteredOn(note -> note.ruleId().equals(ConversionNotes.CONV_01))
+        .anySatisfy(note -> assertThat(note.location()).contains("cac:PaymentMeans"));
+  }
+
+  /** Payment terms spread over several notes: only the first survives, and that is said so. */
+  @Test
+  void reportsFurtherPaymentTermsNotesItDoesNotRead() {
+    InvoiceType ubl = ublInvoice(Fixtures.sampleB2gInvoice());
+    ubl.getPaymentTerms()
+        .getFirst()
+        .addNote(
+            new oasis.names.specification.ubl.schema.xsd.commonbasiccomponents_21.NoteType(
+                "Skonto 2 % bei Zahlung binnen 10 Tagen"));
+
+    assertThat(mapper.map(ubl).notes())
+        .filteredOn(note -> note.ruleId().equals(ConversionNotes.CONV_01))
+        .anySatisfy(note -> assertThat(note.location()).contains("cac:PaymentTerms"));
+  }
+
+  /**
+   * The canonical model holds one seller identifier (BT-29); a party carrying several loses the
+   * rest, which is exactly the kind of thing a caller needs told (finding F6).
+   */
+  @Test
+  void reportsFurtherSellerIdentifiersItDoesNotRead() {
+    InvoiceType ubl = ublInvoice(Fixtures.sampleB2gInvoice());
+    PartyIdentificationType second = new PartyIdentificationType();
+    second.setID("GLN-9876543210");
+    ubl.getAccountingSupplierParty().getParty().addPartyIdentification(second);
+
+    assertThat(mapper.map(ubl).notes())
+        .filteredOn(note -> note.ruleId().equals(ConversionNotes.CONV_01))
+        .anySatisfy(note -> assertThat(note.location()).contains("cac:PartyIdentification"));
+  }
+
+  /** The happy path stays quiet: our own output must produce none of the notes above. */
+  @Test
+  void reportsNoStructuralLossForADocumentThisPlatformWrote() {
+    assertThat(mapper.map(ublInvoice(Fixtures.sampleB2gInvoice())).notes()).isEmpty();
+  }
+
   @Test
   void readsAPartyWithoutAVatIdOrContact() {
     InvoiceType ubl = ublInvoice(Fixtures.invoiceWithoutVatIds());
@@ -171,6 +272,57 @@ class UblToInvoiceMapperTest {
     ubl.setDocumentCurrencyCode((String) null);
 
     assertThat(mapper.map(ubl).invoice().currency().getCurrencyCode()).isEqualTo("EUR");
+  }
+
+  /**
+   * A currency code that is not ISO 4217 is a domain rejection, not a crash.
+   *
+   * <p>M4 hostile review, finding F2. {@code cbc:DocumentCurrencyCode} is an unconstrained string
+   * in UBL 2.1 — the code list is enforced by Schematron, and this adapter deliberately reads with
+   * schema validation off — so the value arrives here exactly as the uploader wrote it. Handing it
+   * straight to {@link java.util.Currency#getInstance(String)} made the JDK throw {@code
+   * IllegalArgumentException}, which no handler maps, so {@code POST /convert} answered <b>500</b>
+   * and logged a stack trace for a request that was simply invalid. Every other bad value on this
+   * path ({@code Iban}, {@code VatRate}, a missing party) raises {@link
+   * InvariantViolationException} and becomes a 422; the currency was the one place a JDK factory
+   * was trusted to behave like a {@code core} invariant.
+   */
+  @Test
+  void rejectsACurrencyCodeThatIsNotIso4217() {
+    InvoiceType ubl = ublInvoice(Fixtures.sampleB2gInvoice());
+    ubl.setDocumentCurrencyCode("BOGUS");
+
+    assertThatThrownBy(() -> mapper.map(ubl))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("BOGUS")
+        .hasMessageContaining("ISO 4217");
+  }
+
+  /** The same guard on the credit-note overload, which reads the code through its own path. */
+  @Test
+  void rejectsACurrencyCodeThatIsNotIso4217OnACreditNote() {
+    CreditNoteType ubl = ublCreditNote(Fixtures.reverseChargeCreditNote());
+    ubl.setDocumentCurrencyCode("nonsense");
+
+    assertThatThrownBy(() -> mapper.map(ubl)).isInstanceOf(InvariantViolationException.class);
+  }
+
+  /**
+   * The echo is bounded. A hostile document can carry a megabyte-long "currency code"; the message
+   * a caller gets back must not be a megabyte long, and must not carry control characters into a
+   * log line. {@code Texts.safeEcho} caps at 64 characters plus an ellipsis.
+   */
+  @Test
+  void boundsTheEchoOfAnAbsurdCurrencyCode() {
+    InvoiceType ubl = ublInvoice(Fixtures.sampleB2gInvoice());
+    ubl.setDocumentCurrencyCode("X".repeat(5000) + "\n injected log line");
+
+    assertThatThrownBy(() -> mapper.map(ubl))
+        .isInstanceOf(InvariantViolationException.class)
+        .satisfies(
+            thrown -> {
+              assertThat(thrown.getMessage()).hasSizeLessThan(200).doesNotContain("\n");
+            });
   }
 
   @Test

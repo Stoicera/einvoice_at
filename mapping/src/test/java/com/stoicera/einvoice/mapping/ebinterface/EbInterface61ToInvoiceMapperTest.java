@@ -8,6 +8,7 @@ import com.helger.ebinterface.v61.Ebi61InvoiceType;
 import com.helger.ebinterface.v61.Ebi61UnitPriceType;
 import com.helger.ebinterface.v61.Ebi61UnitType;
 import com.stoicera.einvoice.core.InvariantViolationException;
+import com.stoicera.einvoice.core.tax.VatExemptionReason;
 import com.stoicera.einvoice.core.validation.Finding;
 import com.stoicera.einvoice.core.validation.Severity;
 import com.stoicera.einvoice.mapping.Fixtures;
@@ -126,18 +127,88 @@ class EbInterface61ToInvoiceMapperTest {
         .anySatisfy(note -> assertThat(note.location()).isEqualTo("Biller/Address/Country"));
   }
 
+  /**
+   * An exemption comment this project wrote is read back into its parts — code and text — and no
+   * loss is reported, because nothing was lost.
+   *
+   * <p>M4 hostile review, finding F3a. The reverse mapper used to take the whole comment as free
+   * text and note the {@code VATEX} code as unrecoverable, on the stated grounds that "parsing it
+   * back out of prose would be guesswork". It is not prose: the forward mapper composes {@code
+   * lead-in + category + " | " + code + " | " + text}, a delimited field list of this project's own
+   * design, and reading back what we ourselves wrote is not guesswork.
+   */
   @Test
-  void readsAnExemptionCommentBackAsTextAndReportsTheLostCode() {
+  void recoversBothCodeAndTextFromAnExemptionCommentThisProjectWrote() {
     Ebi61InvoiceType ebi = FORWARD.map(Fixtures.reverseChargeCreditNote());
 
     CanonicalResult result = mapper.map(ebi);
 
-    assertThat(result.invoice().vatBreakdown().getFirst().exemptionReason().text())
-        .doesNotStartWith("Übergang der Steuerschuld: ");
-    assertThat(result.invoice().vatBreakdown().getFirst().exemptionReason().code()).isNull();
+    VatExemptionReason reason = result.invoice().vatBreakdown().getFirst().exemptionReason();
+    assertThat(reason.code()).isEqualTo("VATEX-EU-AE");
+    assertThat(reason.text()).isEqualTo("Reverse charge");
+    assertThat(result.notes())
+        .filteredOn(note -> note.ruleId().equals(ConversionNotes.CONV_01))
+        .noneSatisfy(note -> assertThat(note.location()).isEqualTo("Tax/TaxItem/Comment"));
+  }
+
+  /**
+   * A <em>foreign</em> comment is genuine prose, and stays text — with the loss reported, exactly
+   * as before. The structured read above must not turn every free-text remark into a fake code.
+   */
+  @Test
+  void keepsAForeignExemptionCommentAsTextAndReportsTheLostCode() {
+    Ebi61InvoiceType ebi = FORWARD.map(Fixtures.reverseChargeCreditNote());
+    ebi.getTax()
+        .getTaxItem()
+        .getFirst()
+        .setComment("Steuerschuld geht auf den Leistungsempfänger über, siehe § 19 UStG");
+
+    CanonicalResult result = mapper.map(ebi);
+
+    VatExemptionReason reason = result.invoice().vatBreakdown().getFirst().exemptionReason();
+    assertThat(reason.code()).isNull();
+    assertThat(reason.text())
+        .isEqualTo("Steuerschuld geht auf den Leistungsempfänger über, siehe § 19 UStG");
     assertThat(result.notes())
         .filteredOn(note -> note.ruleId().equals(ConversionNotes.CONV_01))
         .anySatisfy(note -> assertThat(note.location()).isEqualTo("Tax/TaxItem/Comment"));
+  }
+
+  /**
+   * The comment must not grow when a document goes out and comes back — M4 hostile review, finding
+   * F3a, the defect the missing cross-format round-trip test (F3) would have caught.
+   *
+   * <p>Because the reverse mapper kept the whole comment as text, and the forward mapper then
+   * prefixed the category code again, each ebInterface → canonical → ebInterface trip produced
+   * {@code "Steuerbefreiung: E | E | VATEX-EU-G | …"}, then {@code "E | E | E | …"}. Unbounded
+   * growth of a persisted field across repeated conversions — silent, and invisible to any
+   * same-format property test, since those compare canonical models rather than emitted documents.
+   */
+  @Test
+  void anExemptionCommentIsStableAcrossRepeatedRoundTrips() {
+    String first =
+        FORWARD.map(Fixtures.exemptInvoice()).getTax().getTaxItem().getFirst().getComment();
+
+    String second =
+        FORWARD
+            .map(mapper.map(FORWARD.map(Fixtures.exemptInvoice())).invoice())
+            .getTax()
+            .getTaxItem()
+            .getFirst()
+            .getComment();
+    String third =
+        FORWARD
+            .map(
+                mapper
+                    .map(FORWARD.map(mapper.map(FORWARD.map(Fixtures.exemptInvoice())).invoice()))
+                    .invoice())
+            .getTax()
+            .getTaxItem()
+            .getFirst()
+            .getComment();
+
+    assertThat(second).isEqualTo(first);
+    assertThat(third).isEqualTo(first);
   }
 
   /**
@@ -171,6 +242,27 @@ class EbInterface61ToInvoiceMapperTest {
     ebi.setInvoiceCurrency((String) null);
 
     assertThat(mapper.map(ebi).invoice().currency().getCurrencyCode()).isEqualTo("EUR");
+  }
+
+  /**
+   * A currency code that is not ISO 4217 is a domain rejection, not a crash — M4 hostile review,
+   * finding F2, the ebInterface half.
+   *
+   * <p>The ebInterface XSD does restrict {@code InvoiceCurrency} to a code list, but this adapter
+   * reads with schema validation off (validation is the validation module's job), so a foreign
+   * document's value reaches the mapper unchecked exactly as UBL's does. Both reverse mappers had
+   * the same hole and both are closed the same way; see the UBL test's Javadoc for the full
+   * rationale.
+   */
+  @Test
+  void rejectsACurrencyCodeThatIsNotIso4217() {
+    Ebi61InvoiceType ebi = FORWARD.map(Fixtures.sampleB2gInvoice());
+    ebi.setInvoiceCurrency("BOGUS");
+
+    assertThatThrownBy(() -> mapper.map(ebi))
+        .isInstanceOf(InvariantViolationException.class)
+        .hasMessageContaining("BOGUS")
+        .hasMessageContaining("ISO 4217");
   }
 
   @Test
