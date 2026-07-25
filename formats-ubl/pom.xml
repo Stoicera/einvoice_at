@@ -13,4 +13,147 @@
   <artifactId>formats-ubl</artifactId>
 
   <name>einvoice-at :: formats-ubl</name>
+
+  <dependencies>
+    <!-- The shared format-adapter vocabulary (InvoiceFormatStrategy, ReadResult). Project module;
+         its version comes from the reactor, never pinned here. Deliberately NOT core: a formats-*
+         module is a standards-only adapter and its own ArchUnit test forbids the core edge. -->
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>formats-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- UBL 2.1 JAXB types + marshallers by Philip Helger. Version pinned by the parent
+         dependencyManagement (ph-ubl 10.2.0); never redeclare it here. Peppol BIS Billing 3.0 is a
+         customisation OF UBL 2.1, not a syntax of its own, so this is the whole syntax layer — the
+         BIS rules themselves are Schematron and live in the validation module via phive-rules. -->
+    <dependency>
+      <groupId>com.helger.ubl</groupId>
+      <artifactId>ph-ubl21</artifactId>
+    </dependency>
+    <!-- ph-ubl pulls only the Jakarta XML Binding API; the JAXB runtime provider must be supplied
+         by the consuming module for marshalling/unmarshalling to work. Exactly the opt-in
+         formats-ebinterface already carries, and the one M2's worklog predicted this module would
+         need. Version parent-managed. -->
+    <dependency>
+      <groupId>org.glassfish.jaxb</groupId>
+      <artifactId>jaxb-runtime</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>prepare-agent</id>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>report</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>report</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>check-coverage</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <rule>
+                  <element>BUNDLE</element>
+                  <limits>
+                    <limit>
+                      <counter>LINE</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.90</minimum>
+                    </limit>
+                    <limit>
+                      <counter>BRANCH</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.85</minimum>
+                    </limit>
+                  </limits>
+                </rule>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <!-- Mutation testing gives the coverage number teeth; run locally with
+         ./mvnw -pl formats-ubl -Pmutation test-compile org.pitest:pitest-maven:mutationCoverage
+         Deliberately NOT "-am": the bare pitest goal runs against every project the reactor
+         selects, so "-am" would drag the other gated modules into the same reactor — see
+         mapping/pom.xml's reactor-landmine note. The CI job lists the gated modules together and
+         installs the dependency closure first for exactly that reason.
+         Kept out of the default verify because PIT re-runs the suite once per mutant. -->
+    <profile>
+      <id>mutation</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.pitest</groupId>
+            <artifactId>pitest-maven</artifactId>
+            <version>${pitest.version}</version>
+            <dependencies>
+              <dependency>
+                <groupId>org.pitest</groupId>
+                <artifactId>pitest-junit5-plugin</artifactId>
+                <version>${pitest-junit5.version}</version>
+              </dependency>
+            </dependencies>
+            <configuration>
+              <targetClasses>
+                <param>com.stoicera.einvoice.formats.ubl.*</param>
+              </targetClasses>
+              <!-- Measured mutation score 27/29 (93%) on 2026-07-25; a full run takes ~15 s. Gate
+                   mirrors formats-ebinterface's 85: the two modules are the same kind of thin
+                   standards adapter with a small mutant count, where a single benign future
+                   survivor is worth several points. This module runs no jqwik property tests, so
+                   the score is deterministic.
+
+                   The 2 survivors are both RemoveVoidMethodCall on UblRootElement.peek's
+                   XMLInputFactory hardening (SUPPORT_DTD, IS_SUPPORTING_EXTERNAL_ENTITIES), and
+                   they are genuinely EQUIVALENT with respect to that method: peek stops at the
+                   first start element, which no DTD, entity or external resource can influence, so
+                   neither setting can change its answer and no test can distinguish the mutants.
+                   They are kept as defence in depth for a future change that reads further —
+                   recorded here rather than papered over with a test that only appears to kill
+                   them (the same treatment SecureXml's survivors get in validation/pom.xml). -->
+              <mutationThreshold>85</mutationThreshold>
+              <timestampedReports>false</timestampedReports>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>
