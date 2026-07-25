@@ -1,5 +1,6 @@
 package com.stoicera.einvoice.app.api;
 
+import com.stoicera.einvoice.app.convert.UnsupportedConversionException;
 import com.stoicera.einvoice.app.http.RequestBodySizeLimitFilter;
 import com.stoicera.einvoice.app.http.RequestBodyTooLargeException;
 import com.stoicera.einvoice.app.invoice.DuplicateInvoiceException;
@@ -58,6 +59,23 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         HttpStatus.UNPROCESSABLE_ENTITY,
         "invalid-invoice",
         "Invoice violates a domain rule",
+        ex.getMessage());
+  }
+
+  /**
+   * The requested conversion cannot be performed as asked: the two formats are the same, or the
+   * upload is not in the format the caller declared.
+   *
+   * <p>The detail is echoed because it is entirely about the caller's own request — a format name
+   * they sent and a format name we detected — and knowing which of the two is wrong is the whole
+   * value of the message.
+   */
+  @ExceptionHandler(UnsupportedConversionException.class)
+  ProblemDetail handleUnsupportedConversion(UnsupportedConversionException ex) {
+    return problem(
+        HttpStatus.BAD_REQUEST,
+        "unsupported-conversion",
+        "Unsupported conversion",
         ex.getMessage());
   }
 

@@ -103,6 +103,32 @@ public final class InvoiceValidator {
   }
 
   /**
+   * Identifies {@code xml}'s format without validating it.
+   *
+   * <p>Conversion needs the answer to "what is this?" separately from "is this valid?": a caller
+   * declaring {@code from=ebinterface} while uploading UBL should be told exactly that, rather than
+   * getting a confusing parse failure from deep inside a mapper. The two questions share this
+   * module's parse and detection stages, so exposing the first one here keeps a second, drifting
+   * copy of namespace detection from appearing in the application layer.
+   *
+   * @param xml the raw upload bytes; {@code null} is treated as empty input
+   * @return the detected format, or {@link DocumentFormat#UNKNOWN} for anything unrecognised —
+   *     including bytes that are not well-formed XML at all
+   */
+  public DocumentFormat detectFormat(byte[] xml) {
+    byte[] input = xml == null ? new byte[0] : xml;
+    if (input.length > MAX_INPUT_BYTES) {
+      return DocumentFormat.UNKNOWN;
+    }
+    ValidationContext ctx = new ValidationContext(input);
+    if (ctx.dom().isEmpty()) {
+      return DocumentFormat.UNKNOWN;
+    }
+    formatDetection.apply(ctx);
+    return ctx.format();
+  }
+
+  /**
    * The official OpenPeppol rule set, run whole. It sequences XSD and its two Schematron layers
    * internally, so there is nothing for this method to gate.
    */
