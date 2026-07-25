@@ -14,6 +14,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import oasis.names.specification.ubl.schema.xsd.invoice_21.InvoiceType;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -42,7 +43,8 @@ class UblEndToEndGenerationTest {
   private static final Path SAMPLES = Path.of("..", "samples");
   private static final Path SAMPLE_JSON = SAMPLES.resolve("invoice-b2g-sample.json");
   private static final Path SAMPLE_UBL_TWIN = SAMPLES.resolve("invoice-b2g-sample.ubl.xml");
-  private static final String CORPUS_PEPPOL_RESOURCE = "corpus/valid/peppol-ubl-invoice.xml";
+  private static final String CORPUS_PEPPOL_INVOICE = "corpus/valid/peppol-ubl-invoice.xml";
+  private static final String CORPUS_PEPPOL_CREDIT_NOTE = "corpus/valid/peppol-ubl-creditnote.xml";
 
   private static final InvoiceToUblMapper MAPPER = new InvoiceToUblMapper();
   private static final Ubl21InvoiceStrategy INVOICES = new Ubl21InvoiceStrategy();
@@ -82,17 +84,61 @@ class UblEndToEndGenerationTest {
     assertThat(normalise(generated)).isEqualTo(normalise(committed));
   }
 
-  /** The corpus copy and the samples twin are the same bytes, so neither can drift alone. */
+  /**
+   * The committed Peppol corpus entries are their generator's own output, byte for byte.
+   *
+   * <p>M4 hostile review, finding F5. This test used to be named for a comparison it did not make:
+   * it was called {@code corpusCopyMatchesTheSamplesTwin…} and carried a comment claiming "the
+   * corpus copy and the samples twin are the same bytes, so neither can drift alone", while the
+   * body compared the corpus file to <em>nothing</em> — it asserted only that the file began with
+   * an XML declaration, mentioned the UBL namespace, and was valid. Three assertions that hold for
+   * any Peppol-valid invoice in existence. A reader scanning the test list saw a drift guard where
+   * none existed, which is worse than an obviously missing test.
+   *
+   * <p>The corpus entries are not copies of the samples twin — {@code samples/README.md} never
+   * claimed they were, and they are generated from {@link PeppolFixtures}, a different invoice. So
+   * the honest guard is the one their own README promises: regenerate from the documented chain and
+   * demand the committed bytes match, exactly as {@link
+   * #committedUblTwinMatchesTheFreshlyGeneratedXml()} does for the samples twin.
+   *
+   * <p>On an intentional mapper or writer change this fails and reports the fresh output as its
+   * "actual" value; copy that verbatim over the corpus file.
+   */
   @Test
-  void corpusCopyMatchesTheSamplesTwinModuloTheirDifferentSourceInvoices() throws IOException {
-    String corpus = readCorpusResource();
+  void committedPeppolCorpusInvoiceIsItsGeneratorsOwnOutput() throws IOException {
+    String generated = INVOICES.write(ublInvoiceOf(PeppolFixtures.peppolReadyInvoice()));
 
-    // Not byte-equal to the samples twin — the corpus entry is generated from PeppolFixtures, a
-    // different invoice — but it must be the same shape of document from the same writer.
-    assertThat(normalise(corpus))
-        .startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
-        .contains("urn:oasis:names:specification:ubl:schema:xsd:Invoice-2");
-    assertThat(validator.validate(corpus.getBytes(StandardCharsets.UTF_8)).isValid()).isTrue();
+    assertThat(normalise(readCorpusResource(CORPUS_PEPPOL_INVOICE)))
+        .isEqualTo(normalise(generated));
+  }
+
+  /** The credit note is a separate document type with a separate rule set, so it is pinned too. */
+  @Test
+  void committedPeppolCorpusCreditNoteIsItsGeneratorsOwnOutput() throws IOException {
+    String generated =
+        CREDIT_NOTES.write(
+            ((UblDocument.CreditNote) MAPPER.map(PeppolFixtures.peppolReadyCreditNote()))
+                .document());
+
+    assertThat(normalise(readCorpusResource(CORPUS_PEPPOL_CREDIT_NOTE)))
+        .isEqualTo(normalise(generated));
+  }
+
+  /**
+   * And the committed bytes are Peppol-clean — the claim {@code corpus/README.md} makes for them,
+   * asserted rather than assumed. Kept separate from the drift guards above so a failure says which
+   * of the two things broke: the file drifted, or the rule set stopped accepting it.
+   */
+  @Test
+  void committedPeppolCorpusEntriesAreAcceptedByTheOfficialRuleSet() throws IOException {
+    for (String resource : new String[] {CORPUS_PEPPOL_INVOICE, CORPUS_PEPPOL_CREDIT_NOTE}) {
+      ValidationReport report =
+          validator.validate(readCorpusResource(resource).getBytes(StandardCharsets.UTF_8));
+
+      assertThat(report.findings())
+          .withFailMessage("%s must be Peppol-clean; the rule set reported: %s", resource, report)
+          .isEmpty();
+    }
   }
 
   private static String generateFromSample() throws IOException {
@@ -105,13 +151,15 @@ class UblEndToEndGenerationTest {
     }
   }
 
-  private static String readCorpusResource() throws IOException {
+  private static InvoiceType ublInvoiceOf(Invoice invoice) {
+    return ((UblDocument.CommercialInvoice) MAPPER.map(invoice)).document();
+  }
+
+  private static String readCorpusResource(String resource) throws IOException {
     try (InputStream in =
-        UblEndToEndGenerationTest.class
-            .getClassLoader()
-            .getResourceAsStream(CORPUS_PEPPOL_RESOURCE)) {
+        UblEndToEndGenerationTest.class.getClassLoader().getResourceAsStream(resource)) {
       if (in == null) {
-        throw new IllegalStateException("Corpus resource not found: " + CORPUS_PEPPOL_RESOURCE);
+        throw new IllegalStateException("Corpus resource not found: " + resource);
       }
       return new String(in.readAllBytes(), StandardCharsets.UTF_8);
     }

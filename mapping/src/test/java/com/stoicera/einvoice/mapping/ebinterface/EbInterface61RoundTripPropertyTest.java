@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.stoicera.einvoice.core.invoice.Invoice;
 import com.stoicera.einvoice.core.invoice.InvoiceLine;
 import com.stoicera.einvoice.core.validation.Finding;
+import com.stoicera.einvoice.formats.ebinterface.EbInterface61Strategy;
 import com.stoicera.einvoice.mapping.CanonicalInvoiceArbitraries;
 import com.stoicera.einvoice.mapping.conversion.CanonicalResult;
 import net.jqwik.api.Arbitrary;
@@ -31,14 +32,21 @@ import net.jqwik.api.Provide;
  *       survive; the original id strings do not.
  *   <li><strong>Electronic addresses (BT-34/BT-49).</strong> ebInterface 6.1 has no element for a
  *       network routing address at all.
- *   <li><strong>Exemption reason codes (BT-121).</strong> ebInterface folds code and text into one
- *       free-text {@code Comment}; the text comes back, the code cannot.
  * </ul>
+ *
+ * <p><strong>Exemption reason codes (BT-121) used to be on that list and are not any more.</strong>
+ * ebInterface does fold code and text into one {@code Comment}, but the forward mapper folds them
+ * with a structure the reverse mapper can unfold, so both halves survive a trip through a document
+ * this platform wrote — see {@code EbInterface61ToInvoiceMapper.parseExemptionComment}. The
+ * property below pins that, and it is not a formality: while the code was being discarded, the
+ * category letter it was discarded alongside stayed in the text and the forward mapper prefixed a
+ * fresh one on the way out, so the comment grew on every round trip (M4 hostile review, F3a).
  */
 class EbInterface61RoundTripPropertyTest {
 
   private static final InvoiceToEbInterface61Mapper FORWARD = new InvoiceToEbInterface61Mapper();
   private static final EbInterface61ToInvoiceMapper REVERSE = new EbInterface61ToInvoiceMapper();
+  private static final EbInterface61Strategy STRATEGY = new EbInterface61Strategy();
 
   @Property(tries = 200)
   void headerAndPartyFieldsSurviveTheRoundTrip(@ForAll("canonicalInvoices") Invoice original) {
@@ -105,6 +113,37 @@ class EbInterface61RoundTripPropertyTest {
       assertThat(roundTripped.vatBreakdown().get(i).taxAmount())
           .isEqualTo(original.vatBreakdown().get(i).taxAmount());
     }
+  }
+
+  /**
+   * The exemption reason survives whole — code <em>and</em> text — through a document this platform
+   * wrote. See the class Javadoc for why this used to be listed as impossible.
+   */
+  @Property(tries = 200)
+  void exemptionReasonsSurviveWithBothCodeAndText(@ForAll("canonicalInvoices") Invoice original) {
+    Invoice roundTripped = roundTrip(original).invoice();
+
+    for (int i = 0; i < original.vatBreakdown().size(); i++) {
+      assertThat(roundTripped.vatBreakdown().get(i).exemptionReason())
+          .isEqualTo(original.vatBreakdown().get(i).exemptionReason());
+    }
+  }
+
+  /**
+   * Emitting, reading and re-emitting must be a fixed point: the second document is byte-identical
+   * to the first.
+   *
+   * <p>This is the property that would have caught the exemption comment growing on every trip (M4
+   * hostile review, F3a). The canonical-model assertions above could not see it — they compare
+   * {@code Invoice} objects, and the corruption lived in the emitted XML. Comparing the documents
+   * closes that blind spot for every field at once, which is worth more than the one bug it found.
+   */
+  @Property(tries = 200)
+  void reEmittingAReadDocumentReproducesItExactly(@ForAll("canonicalInvoices") Invoice original) {
+    String once = STRATEGY.write(FORWARD.map(original));
+    String twice = STRATEGY.write(FORWARD.map(REVERSE.map(FORWARD.map(original)).invoice()));
+
+    assertThat(twice).isEqualTo(once);
   }
 
   /**
