@@ -62,7 +62,7 @@ the query, not in caller code.
 Postgres wired to the Spring datasource via `@ServiceConnection`. The image is pinned to the exact
 digest used by `docker-compose.yml` so tests and the local stack run byte-identical Postgres.
 
-**Rate limiting is in-memory and single-instance, on purpose (T8).** `POST /api/v1/validate`'s
+**Rate limiting is in-memory and single-instance, on purpose.** `POST /api/v1/validate`'s
 anonymous side needs a limit (SPEC §4) with nothing else in front of it yet, so `RateLimitFilter`
 (`app/.../security`) keys a `com.bucket4j:bucket4j-core` token bucket per `HttpServletRequest
 .getRemoteAddr()` in a bounded, evicting `ConcurrentHashMap` — no external store. Two consequences

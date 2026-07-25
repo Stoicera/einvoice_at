@@ -6,9 +6,9 @@ package com.stoicera.einvoice.app.audit;
  * never casually.
  */
 public enum AuditAction {
-  /** A tenant invoice was created ({@code POST /api/v1/invoices}, T6). */
+  /** A tenant invoice was created ({@code POST /api/v1/invoices}). */
   INVOICE_CREATED,
-  /** A validation run was executed ({@code POST /api/v1/validate}, T7). */
+  /** A validation run was executed ({@code POST /api/v1/validate}). */
   VALIDATION_RUN,
   /** A tenant API key was minted ({@code POST /api/v1/api-keys}). */
   API_KEY_CREATED,

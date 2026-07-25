@@ -65,7 +65,7 @@ app:
     max-active-per-tenant: ${API_KEYS_MAX_ACTIVE_PER_TENANT:25}
 
   # Per-IP rate limiting on the anonymous side of POST /api/v1/validate only (SecurityConfig wires
-  # RateLimitFilter; T8, SPEC section 4). A fresh IP starts with `capacity` tokens and regenerates
+  # RateLimitFilter; SPEC section 4). A fresh IP starts with `capacity` tokens and regenerates
   # `refill-per-minute` tokens every 60s (bucket4j "greedy" refill — spread evenly across the
   # minute, not released in one lump). Defaults are deliberately generous for a portfolio demo, not
   # tuned against real traffic. Test contexts override both (AbstractKeycloakIT raises the shared

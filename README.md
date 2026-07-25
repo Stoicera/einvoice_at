@@ -70,11 +70,20 @@ The `app` module serves the `/api/v1` REST API (M3). Interactive docs: **Swagger
 | `GET` | `/api/v1/api-keys` | JWT only | The tenant's keys (active and revoked), without secrets. |
 | `DELETE` | `/api/v1/api-keys/{id}` | JWT only | Revoke a key (soft: `revokedAt` stamped, row retained). |
 
-**Auth modes.** Two mechanisms, one per request: an OAuth2 **bearer JWT** from Keycloak
+**Auth modes.** Two mechanisms, exactly one per request: an OAuth2 **bearer JWT** from Keycloak
 (`Authorization: Bearer <token>`) for interactive logins, or a tenant **API key**
-(`X-Api-Key: eiv_…`) for machines. `POST /api/v1/validate` is public (no credential). API-key
-management (`/api/v1/api-keys`) is JWT-only — an API key can neither mint nor revoke keys. Full auth
-design and honest known limits: [ADR-0006](docs/adr/0006-auth-and-api-security.md).
+(`X-Api-Key: eiv_…`) for machines. Presenting both is refused with 400 (RFC 6750 §3.1) rather than
+letting filter order decide which tenant the request runs as. `POST /api/v1/validate` is public (no
+credential). API-key management (`/api/v1/api-keys`) is JWT-only — an API key can neither mint nor
+revoke keys. Full auth design and honest known limits:
+[ADR-0006](docs/adr/0006-auth-and-api-security.md).
+
+**Limits.** Request bodies are capped at 2 MB (`MAX_REQUEST_BODY_SIZE`) for multipart uploads and
+plain bodies alike, both answering 413. Anonymous `POST /validate` is rate-limited per IP. A tenant
+holds at most 25 active API keys (`API_KEYS_MAX_ACTIVE_PER_TENANT`); revoked keys keep their rows
+for the audit trail and do not count. `OAUTH2_AUDIENCE` optionally requires every token's `aud` to
+name this API — off by default for the single-audience dev realm, recommended for any shared one.
+`API_DOCS_ENABLED=false` removes the OpenAPI document and Swagger UI entirely.
 
 **Response envelope.** `POST /invoices` and `POST /validate` both answer with a two-field envelope
 `{"id", "report"}`: the persisted row's id (`null` for an anonymous `validate`, which persists
@@ -127,11 +136,19 @@ Formatting is google-java-format, enforced by Spotless in every build and in CI.
 
 ## Testing
 
-JUnit 5 + AssertJ + Mockito for unit tests, ArchUnit for module-boundary rules, Testcontainers for integration tests, Selenium WebDriver for E2E — built out milestone by milestone per [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md). Currently: `core` domain model at 99.54 % line / 98.09 % branch coverage (JaCoCo gate: 95/90), including
-a [jqwik](https://jqwik.net) property suite for money/VAT arithmetic and an ArchUnit rule
-pinning `core` to JDK-only dependencies. Plus the application smoke test on the health endpoint.
-Mutation testing ([PIT](https://pitest.org)) gates all four implemented modules in CI — `core` at 90 %, and `mapping`, `validation` and `formats-ebinterface` at 85 % — so the coverage numbers have teeth, not just line reach. The security-critical `validation` module (the untrusted-input boundary) is gated deliberately: its surviving mutants are documented equivalent/defensive ones, not shape-asserting gaps.
-The M2 modules carry the same JaCoCo discipline — `formats-ebinterface` and `validation` gate at 90 % line / 85 % branch, `mapping` at 95/90.
+JUnit 5 + AssertJ + Mockito for unit tests, ArchUnit for module-boundary rules, Testcontainers for integration tests, Selenium WebDriver for E2E — built out milestone by milestone per [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md).
+
+**Domain modules.** `core` sits at 99.54 % line / 98.09 % branch coverage (JaCoCo gate 95/90), including a [jqwik](https://jqwik.net) property suite for money/VAT arithmetic and an ArchUnit rule pinning `core` to JDK-only dependencies. The M2 modules carry the same discipline — `formats-ebinterface` and `validation` gate at 90 % line / 85 % branch, `mapping` at 95/90. Mutation testing ([PIT](https://pitest.org)) gates all four in CI — `core` at 90 %, the rest at 85 % — so the coverage numbers have teeth, not just line reach. The security-critical `validation` module (the untrusted-input boundary) is gated deliberately: its surviving mutants are documented equivalent/defensive ones, not shape-asserting gaps.
+
+**`app` module.** 95.24 % line / 83.33 % branch (JaCoCo gate 90/78, measured across unit *and* integration runs merged — most of this module's behaviour is only observable end to end). 48 unit tests and 70 integration tests across 15 IT classes, the latter against real PostgreSQL and real Keycloak via Testcontainers:
+
+- **Auth matrix** (`AuthMatrixIT`) — both directions of every mechanism: anonymous, unknown key, revoked key, valid key, valid JWT, a bearer header that is not a JWT, an `alg=none` token, a genuine Keycloak token with a rewritten payload, and a request presenting two competing credentials.
+- **Token validation** (`JwtDecoderTest`) — a throwaway JWKS over loopback and self-minted tokens, so wrong issuer, expired `exp`, a foreign signing key, and a foreign key impersonating the real `kid` can each be varied one at a time.
+- **Tenant isolation** — for invoices, reports *and* API keys: one tenant can never read, revoke or list another's rows.
+- **Transactional guarantees** (`ApiKeyServiceTransactionIT`) — a failing audit write rolls the key write back with it.
+- **The rest** — Flyway migration and index assertions, repository round-trips through JSONB/`char`/`numeric` columns, rate limiting, request-body caps, security headers, the OpenAPI document and its off-switch, and the ArchUnit cross-module rules.
+
+PIT is deliberately *not* applied to `app`: mutating a module whose tests each boot a Spring context and two containers costs minutes per mutant for little signal, and its genuinely algorithmic parts are covered by fast unit tests.
 
 ## Validation pipeline
 

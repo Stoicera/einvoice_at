@@ -6,8 +6,8 @@ import java.util.UUID;
 
 /**
  * Body of {@code POST /api/v1/validate}, identical for every caller: the {@link ValidationReport}
- * (T6's pinned wire contract, reused as-is) plus the id of the persisted {@code ReportEntity} — or
- * {@code null} when nothing was persisted.
+ * (the same wire contract {@code POST /api/v1/invoices} answers with, reused as-is) plus the id of
+ * the persisted {@code ReportEntity} — or {@code null} when nothing was persisted.
  *
  * <p>{@code id} is {@code null} for an anonymous caller: anonymous validation writes zero database
  * rows (GDPR stance, SPEC section 8), so there is no id to return. An authenticated caller (JWT or

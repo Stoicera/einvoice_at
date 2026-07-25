@@ -63,9 +63,11 @@ Key rules (ArchUnit-enforced as the involved modules gain code; the core rule is
 - `GET /invoices`, `GET /reports` — per-tenant listing, pagination.
 - Errors: RFC 9457 problem+json everywhere.
 
-Security: public endpoints = `/`, `/validator`, `POST /validate` (rate-limited, max 2 MB, upload discarded after processing). Everything else: OAuth2 (Keycloak) or `X-Api-Key`. Audit log entries for create/validate/convert with tenant, timestamp, hash of payload (not payload itself).
+Security: public endpoints = `/`, `/validator`, `POST /validate` (rate-limited, max 2 MB, upload discarded after processing). Everything else: OAuth2 (Keycloak) or `X-Api-Key` — exactly one of the two per request, a request presenting both being refused with 400 (RFC 6750 §3.1). Audit log entries for create/validate/convert with tenant, timestamp, hash of payload (not payload itself).
 
 _M3 sync (2026-07-24):_ Realized under `/api/v1` as built. `POST /invoices` and `POST /validate` each answer with a two-field envelope `{"id", "report"}` — the persisted row's id (`null` for an anonymous `validate`, which persists nothing) plus the `ValidationReport`. The invoice format output shipped this milestone is `GET /invoices/{id}/ebinterface` (the `ubl`/`pdf` variants arrive with their modules, M4). API-key management (`POST`/`GET`/`DELETE /api/v1/api-keys`) is added and restricted to OAuth2 (JWT) logins, so an API key can neither mint nor revoke keys. Every problem+json `type` is a stable URI under `https://einvoice-at.stoicera.com/problems/`. Auth design and honest known limits: [ADR-0006](adr/0006-auth-and-api-security.md). `POST /convert` and `POST /reports/{id}/explain` remain later milestones (M4/M5).
+
+_M3 hostile-review fix wave (2026-07-25):_ The 2 MB cap now covers **every** request body, not only multipart uploads — no Boot or Tomcat property bounds an ordinary body, and `POST /invoices` buffers its own whole, so an application-layer filter ahead of Spring Security enforces it and answers the same 413 `content-too-large` the multipart cap does. Three further bounds/switches, all documented in `.env.example`: `OAUTH2_AUDIENCE` (optional `aud` validation, closing the limit ADR-0006 had recorded as open), `API_KEYS_MAX_ACTIVE_PER_TENANT` (default 25 active keys, revoked rows retained and uncounted), and `API_DOCS_ENABLED` (default on; `false` removes the OpenAPI document and Swagger UI).
 
 ## 5. Web UI (Thymeleaf + htmx)
 

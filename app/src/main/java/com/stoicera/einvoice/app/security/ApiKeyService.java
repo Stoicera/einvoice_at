@@ -13,8 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Application service behind the API-key management endpoints: mint, list, revoke — all scoped to
- * the caller's tenant. Extracted from {@code ApiKeyController} (SPEC §2, task 10): controllers
- * reach persistence only through services/security components, never repositories directly. Sits in
+ * the caller's tenant. Extracted from {@code ApiKeyController} (SPEC §2): controllers reach
+ * persistence only through services/security components, never repositories directly. Sits in
  * {@code ..app.security..}, alongside {@link ApiKeys} and {@link CurrentTenant}, since API keys are
  * a security concern rather than a business one (unlike {@code InvoiceService}/{@code
  * ReportService} in their own {@code ..app.invoice../..app.report..} packages).

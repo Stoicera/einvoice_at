@@ -30,20 +30,22 @@ import org.springframework.util.StringUtils;
  *
  * <p>Two authentication mechanisms sit side by side: an OAuth2 resource server validating Keycloak
  * JWTs, and the {@link ApiKeyAuthFilter} resolving {@code X-Api-Key} headers ahead of the bearer
- * filter. A request presents one or the other.
+ * filter. A request presents one or the other — enforced, not assumed: presenting both is refused
+ * with 400 by {@link ApiKeyAuthFilter}, since otherwise filter ordering alone would decide which
+ * tenant the request ran as.
  *
  * <p>Authorization is expressed in the rule set, not scattered through controllers:
  *
  * <ul>
- *   <li>public: {@code POST /api/v1/validate} (the anonymous validator, endpoint arrives in T7),
- *       the health probes, and the OpenAPI docs/UI (springdoc arrives in T9);
+ *   <li>public: {@code POST /api/v1/validate} (the anonymous validator), the health probes, and the
+ *       OpenAPI docs/UI (which can be switched off entirely with {@code API_DOCS_ENABLED=false});
  *   <li>{@code /api/v1/api-keys/**}: JWT logins only ({@code ROLE_USER}) — an API key ({@code
  *       ROLE_API_KEY}) must never mint or revoke API keys;
  *   <li>everything else: authenticated.
  * </ul>
  *
  * <p>{@link RateLimitFilter} adds a per-IP token bucket in front of anonymous calls to the public
- * validator only (T8, SPEC section 4) — see that class's Javadoc for the full rationale.
+ * validator only (SPEC section 4) — see that class's Javadoc for the full rationale.
  */
 @Configuration
 @EnableWebSecurity

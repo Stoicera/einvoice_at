@@ -1,6 +1,6 @@
 # ADR-0006 — Authentication and API security: Keycloak resource server, API keys, tenant model
 
-Date: 2026-07-24 · Status: accepted
+Date: 2026-07-24 · Status: accepted · Amended 2026-07-25 (M3 hostile-review fix wave: audience validation, credential exclusivity, default bounds, api-docs switch, problem-vocabulary and logging corrections)
 
 ## Kontext
 
@@ -9,9 +9,9 @@ interactive dashboard user who logs in through a browser, and a machine — a te
 connector — driving the API headless. SPEC §1/§4 fix the shape of the answer (Spring Security as the
 framework, Keycloak as the IdP, `X-Api-Key` for machine access, RFC 9457 problem+json for every
 error) and Engineering Standards §9 mandates an ADR that records *why* that shape and, just as
-importantly, what it deliberately does not yet defend. ADR-0005 owns the persistence baseline (and,
-since T8, the rate limiter's single-instance honesty); this ADR is the security companion the
-`SecurityConfig` CSRF comment points at.
+importantly, what it deliberately does not yet defend. ADR-0005 owns the persistence baseline and
+the rate limiter's single-instance honesty; this ADR is the security companion the `SecurityConfig`
+CSRF comment points at.
 
 ## Entscheidung
 
@@ -26,7 +26,8 @@ the "do we need Keycloak?" question §9 asks answered concretely: yes, as the Id
 Security as the resource server.
 
 **Two authentication mechanisms sit side by side, one per request.** `ApiKeyAuthFilter` resolves an
-`X-Api-Key` header ahead of the bearer-token filter; a request presents a JWT *or* a key, never both.
+`X-Api-Key` header ahead of the bearer-token filter; a request presents a JWT *or* a key, never both
+(enforced — see "Exactly one credential per request" below).
 Authorization lives in the rule set, not scattered through controllers: `POST /api/v1/validate` is
 `permitAll` (the public validator), `/api/v1/api-keys/**` requires a JWT login (`ROLE_USER`), and
 everything else under `/api/**` is `authenticated`. A JWT login is granted `ROLE_USER`; an API key
@@ -70,13 +71,49 @@ guard nothing here while breaking non-browser clients. Spring's default security
 left in place. (When the M3+ browser dashboard introduces a cookie-backed session, that surface will
 need its own CSRF stance — out of scope for this stateless API.)
 
+**Exactly one credential per request — enforced, not assumed.** `ApiKeyAuthFilter` runs before the
+bearer-token filter, whose authentication simply overwrites this one's, so "a request presents a JWT
+*or* a key" was a property of filter ordering rather than of the system: a request carrying tenant
+A's key and tenant B's token silently executed as tenant B. In a multi-tenant billing API, which
+tenant owns a write must not be an accident of ordering. Presenting both is now refused with
+`400 multiple-credentials`, the answer RFC 6750 §3.1 already prescribes. Only a *bearer*
+`Authorization` competes — a `Basic` header is not a credential this API accepts and must not turn an
+ordinary API-key request into an error.
+
+**Bounded by default.** Three limits, each configurable, each defaulting to a value that is safe
+rather than generous: request bodies at 2 MB (`MAX_REQUEST_BODY_SIZE`), applied to plain bodies as
+well as multipart uploads — nothing in Boot or Tomcat bounds an ordinary body, and `POST /invoices`
+buffers its own whole, so the cap is enforced by a filter ahead of Spring Security (an oversized body
+is refused *before* authentication, never after the server has already buffered it); active API keys
+at 25 per tenant (`API_KEYS_MAX_ACTIVE_PER_TENANT`), with revoked rows retained for the audit trail
+and not counted; and the per-IP anonymous rate limit on `POST /validate` already described in
+ADR-0005.
+
+**The API description is publishable, not published by default-without-thinking.** The OpenAPI
+document and Swagger UI are served anonymously, which is right for a local or portfolio instance —
+but springdoc warns about exactly that on every boot, and a full API description of a B2G invoicing
+system reaching anonymous callers should be a decision. `API_DOCS_ENABLED=false` removes both (one
+flag, so the document and the UI can never disagree about being exposed).
+
 **One problem vocabulary.** Every error is RFC 9457 `application/problem+json` with a stable `type`
 URI under `https://einvoice-at.stoicera.com/problems/` — one slug per condition (`invalid-json`,
-`invalid-invoice`, `invoice-not-found`, `report-not-found`, `duplicate-invoice`, `rate-limited`, …).
-`ApiExceptionHandler` also stamps this namespace onto Spring MVC's own framework problems (415, 405,
-413, a missing multipart part → 400, …) so the whole API speaks one vocabulary, and the rate-limit
-filter — which runs outside MVC dispatch, where `@RestControllerAdvice` never sees it — writes the
-same shape by hand. The catch-all 500 never leaks an exception message, class name or stack trace.
+`invalid-invoice`, `invoice-not-found`, `report-not-found`, `api-key-not-found`,
+`duplicate-invoice`, `api-key-limit-reached`, `content-too-large`, `multiple-credentials`,
+`rate-limited`, …). `ApiExceptionHandler` also stamps this namespace onto Spring MVC's own framework
+problems (415, 405, 413, a missing multipart part → 400, …) so the whole API speaks one vocabulary,
+and the filters — which run outside MVC dispatch, where `@RestControllerAdvice` never sees them —
+write the same shape through the shared `Problems` helper rather than a second copy of the
+convention. Services throw **domain** exceptions and never `ResponseStatusException`: that class
+exists only to smuggle an HTTP status out of a service, and where it was used (`ApiKeyService`) it
+also left the condition speaking the framework's generic `not-found` type. An ArchUnit rule now keeps
+it out of everything but `..app.api..`.
+
+The catch-all 500 never leaks an exception message, class name or stack trace **to the caller** — and
+never discards it on the server either. It was doing both before the M3 hostile review: a production
+500 left no trace anywhere, since the module had no logger at all. Security-relevant events (an
+unresolvable API key, a rate-limited caller, an oversized body, two credentials, a provisioned
+tenant, an unhandled error) are now logged, with no credential ever written in full — a rejected key
+appears only as the same 8-character non-secret display prefix the `api_key` table already stores.
 
 ## Konsequenzen — and honest known limits
 
