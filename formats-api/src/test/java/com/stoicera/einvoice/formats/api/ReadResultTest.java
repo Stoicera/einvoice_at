@@ -1,4 +1,4 @@
-package com.stoicera.einvoice.formats.ebinterface;
+package com.stoicera.einvoice.formats.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

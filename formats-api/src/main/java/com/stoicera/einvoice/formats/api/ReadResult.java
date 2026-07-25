@@ -1,10 +1,10 @@
-package com.stoicera.einvoice.formats.ebinterface;
+package com.stoicera.einvoice.formats.api;
 
 import java.util.List;
 
 /**
- * Outcome of a lenient {@link EbInterfaceVersionStrategy#read(byte[])} or {@link
- * EbInterfaceVersionStrategy#read(org.w3c.dom.Node)}.
+ * Outcome of a lenient {@link InvoiceFormatStrategy#read(byte[])} or {@link
+ * InvoiceFormatStrategy#read(org.w3c.dom.Node)}.
  *
  * <p>{@code document} is {@code null} on failure and non-null on success. {@link #isSuccess()} is
  * the single source of truth for whether the read succeeded — callers MUST decide success from it
@@ -19,7 +19,7 @@ import java.util.List;
  * @param document the parsed document, or {@code null} if the read failed
  * @param errors all collected diagnostics (any severity), never {@code null}; may be non-empty on a
  *     successful read
- * @param <T> the version-specific JAXB document type
+ * @param <T> the format-specific JAXB document type
  */
 public record ReadResult<T>(T document, List<String> errors) {
 

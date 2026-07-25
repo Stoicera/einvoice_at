@@ -40,6 +40,14 @@
       <artifactId>formats-ebinterface</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!-- ReadResult, the outcome type the lenient reader above hands back. It arrives transitively
+         through formats-ebinterface, but ValidationContext calls a method on it directly, so it is
+         declared: this module depends on what it uses. Project module; reactor-versioned. -->
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>formats-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
 
     <!-- phive: the XSD/Schematron validation engine by Philip Helger. phive-api is the executor
          model, phive-xml the XML source binding; both parent-managed (12.1.0), never redeclared.

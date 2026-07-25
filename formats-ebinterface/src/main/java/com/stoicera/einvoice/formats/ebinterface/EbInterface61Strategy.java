@@ -6,6 +6,7 @@ import com.helger.ebinterface.EEbInterfaceVersion;
 import com.helger.ebinterface.EbInterface61Marshaller;
 import com.helger.ebinterface.v61.Ebi61InvoiceType;
 import com.helger.jaxb.GenericJAXBMarshaller;
+import com.stoicera.einvoice.formats.api.ReadResult;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -74,11 +75,29 @@ public final class EbInterface61Strategy implements EbInterfaceVersionStrategy<E
 
   @Override
   public String write(Ebi61InvoiceType invoice) {
-    String xml =
+    return requireMarshalled(
         newMarshaller()
             .setFormattedOutput(true)
             .setCharset(StandardCharsets.UTF_8)
-            .getAsString(invoice);
+            .getAsString(invoice));
+  }
+
+  /**
+   * Turns {@code getAsString}'s "null means it failed" convention into an exception.
+   *
+   * <p>{@link com.helger.jaxb.IJAXBWriter#getAsString} is declared nullable and answers {@code
+   * null} — it does not throw — when the underlying marshal fails. Without this guard {@link
+   * #write(Ebi61InvoiceType)} would hand its caller a {@code null} String and the failure would
+   * surface far from its cause.
+   *
+   * <p>Package-private and static so the policy can be pinned by a direct unit test (the same shape
+   * {@code XsdValidationStage}'s helpers use). Feeding the strategy a tree that actually makes the
+   * marshaller fail is not a viable test: ph-ebinterface's writer escapes or drops even characters
+   * that are unrepresentable in XML 1.0 (a raw {@code U+0000}, a lone surrogate), so no input we
+   * can legitimately build reaches the null return. The guard stays because the library's contract
+   * permits it, not because a fixture can provoke it.
+   */
+  static String requireMarshalled(String xml) {
     if (xml == null) {
       throw new IllegalStateException("ebInterface 6.1 document could not be marshalled.");
     }

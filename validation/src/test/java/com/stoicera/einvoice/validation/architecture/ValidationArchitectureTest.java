@@ -20,7 +20,11 @@ import org.junit.jupiter.api.Test;
  * <p>Beyond the negative rules, a positive whitelist ({@link #dependsOnlyOnAllowedModules()}) pins
  * the exact set of packages main code may reach, so an accidental dependency on a sibling module
  * ({@code rendering}, {@code ai-assist}) or a raw parser internal fails loudly rather than sliding
- * in unnoticed — the same shape {@code mapping} already carries (finding A8).
+ * in unnoticed — the same shape {@code mapping} already carries (finding A8). It earned its keep in
+ * M4: extracting {@code ReadResult} into the new {@code formats-api} module silently gave this
+ * module a fresh cross-module edge (through {@code ValidationContext}'s call to {@code
+ * ReadResult.document()}), and this rule is what surfaced it, so the edge could be declared in the
+ * POM and admitted here on purpose rather than arriving as an undeclared transitive.
  */
 class ValidationArchitectureTest {
 
@@ -74,6 +78,7 @@ class ValidationArchitectureTest {
         .resideInAnyPackage(
             "com.stoicera.einvoice.validation..",
             "com.stoicera.einvoice.core..",
+            "com.stoicera.einvoice.formats.api..",
             "com.stoicera.einvoice.formats.ebinterface..",
             "com.helger..",
             "java..",

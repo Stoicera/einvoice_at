@@ -29,6 +29,7 @@
 
   <modules>
     <module>core</module>
+    <module>formats-api</module>
     <module>formats-ebinterface</module>
     <module>formats-ubl</module>
     <module>mapping</module>
