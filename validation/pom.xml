@@ -224,7 +224,15 @@
               <targetClasses>
                 <param>com.stoicera.einvoice.validation.*</param>
               </targetClasses>
-              <!-- Measured mutation score 103/116 (89%) on 2026-07-24; a full run takes ~30 s. The
+              <!-- M4 (2026-07-25): 126/147 = 86 %, a full run ~90 s. That is ONE POINT above the
+                   gate, down from 89 % at M2, because the Peppol stage added 31 mutants of which
+                   the registry/holder and dispatch paths are largely unreachable from a test that
+                   is not itself a full Peppol validation run. The gate is deliberately NOT lowered:
+                   one point of headroom is a signal that this module's next change needs killing
+                   tests with it, and hiding that by moving the bar is exactly the move this repo
+                   refuses elsewhere. Handed to the M4 hostile review.
+
+                   Historical, M2 (2026-07-24): 103/116 (89%), a full run ~30 s. The
                    13 surviving mutants are documented and left on purpose. Six live in SecureXml, in
                    three DISTINCT categories (not one blanket "dominated by disallow-doctype-decl"
                    claim, which was previously and wrongly asserted for all six):

@@ -27,3 +27,16 @@ German domain terms stay German in code, docs and messages where they are legall
 | **API-Schlüssel** | API key — a machine credential for headless access to the REST API, presented as the `X-Api-Key` request header. Format `eiv_` + URL-safe random; only its SHA-256 is stored (`api_key.key_hash`), the plaintext being shown exactly once at creation and never retrievable again. Minted and revoked only by an OAuth2 (JWT) login, never by another API key (`ApiKeyController` / `ApiKeyService`; ADR-0006, M3). Revocation is soft — `revoked_at` is stamped and the row retained, so the audit trail survives. |
 | **Lieferdatum** | Delivery date (EN 16931 BT-72) — the single day a supply was rendered. Modelled on `core` as `Invoice.deliveryDate` (added M3), mutually exclusive with the Leistungszeitraum: § 11 Abs 1 Z 4 UStG requires the day of delivery *or* the period, never both, and that invariant is enforced by `Invoice`. Maps to the ebInterface `Delivery/Date` branch (module `mapping`). |
 | **Leistungszeitraum** | Service period (EN 16931 BG-14; start BT-73, end BT-74) — the span of days over which a supply was rendered, used when it is not a single-day event. Modelled on `core` as `Invoice.servicePeriod`, a `ServicePeriod(from, to)` record (added M3) that rejects a `to` before its `from`; mutually exclusive with the Lieferdatum (see there). Maps to the ebInterface `Delivery/Period` branch (module `mapping`). |
+
+## M4 — UBL, Peppol und Konvertierung
+
+| Begriff | Erklärung |
+|---|---|
+| **UBL** (Universal Business Language) | OASIS-XML-Standard für Geschäftsdokumente. Peppol BIS Billing 3.0 ist eine *Customisation von* UBL 2.1, keine eigene Syntax: alles, was BIS zusätzlich fordert, ist Schematron. |
+| **Peppol BIS Billing 3.0** | Der europäische Rechnungs-Regelsatz von OpenPeppol auf Basis von EN 16931. Wird hier **unverändert ausgeführt**, an einer im Code gepinnten Version (ADR-0007). |
+| **VES** (Validation Executor Set) | phives Bündel aus XSD- und Schematron-Stufen für genau ein Dokument-Profil in genau einer Version. Ein Peppol-VES enthält XSD, EN-16931- und BIS-Regeln bereits in der richtigen Reihenfolge. |
+| **EAS** (Electronic Address Scheme) | Vierstellige Codeliste, die sagt, *in welchem Namensraum* eine elektronische Adresse zu lesen ist (BT-34-1/BT-49-1). Ohne Schema ist eine Endpoint-ID bedeutungslos. |
+| **Elektronische Adresse** (BT-34/BT-49) | Das *Postfach im Netzwerk*, an das ein Dokument zugestellt wird — nicht die Kontakt-E-Mail (BT-43/BT-58). Peppol verlangt sie, ebInterface 6.1 hat kein Element dafür. Wird nie aus der UID synthetisiert (ADR-0007 Entscheidung 5). |
+| **Verlust-Report** (`ConversionReport`) | Was eine Konvertierung nicht mitnehmen konnte, pro Dokument und deutsch zuerst: `CONV-01` Verlust, `CONV-02` übersetzte Konvention, `CONV-03` verschobenes Feld, `CONV-04` abweichende Summe. |
+| **Gutschrift als eigene Syntax** | UBL macht die Dokumentart zum *Wurzelelement*: BT-3 380 ist ein `ubl:Invoice`, 381 ein `ubl:CreditNote` — anderer Namensraum, anderer JAXB-Typ, anderer Peppol-Regelsatz. ebInterface unterscheidet dieselbe Sache über ein Attribut. |
+| **Druckansicht** | Die menschenlesbare PDF-Fassung einer Rechnung. *Kein* Hybrid-Dokument (ZUGFeRD/Factur-X): es ist kein XML eingebettet (ADR-0008 Entscheidung 5). |
