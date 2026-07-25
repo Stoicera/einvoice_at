@@ -8,7 +8,19 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
+/**
+ * The format strings here are the ones production actually produces — {@code ebinterface} and
+ * {@code ubl}, the published {@code POST /convert?from=&to=} vocabulary.
+ *
+ * <p>They used to be {@code ebinterface-6.1} / {@code ubl-2.1}: values no caller ever passes,
+ * borrowed from a {@code TargetFormat.id()} that turned out to have no call sites at all. A test
+ * exercising a value space the shipped code never enters cannot catch a regression in it, which is
+ * why the M4 hostile review (finding F7) counted this as a test gap rather than cosmetics.
+ */
 class ConversionReportTest {
+
+  private static final String FROM = "ebinterface";
+  private static final String TO = "ubl";
 
   private static final Finding LOSS = ConversionNotes.lost("x", "verloren", "lost");
   private static final Finding CONVENTION = ConversionNotes.convention("x", "übersetzt", "mapped");
@@ -17,10 +29,10 @@ class ConversionReportTest {
 
   @Test
   void aReportWithNoNotesIsLosslessAndTrustworthy() {
-    ConversionReport report = ConversionReport.lossless("ebinterface-6.1", "ubl-2.1");
+    ConversionReport report = new ConversionReport(FROM, TO, List.of());
 
-    assertThat(report.sourceFormat()).isEqualTo("ebinterface-6.1");
-    assertThat(report.targetFormat()).isEqualTo("ubl-2.1");
+    assertThat(report.sourceFormat()).isEqualTo(FROM);
+    assertThat(report.targetFormat()).isEqualTo(TO);
     assertThat(report.notes()).isEmpty();
     assertThat(report.isLossless()).isTrue();
     assertThat(report.isTrustworthy()).isTrue();
@@ -47,16 +59,9 @@ class ConversionReportTest {
   }
 
   @Test
-  void plusAppendsNotesKeepingTheFormats() {
-    ConversionReport combined =
-        ConversionReport.lossless("ebinterface-6.1", "ubl-2.1")
-            .plus(List.of(LOSS))
-            .plus(List.of(DEVIATION));
-
-    assertThat(combined.notes()).containsExactly(LOSS, DEVIATION);
-    assertThat(combined.sourceFormat()).isEqualTo("ebinterface-6.1");
-    assertThat(combined.targetFormat()).isEqualTo("ubl-2.1");
-    assertThat(combined.isTrustworthy()).isFalse();
+  void notesKeepTheOrderTheyWereProducedIn() {
+    assertThat(report(CONVENTION, LOSS, DEVIATION).notes())
+        .containsExactly(CONVENTION, LOSS, DEVIATION);
   }
 
   @Test
@@ -64,7 +69,7 @@ class ConversionReportTest {
     List<Finding> mutable = new ArrayList<>();
     mutable.add(LOSS);
 
-    ConversionReport report = new ConversionReport("a", "b", mutable);
+    ConversionReport report = new ConversionReport(FROM, TO, mutable);
     mutable.add(DEVIATION); // must not leak into the report
 
     assertThat(report.notes()).containsExactly(LOSS);
@@ -73,6 +78,6 @@ class ConversionReportTest {
   }
 
   private static ConversionReport report(Finding... notes) {
-    return new ConversionReport("ebinterface-6.1", "ubl-2.1", List.of(notes));
+    return new ConversionReport(FROM, TO, List.of(notes));
   }
 }

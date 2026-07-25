@@ -73,11 +73,13 @@ public final class ConversionLosses {
               "Tax/TaxItem/Comment",
               "Befreiungsgrund-Code (BT-121) und -Text (BT-120) werden in ein einziges"
                   + " Comment-Freitextfeld zusammengeführt; ebInterface 6.1 hat kein eigenes Element"
-                  + " für den Code. Bei einer Rückkonvertierung ist der Code nicht mehr"
-                  + " rekonstruierbar.",
+                  + " für den Code. Eine Rückkonvertierung durch diese Plattform stellt beide Teile"
+                  + " wieder her; ein fremdes System, das nur den Freitext liest, sieht sie als"
+                  + " einen einzigen Satz.",
               "The exemption reason code (BT-121) and text (BT-120) are merged into a single"
-                  + " free-text Comment; ebInterface 6.1 has no dedicated element for the code. On a"
-                  + " conversion back, the code can no longer be recovered."));
+                  + " free-text Comment; ebInterface 6.1 has no dedicated element for the code."
+                  + " Converting back through this platform restores both parts; a foreign system"
+                  + " reading only the free text will see them as one sentence."));
     }
 
     // Line ids: ebInterface identifies a line by ordinal position, so a canonical id that is not
