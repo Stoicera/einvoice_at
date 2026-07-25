@@ -8,6 +8,7 @@ import com.helger.ebinterface.EbInterface61Marshaller;
 import com.helger.ebinterface.v61.Ebi61InvoiceType;
 import com.stoicera.einvoice.core.invoice.Invoice;
 import com.stoicera.einvoice.formats.ebinterface.EbInterface61Strategy;
+import com.stoicera.einvoice.mapping.CanonicalInvoiceArbitraries;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;

@@ -14,6 +14,7 @@ import com.stoicera.einvoice.core.invoice.InvoiceLine;
 import com.stoicera.einvoice.core.invoice.InvoiceTypeCode;
 import com.stoicera.einvoice.core.invoice.ServicePeriod;
 import com.stoicera.einvoice.core.party.Address;
+import com.stoicera.einvoice.core.party.ElectronicAddress;
 import com.stoicera.einvoice.core.party.Party;
 import com.stoicera.einvoice.core.payment.Iban;
 import com.stoicera.einvoice.core.payment.PaymentMeans;
@@ -78,8 +79,10 @@ import java.util.Optional;
  *   <tr><td>{@code orderReference}, {@code supplierNumber}</td>
  *       <td>{@code Invoice.orderReference/supplierNumber}</td><td>optional, copied verbatim.</td></tr>
  *   <tr><td>{@code seller}, {@code buyer}</td><td>{@code Invoice.seller/buyer}</td>
- *       <td>{@code name}/{@code vatId}/{@code address}/{@code email} → {@link Party}; nested
- *       {@code address.*} → {@link Address}; {@code email} optional.</td></tr>
+ *       <td>{@code name}/{@code vatId}/{@code address}/{@code email}/{@code electronicAddress} →
+ *       {@link Party}; nested {@code address.*} → {@link Address}; nested
+ *       {@code electronicAddress.{scheme,value}} → {@link ElectronicAddress} (BT-34/BT-49, added
+ *       M4); {@code email} and {@code electronicAddress} both optional.</td></tr>
  *   <tr><td>{@code lines[]}</td><td>{@code Invoice.lines}</td>
  *       <td>{@code quantity}/{@code unitPrice} (JSON strings) → {@link BigDecimal};
  *       {@code vatCategory}+{@code vatPercent} → {@code new VatRate(VatCategory.<cat>, percent)}.
@@ -239,7 +242,22 @@ public final class InvoiceJsonReader {
         party.name(),
         toAddress(party.address()),
         party.vatId(),
-        Optional.ofNullable(party.email()));
+        Optional.ofNullable(party.email()),
+        toElectronicAddress(party.electronicAddress()));
+  }
+
+  /**
+   * BT-34/BT-49 with its mandatory scheme BT-34-1/BT-49-1. Absent when the party carries no {@code
+   * electronicAddress} object; a present object with a missing {@code scheme} or {@code value} is
+   * deliberately passed straight through to {@link ElectronicAddress}'s canonical constructor, so
+   * {@code core} produces the one clear message rather than this reader duplicating the invariant
+   * (the "missing values pass through as null" idiom shared with the rest of this reader).
+   */
+  private Optional<ElectronicAddress> toElectronicAddress(ElectronicAddressDto address) {
+    if (address == null) {
+      return Optional.empty();
+    }
+    return Optional.of(new ElectronicAddress(address.scheme(), address.value()));
   }
 
   /**
@@ -346,7 +364,14 @@ public final class InvoiceJsonReader {
       String paymentTerms,
       List<ExemptionReasonDto> exemptionReasons) {}
 
-  private record PartyDto(String name, String vatId, AddressDto address, String email) {}
+  private record PartyDto(
+      String name,
+      String vatId,
+      AddressDto address,
+      String email,
+      ElectronicAddressDto electronicAddress) {}
+
+  private record ElectronicAddressDto(String scheme, String value) {}
 
   private record AddressDto(String street, String city, String postalCode, String countryCode) {}
 
