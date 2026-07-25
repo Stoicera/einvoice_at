@@ -133,6 +133,20 @@
   that no assertion would have caught: four helper methods were never called by anything (deleted
   rather than left as dead paths), and the description column sat a hair from the right-aligned
   quantity (gutter widened).
+- **Compose smoke (full stack, live):** `docker compose up -d` → postgres + keycloak + mailpit + app
+  healthy; `GET /actuator/health` UP. Against a real Keycloak token: `POST /invoices` on the sample
+  JSON → 201; `GET /{id}/ubl` → the Peppol document; `GET /{id}/pdf` → `application/pdf`, `inline`
+  disposition, opened and read (Abnahme: *"PDF sieht nach Rechnung aus"* — it does).
+  **`POST /convert` both ways, which is the milestone's Abnahme in one command:**
+  - `ebinterface → ubl` on the sample twin → 200, two `CONV-01` losses (the plain-text country name,
+    one per party), and the Peppol validation of the result reports `PEPPOL-EN16931-R020` and
+    `R010`: the missing electronic addresses, because the ebInterface source cannot carry them. The
+    conversion report and the validation report tell one coherent story rather than two.
+  - `ubl → ebinterface` on the UBL twin → 200, one `CONV-01` (the electronic address is dropped —
+    ebInterface has no element for it), and the resulting ebInterface document is fully AT-B2G valid.
+  Anonymous `POST /validate` auto-detects both formats (`ubl-invoice-2.1`/`peppol-bis-billing-3.0`
+  and `ebinterface-6.1`/`at-b2g`), zero findings each, `id:null` (nothing persisted). `/v3/api-docs`
+  lists the three new paths. `audit_event` carried `INVOICE_CREATED` ×1 and `CONVERSION_RUN` ×2.
 - **Security scan: wired, NOT green — and deliberately reported as such.** dependency-check-maven
   12.2.2 resolves, runs and reaches the NVD, then fails with **HTTP 429**: the NVD rate-limits
   unauthenticated clients. That is a property of the NVD 2.0 API, not of the configuration, and it is
