@@ -40,8 +40,12 @@ class InvoicePipelineConfig {
     return new EbInterface61Strategy();
   }
 
+  // Named for what it is, not for the one format it used to handle. The bean was still called
+  // `ebInterface61Validator` after M4 gave it the UBL pipeline too — a stale name on a shared
+  // singleton, which is how a reader ends up believing the public validator is ebInterface-only
+  // (M4 hostile review, finding F14).
   @Bean
-  InvoiceValidator ebInterface61Validator() {
+  InvoiceValidator invoiceValidator() {
     return new InvoiceValidator();
   }
 

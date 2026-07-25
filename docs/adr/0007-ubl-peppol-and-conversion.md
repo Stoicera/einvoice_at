@@ -125,12 +125,36 @@ wichtiger — die Dispatch-Entscheidung in `DocumentFormat`. Denn was ein Aufruf
 unbekannten Upload braucht, ist nicht „gib mir eine Strategy", sondern „sag mir, was das ist";
 danach ergeben sich Validator, Reader und Mapper von selbst.
 
+## Entscheidung 7 — Was wir selbst strukturiert schreiben, lesen wir strukturiert zurück
+
+*(Nachgetragen im M4-Hostile-Review, Findings F3/F3a.)*
+
+ebInterface hat kein eigenes Element für den Befreiungsgrund-Code (BT-121), also faltet der
+Hinmapper Code und Text in ein `Tax/TaxItem/Comment` — aber **strukturiert**:
+`Lead-in + Kategorie + " | " + Code + " | " + Text`. Der Rückmapper hat sich lange geweigert, das
+wieder auseinanderzunehmen, mit der Begründung, den Code „aus Prosa zurückzuparsen wäre Raterei".
+
+Das war in zweierlei Hinsicht falsch. Es *ist* keine Prosa, sondern eine Feldliste eigenen Entwurfs
+— und weil die Kategorie im Text stehenblieb, während der Hinmapper beim Rausschreiben eine neue
+davorsetzte, **wuchs der Kommentar bei jeder Konvertierung** (`E |` → `E | E |` → `E | E | E |`),
+unbegrenzt, in einem persistierten Feld. Gefunden hat das erst der kreuzformatige Roundtrip-Test,
+den M4 laut MILESTONES hätte liefern sollen und nicht lieferte.
+
+Regel daraus: **Ein Verlust wird nur gemeldet, wenn er einer ist.** Ein fremdes Dokument, dessen
+Kommentar dem Aufbau nicht folgt, bleibt Freitext mit `CONV-01` — jedes Feld wird gegen etwas
+unabhängig Bekanntes geprüft (das Lead-in gegen die Kategorie, das Kategorie-Feld gegen die des
+Steuersatzes, der Code gegen das EN-16931-Präfix `VATEX-`), damit kein fremder Kommentar mit Pipe
+für unseren gehalten wird.
+
 ## Konsequenzen
 
 **Gut.** Peppol-Konformität wird von der Autorität selbst bestätigt, in CI, ohne Portal-Upload —
 `UblEndToEndGenerationTest` ist damit die stärkste automatisierte Abnahme, die das Repository hat.
 Konvertierung kann per Konstruktion keine Beträge verändern. Verluste sind pro Dokument sichtbar
-statt als Absatz in der Doku.
+statt als Absatz in der Doku. Seit Entscheidung 7 ist der Weg
+**ebInterface → UBL → ebInterface für jedes gültige Korpus-Dokument byte-identisch**, und
+`CrossFormatRoundTripTest` hält das fest; die Gegenrichtung verliert genau die Endpoint-IDs
+(BT-34/BT-49) und sonst nichts, was derselbe Test ebenfalls behauptet statt nur zu beschreiben.
 
 **Preis.** Eine Konvertierung kostet vier Schritte statt zwei (lesen, Verluste analysieren,
 schreiben, validieren). Der Regelsatz-Pin ist Wartungsarbeit mit Datum. Und der

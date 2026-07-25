@@ -29,7 +29,8 @@ diagnostic (e.g. `cvc-complex-type.2.4.a: ...`).
    exceptions: `parse` returns `Optional.empty()`, which the pipeline turns into a single `XML-01`
    error finding (Engineering Standards §4). Before a byte reaches `SecureXml` at all,
    `EbInterface61Validator` rejects an upload larger than 20 MB as a single `XML-02` finding (M2
-   hostile-review fix wave, finding P2-9/B3) — a module-level defensive cap that protects the
+   hostile-review fix wave, finding P2-9/B3; the class was renamed `InvoiceValidator` in M4 when it
+   gained the UBL pipeline) — a module-level defensive cap that protects the
    validator independently of any caller, and is deliberately separate from, and looser than, the
    stricter 2 MB application-layer cap SPEC §4 places in front of the HTTP endpoint once M3 exposes
    one.
@@ -119,7 +120,7 @@ diagnostic (e.g. `cvc-complex-type.2.4.a: ...`).
    | Rule id | Stage | Mechanism | Meaning |
    |---|---|---|---|
    | `XML-01` | secure parse | `SecureXml` | upload is not well-formed XML (or a forbidden `DOCTYPE`) |
-   | `XML-02` | input-size guard | `EbInterface61Validator` | upload exceeds the 20 MB defensive size cap |
+   | `XML-02` | input-size guard | `InvoiceValidator` | upload exceeds the 20 MB defensive size cap |
    | `FORMAT-01` | format detection | namespace lookup | root namespace matches no known invoice format |
    | `FORMAT-02` | format detection | namespace lookup | recognised ebInterface, unsupported version |
    | `XSD-01` | XSD | phive VES (Xerces) | document violates the ebInterface 6.1 schema |

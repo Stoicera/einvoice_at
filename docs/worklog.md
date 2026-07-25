@@ -1,5 +1,74 @@
 # Worklog — einvoice-at
 
+## 2026-07-25 — M4 hostile-review fix wave: 17 findings closed
+
+**What**
+
+A hostile review of the M4 branch before merge, in the per-milestone pattern (audit → prioritised
+findings → fix all, test-first). Findings recorded in `.superpowers/m4-hostile-review-findings.md`;
+all 17 closed on the same branch. Test count 736 → 764, `./mvnw verify` green, every coverage gate
+met.
+
+**The three that mattered**
+
+- **F1 — CI was red, and the diagnosis was wrong.** The security stage failed and both the worklog
+  and the README blamed the missing `NVD_API_KEY`. The real cause: `dependency-check-maven` sat in
+  the root POM's `<build><plugins>`, which Maven inherits into every child, so `-Psecurity verify`
+  ran the `aggregate` goal in **all ten** reactor projects instead of once at the root. They share
+  one CveDB; the first execution closes it and the rest fail per CVE with `connectionPool is null`.
+  Measured before and after (`10` bindings → `1`), fixed with `<inherited>false</inherited>`, and
+  the CI job now asserts the binding count itself — with the scan skipped, so the check costs
+  seconds and needs no NVD data. The POM's own comment had claimed "produced once at the root
+  rather than nine times" the whole time.
+- **F2 — `POST /convert` answered 500 on a hostile document.** Both reverse mappers passed an
+  upload-supplied currency code straight to `Currency.getInstance`, which throws a raw
+  `IllegalArgumentException` for anything non-ISO — unmapped, so 500 plus a stack trace per
+  request, and the JDK's message echoes the offending value *unbounded*. Every other bad value on
+  that path is a 422. The same hazard was already handled one module over in
+  `InvoiceJsonReader.toCurrency`, so this was a regression of a guard the codebase had.
+- **F3 — the milestone's own acceptance criterion was unmet**, and closing it found a real bug.
+  MILESTONES asks by name for "Golden-Files für Roundtrips (ebInterface→UBL→ebInterface,
+  dokumentierte Abweichungen)"; what shipped were two *same-format* property suites. Writing
+  `CrossFormatRoundTripTest` immediately exposed **F3a**: the exemption `Comment` grew by one
+  category code on every conversion (`E |` → `E | E |` → `E | E | E |`), unboundedly, in a
+  persisted field — invisible to every existing test because they compare canonical models and the
+  corruption lived in the emitted XML.
+
+**Decisions**
+
+- **The VATEX code is recoverable, and pretending otherwise was the bug.** The reverse ebInterface
+  mapper declined to parse the code back out of `Tax/TaxItem/Comment` "because parsing it back out
+  of prose would be guesswork". It is not prose — the forward mapper writes
+  `lead-in + category + " | " + code + " | " + text`, a delimited field list of this project's own
+  design. Declining to read back what we ourselves wrote both discarded a recoverable value and
+  caused F3a. It is now parsed structurally, with every field cross-checked against something known
+  independently, so a genuinely foreign comment still falls through to text-with-a-loss-note.
+  Consequence: ebInterface → UBL → ebInterface is now **byte-for-byte lossless** for every valid
+  document in the corpus.
+- **A skipped security scan beats a permanently red one.** Making the absent `NVD_API_KEY` a hard
+  failure would have left the stage red until the owner acts — and a stage that is always red
+  teaches everyone to ignore red, which is worse than the gap. The scan is skipped with a warning
+  annotation *and* a job-summary block, becomes a real gate the moment the secret exists, and the
+  job still does real work meanwhile (the F1 binding assertion).
+- **`/convert` is rate-limited per credential, not per IP, and authenticated callers are not
+  exempt** (F9). The endpoint admits no anonymous callers, so inheriting the validator's
+  authenticated-bypass would have produced a limit covering nobody. Keying by IP would punish every
+  tenant behind a shared egress and let one tenant multiply their allowance across addresses.
+- **`@Transactional` removed from `ConversionService.convert`** (F8): it held a HikariCP connection
+  across a full Peppol XSLT run to protect one audit INSERT that already has its own transaction.
+- **`everyLibModuleIsListed()`** (F4). M4 added three modules and extended none of the cross-module
+  ArchUnit rules, because doing so was a step someone had to remember. It is now a failing test —
+  verified by unlisting `rendering` and watching it fail with an actionable message.
+- **Two removals, no replacements.** `TargetFormat.id()` had zero call sites and a Javadoc claiming
+  a role a different type filled; `ConversionReport.plus()`/`lossless()` were called only by their
+  own unit test. DoD §1 forbids dead paths, and a convenience with no caller is a reader's false
+  lead.
+
+**Next**
+
+- Merge to `main`. The `NVD_API_KEY` secret is the one outstanding owner action; adding it turns
+  the security stage from skip-with-warning into a live gate with no workflow change.
+
 ## 2026-07-25 — M4: UBL BIS 3.0 + Konvertierung + PDF: complete
 
 **What**

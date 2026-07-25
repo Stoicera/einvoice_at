@@ -41,8 +41,11 @@ import java.util.List;
  * later stages assume a schema-valid tree; the Peppol VES sequences its own stages internally and
  * needs no help.
  *
- * <p>This class supersedes {@code InvoiceValidator}, which remains as the ebInterface-only entry
- * point its own tests and the M2 corpus already use.
+ * <p>This class replaced M2's {@code EbInterface61Validator}, which was deleted in M4 rather than
+ * kept alongside: two facades where one dispatches to the other's pipeline is a fork waiting to
+ * happen, and the M2 corpus and unit tests were pointed here instead. (Until the M4 hostile review
+ * this paragraph said the class "supersedes {@code InvoiceValidator}, which remains" — naming
+ * itself, and promising the continued existence of a class the same milestone had removed.)
  */
 public final class InvoiceValidator {
 

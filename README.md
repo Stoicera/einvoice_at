@@ -83,8 +83,12 @@ revoke keys. Full auth design and honest known limits:
 [ADR-0006](docs/adr/0006-auth-and-api-security.md).
 
 **Limits.** Request bodies are capped at 2 MB (`MAX_REQUEST_BODY_SIZE`) for multipart uploads and
-plain bodies alike, both answering 413. Anonymous `POST /validate` is rate-limited per IP. A tenant
-holds at most 25 active API keys (`API_KEYS_MAX_ACTIVE_PER_TENANT`); revoked keys keep their rows
+plain bodies alike, both answering 413. Two endpoints are rate-limited, with deliberately different
+policies: anonymous `POST /validate` **per IP** (an authenticated caller is not the threat an open
+endpoint's limit exists for), and `POST /convert` **per credential, authenticated callers
+included** — that endpoint admits no others, so an authenticated bypass would leave a limit
+covering nobody, and a conversion costs a read, two mappings, a write *and* a full Peppol XSLT run.
+Both answer 429 with `Retry-After`. A tenant holds at most 25 active API keys (`API_KEYS_MAX_ACTIVE_PER_TENANT`); revoked keys keep their rows
 for the audit trail and do not count. `OAUTH2_AUDIENCE` optionally requires every token's `aud` to
 name this API — off by default for the single-audience dev realm, recommended for any shared one.
 `API_DOCS_ENABLED=false` removes the OpenAPI document and Swagger UI entirely.
@@ -160,20 +164,37 @@ network I/O and would blow the build-time budget:
 ```
 
 ⚠️ **One-time owner setup:** the NVD rate-limits unauthenticated clients hard enough that a first
-sync takes about an hour and usually fails with HTTP 429. Request a free key at
-<https://nvd.nist.gov/developers/request-an-api-key> and add it as the repository secret
-`NVD_API_KEY`. Until then the CI job warns and the scan is unreliable — that is a property of the
-NVD's API, not of this configuration.
+sync stalls, leaves its local database half-written, and then fails with an unrelated-looking error.
+Request a free key at <https://nvd.nist.gov/developers/request-an-api-key> and add it as the
+repository secret `NVD_API_KEY`.
+
+Until that secret exists the CI job **skips the scan** rather than running a doomed one — with a
+warning annotation and a job summary saying so in as many words, because a stage that is
+permanently red for an external reason only teaches people to ignore red. The job is not a no-op
+in the meantime: it still asserts that the scan binds exactly once, at the root. Adding the secret
+turns it into a real gate with no workflow change.
 
 ## Testing
 
 JUnit 5 + AssertJ + Mockito for unit tests, ArchUnit for module-boundary rules, Testcontainers for integration tests, Selenium WebDriver for E2E — built out milestone by milestone per [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md).
 
-**Domain modules.** Every implemented module carries a JaCoCo gate, and five of them a [PIT](https://pitest.org) mutation gate on top, so the coverage numbers have teeth rather than just line reach. `core` sits at 99.5 % line / 98 % branch (gate 95/90) with a [jqwik](https://jqwik.net) property suite for money/VAT arithmetic; `mapping` at 99 %/91 % (gate 95/90) including round-trip properties in both directions; `validation` at 95 %/92 %, `formats-ebinterface` at 100 %/100 %, `formats-ubl` at 99 %/96 %, `rendering` at 96 %/89 % (gates 90/85). `formats-api` gates at 100/100 — one record and one interface, where anything less would be a line nobody bothered to test.
+**Domain modules.** Every implemented module carries a JaCoCo gate, and five of them a [PIT](https://pitest.org) mutation gate on top, so the coverage numbers have teeth rather than just line reach. Figures below are read off the JaCoCo CSV of a full `./mvnw verify`, not estimated:
+
+| Module | Line | Branch | JaCoCo gate | PIT (mutations killed) |
+|---|---|---|---|---|
+| `core` | 99.6 % | 98.3 % | 95/90 | 98 % (126/129) |
+| `mapping` | 99.2 % | 90.6 % | 95/90 | 99 % (411/417) |
+| `validation` | 92.7 % | 87.7 % | 90/85 | 86 % (126/147) |
+| `formats-ebinterface` | 100 % | 100 % | 90/85 | 100 % (12/12) |
+| `formats-ubl` | 98.6 % | 96.3 % | 90/85 | 93 % (27/29) |
+| `rendering` | 95.6 % | 88.8 % | 90/85 | — |
+| `formats-api` | 100 % | 100 % | 100/100 | — |
+
+`core` carries a [jqwik](https://jqwik.net) property suite for money/VAT arithmetic; `mapping` carries round-trip properties in both directions, including one that re-emits a read document and demands byte equality. `formats-api` gates at 100/100 — one record and one interface, where anything less would be a line nobody bothered to test.
 
 **Round trips and golden files.** The two mapper pairs are exercised by jqwik round-trip properties over one shared input space, which is how the formats' asymmetries were established rather than assumed. `UblEndToEndGenerationTest` is the milestone's strongest automated claim: the sample invoice, generated through the real chain, is judged **Peppol-clean by the official OpenPeppol rule set** — an external verdict, not a self-assessment, since those rules are OpenPeppol's and this project only runs them.
 
-**`app` module.** 95.24 % line / 83.33 % branch (JaCoCo gate 90/78, measured across unit *and* integration runs merged — most of this module's behaviour is only observable end to end). 48 unit tests and 70 integration tests across 15 IT classes, the latter against real PostgreSQL and real Keycloak via Testcontainers:
+**`app` module.** 95.0 % line / 84.3 % branch (JaCoCo gate 90/78, measured across unit *and* integration runs merged — most of this module's behaviour is only observable end to end). 52 unit tests and 83 integration tests across 16 IT classes, the latter against real PostgreSQL and real Keycloak via Testcontainers:
 
 - **Auth matrix** (`AuthMatrixIT`) — both directions of every mechanism: anonymous, unknown key, revoked key, valid key, valid JWT, a bearer header that is not a JWT, an `alg=none` token, a genuine Keycloak token with a rewritten payload, and a request presenting two competing credentials.
 - **Token validation** (`JwtDecoderTest`) — a throwaway JWKS over loopback and self-minted tokens, so wrong issuer, expired `exp`, a foreign signing key, and a foreign key impersonating the real `kid` can each be varied one at a time.
@@ -206,9 +227,17 @@ caller is told the document said something else.
 
 The formats lose different things, which is exactly why the report is per document rather than a
 paragraph here. A round trip through UBL returns line ids, exemption reason codes and electronic
-addresses; the same trip through ebInterface cannot, because ebInterface identifies a line by
-position, folds the exemption code and text into one free-text comment, and has no element for a
-network address at all.
+addresses. A trip through ebInterface returns the exemption code too — the code and text share one
+free-text `Comment`, but they are folded in with a structure the reverse mapper unfolds — while line
+ids do not survive (ebInterface identifies a line by position) and electronic addresses cannot,
+because the format has no element for a network address at all.
+
+**Round trips are golden-file tested in both directions** (`CrossFormatRoundTripTest`). Every valid
+ebInterface document in the corpus comes back **byte-for-byte identical** from a trip through UBL;
+the UBL → ebInterface → UBL direction is asserted to lose exactly the endpoint identifiers and
+nothing else. That test is also how the exemption-code recovery above came to exist: the M4 hostile
+review found the cross-format round trip missing, and writing it immediately exposed a defect where
+the comment grew by one category code on every conversion.
 
 `POST /api/v1/convert` also **validates the result** and returns that report too. A converter that
 hands back XML and lets the caller discover at an access point that it fails Peppol has done half a

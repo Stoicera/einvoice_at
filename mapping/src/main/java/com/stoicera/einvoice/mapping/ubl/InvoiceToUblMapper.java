@@ -10,7 +10,9 @@ import com.stoicera.einvoice.core.tax.VatBreakdownEntry;
 import com.stoicera.einvoice.core.tax.VatExemptionReason;
 import com.stoicera.einvoice.core.tax.VatRate;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Currency;
+import java.util.Optional;
 import oasis.names.specification.ubl.schema.xsd.commonaggregatecomponents_21.AddressType;
 import oasis.names.specification.ubl.schema.xsd.commonaggregatecomponents_21.BranchType;
 import oasis.names.specification.ubl.schema.xsd.commonaggregatecomponents_21.ContactType;
@@ -36,6 +38,8 @@ import oasis.names.specification.ubl.schema.xsd.commonaggregatecomponents_21.Tax
 import oasis.names.specification.ubl.schema.xsd.commonaggregatecomponents_21.TaxSchemeType;
 import oasis.names.specification.ubl.schema.xsd.commonaggregatecomponents_21.TaxSubtotalType;
 import oasis.names.specification.ubl.schema.xsd.commonaggregatecomponents_21.TaxTotalType;
+import oasis.names.specification.ubl.schema.xsd.commonbasiccomponents_21.NoteType;
+import oasis.names.specification.ubl.schema.xsd.commonbasiccomponents_21.TaxExemptionReasonType;
 import oasis.names.specification.ubl.schema.xsd.creditnote_21.CreditNoteType;
 import oasis.names.specification.ubl.schema.xsd.invoice_21.InvoiceType;
 
@@ -279,7 +283,7 @@ public final class InvoiceToUblMapper {
     return invoicePeriod;
   }
 
-  private static DeliveryType delivery(java.time.LocalDate deliveryDate) {
+  private static DeliveryType delivery(LocalDate deliveryDate) {
     DeliveryType delivery = new DeliveryType();
     delivery.setActualDeliveryDate(deliveryDate);
     return delivery;
@@ -361,11 +365,11 @@ public final class InvoiceToUblMapper {
    *     cbc:DueDate} and rule UBL-CR-412 forbids repeating it here, while a UBL {@code CreditNote}
    *     has no {@code cbc:DueDate} element at all and this is the only place the date fits.
    */
-  private static java.util.Optional<PaymentMeansType> paymentMeans(
-      Invoice invoice, java.time.LocalDate paymentDueDate) {
+  private static Optional<PaymentMeansType> paymentMeans(
+      Invoice invoice, LocalDate paymentDueDate) {
     PaymentMeans source = invoice.paymentMeans();
     if (source == null) {
-      return java.util.Optional.empty();
+      return Optional.empty();
     }
 
     FinancialAccountType account = new FinancialAccountType();
@@ -382,13 +386,12 @@ public final class InvoiceToUblMapper {
       means.setPaymentDueDate(paymentDueDate);
     }
     means.setPayeeFinancialAccount(account);
-    return java.util.Optional.of(means);
+    return Optional.of(means);
   }
 
   private static PaymentTermsType paymentTerms(String terms) {
     PaymentTermsType paymentTerms = new PaymentTermsType();
-    paymentTerms.addNote(
-        new oasis.names.specification.ubl.schema.xsd.commonbasiccomponents_21.NoteType(terms));
+    paymentTerms.addNote(new NoteType(terms));
     return paymentTerms;
   }
 
@@ -425,9 +428,7 @@ public final class InvoiceToUblMapper {
         category.setTaxExemptionReasonCode(reason.code());
       }
       if (reason.text() != null) {
-        category.addTaxExemptionReason(
-            new oasis.names.specification.ubl.schema.xsd.commonbasiccomponents_21
-                .TaxExemptionReasonType(reason.text()));
+        category.addTaxExemptionReason(new TaxExemptionReasonType(reason.text()));
       }
     }
     category.setTaxScheme(vatScheme());

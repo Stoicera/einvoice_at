@@ -37,7 +37,7 @@ einvoice-at/
 ├── formats-ubl/                  # UBL BIS 3.0 read/write
 ├── mapping/                      # canonical ↔ formats; MapStruct evaluated but unrealized as of M2 (hand-written, semantic mapping); golden-file tests
 ├── validation/                   # orchestrates XSD + Schematron (phive) + own business rules; produces ValidationReport
-├── rendering/                    # invoice → PDF / HTML print view
+├── rendering/                    # invoice → PDF print view (PDFBox; HTML view not built — ADR-0008)
 ├── ai-assist/                    # LlmClient port + OpenRouter adapter; error-explanation service; prompt templates versioned
 ├── app/                          # Spring Boot app: REST API, web UI, security, persistence, audit, rate limiting
 └── docs/                         # PRD, SPEC, MILESTONES, ADRs, glossary, deployment

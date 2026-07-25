@@ -26,10 +26,12 @@ import org.springframework.web.multipart.MultipartFile;
  * The public validator: {@code POST /api/v1/validate}, {@link
  * com.stoicera.einvoice.app.security.SecurityConfig permitAll} for anonymous callers.
  *
- * <p>An uploaded ebInterface 6.1 document (multipart part {@code file}) is read once and run
- * through {@link com.stoicera.einvoice.validation.InvoiceValidator}; the validator never throws on
- * bad input — malformed XML, an unrecognised format or an oversized document all become findings in
- * a normal 200 response.
+ * <p>An uploaded document (multipart part {@code file}) is read once and run through {@link
+ * com.stoicera.einvoice.validation.InvoiceValidator}, which detects the format from the root
+ * namespace and picks the matching pipeline: ebInterface 6.1 against the Austrian B2G profile, or
+ * UBL 2.1 against the official OpenPeppol BIS Billing 3.0 rule set. The caller says nothing about
+ * the format. The validator never throws on bad input — malformed XML, an unrecognised format or an
+ * oversized document all become findings in a normal 200 response.
  *
  * <p>Persistence depends on who is calling: an anonymous caller gets the report back and nothing is
  * written (GDPR stance, SPEC section 8); an authenticated caller (JWT login or API key)
@@ -57,10 +59,14 @@ public class ValidationController {
       consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
       produces = MediaType.APPLICATION_JSON_VALUE)
   @Operation(
-      summary = "Validate an ebInterface 6.1 document",
+      summary = "Validate an ebInterface 6.1 or Peppol BIS Billing 3.0 (UBL) document",
       description =
-          "Public — no credential required. An authenticated caller (JWT or API key)"
-              + " additionally gets the report persisted and audited; see the class Javadoc.")
+          "The format is detected from the document's root namespace — do not declare it. An"
+              + " ebInterface 6.1 document is judged against the Austrian B2G profile; a UBL 2.1"
+              + " invoice or credit note against the official OpenPeppol rule set, executed"
+              + " unmodified at a pinned version. Public — no credential required. An"
+              + " authenticated caller (JWT or API key) additionally gets the report persisted"
+              + " and audited; see the class Javadoc.")
   // Public endpoint: overrides OpenApiConfig's global bearerAuth/apiKeyAuth requirement with an
   // empty security array, or the generated doc would wrongly claim a credential is needed here.
   @SecurityRequirements
@@ -95,7 +101,10 @@ public class ValidationController {
               mediaType = "application/problem+json",
               schema = @Schema(implementation = ProblemDetail.class)))
   public ValidateResult validate(
-      @Parameter(description = "The ebInterface 6.1 document to validate.", required = true)
+      @Parameter(
+              description =
+                  "The document to validate — ebInterface 6.1 or UBL 2.1, detected automatically.",
+              required = true)
           @RequestPart("file")
           MultipartFile file,
       Authentication authentication)

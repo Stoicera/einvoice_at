@@ -83,7 +83,20 @@ public class ConvertController {
               schema = @Schema(implementation = ProblemDetail.class)))
   @ApiResponse(
       responseCode = "422",
-      description = "The document parses but describes an invoice that violates a domain rule.",
+      description =
+          "The document parses but describes an invoice that violates a domain rule — a malformed"
+              + " IBAN, a currency code that is not ISO 4217, a missing party.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
+  @ApiResponse(
+      responseCode = "429",
+      description =
+          "Per-credential rate limit exceeded. Unlike the public validator, this limit applies to"
+              + " authenticated callers — they are the only kind this endpoint has — because a"
+              + " conversion is materially more expensive than a validation. See the Retry-After"
+              + " header.",
       content =
           @Content(
               mediaType = "application/problem+json",
