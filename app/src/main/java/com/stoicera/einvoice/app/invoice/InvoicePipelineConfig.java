@@ -3,7 +3,7 @@ package com.stoicera.einvoice.app.invoice;
 import com.stoicera.einvoice.formats.ebinterface.EbInterface61Strategy;
 import com.stoicera.einvoice.mapping.ebinterface.InvoiceToEbInterface61Mapper;
 import com.stoicera.einvoice.mapping.json.InvoiceJsonReader;
-import com.stoicera.einvoice.validation.EbInterface61Validator;
+import com.stoicera.einvoice.validation.InvoiceValidator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -35,7 +35,7 @@ class InvoicePipelineConfig {
   }
 
   @Bean
-  EbInterface61Validator ebInterface61Validator() {
-    return new EbInterface61Validator();
+  InvoiceValidator ebInterface61Validator() {
+    return new InvoiceValidator();
   }
 }

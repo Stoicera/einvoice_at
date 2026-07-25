@@ -204,3 +204,30 @@ four `valid/` files now carry the three previously-optional fields (`Biller/Addr
 validator's unit tests was extended identically so the two stay mirrors of each other. Any *new*
 `valid/` fixture added after M3 must carry all three fields from the start, or it will fail
 `CorpusTest` the moment it is added.
+
+## M4 — Peppol BIS Billing 3.0 (UBL)
+
+Three files judged not by this project's own rules but by the **official OpenPeppol rule set**,
+executed unmodified through phive at the version pinned in `PeppolValidationStage`
+(`2025.11` as of 2026-07-25). That difference matters for how they are maintained:
+
+- **`valid/peppol-ubl-invoice.xml`** and **`valid/peppol-ubl-creditnote.xml`** — output of the real
+  chain (`PeppolFixtures` → `InvoiceToUblMapper` → the UBL strategy), the UBL counterpart of
+  `valid/b2g-full.xml`. Regenerate them by re-running that chain and copying the output back.
+  A credit note is a *separate document type with a separate Peppol rule set* (a `ubl:CreditNote`
+  root, judged by `eu.peppol.bis3:creditnote`), which is why both are here rather than one standing
+  in for the other.
+- **`invalid/peppol-missing-endpoint-ids.xml`** — the same invoice with both parties' electronic
+  addresses (BT-34/BT-49) removed. One defect, but the rule set reports it **per party**, so the
+  expected id set has two entries: `PEPPOL-EN16931-R020` (seller) and `PEPPOL-EN16931-R010`
+  (buyer). That is the rules being per-party, not this file carrying two defects — the
+  one-defect-per-file convention above still holds.
+
+**Expected rule ids here are the rule set's own** (`PEPPOL-EN16931-R010`, `BR-…`, `UBL-CR-…`), not
+ids from this project's `RuleIds` registry, because the finding carries the assertion id the
+official rules publish. A reader can look those up directly in the OpenPeppol documentation.
+
+**Rule-set upgrade caveat.** Bumping the pinned Peppol version is expected to change what these
+files report — that is the whole point of pinning it. Re-run `CorpusTest` as part of any such bump
+and update the expectations deliberately; a silent change here would mean the same invoice quietly
+started or stopped being valid. The procedure is in ADR-0007.

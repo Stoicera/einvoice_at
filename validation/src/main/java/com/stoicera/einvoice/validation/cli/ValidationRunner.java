@@ -3,7 +3,7 @@ package com.stoicera.einvoice.validation.cli;
 import com.stoicera.einvoice.core.validation.Finding;
 import com.stoicera.einvoice.core.validation.Severity;
 import com.stoicera.einvoice.core.validation.ValidationReport;
-import com.stoicera.einvoice.validation.EbInterface61Validator;
+import com.stoicera.einvoice.validation.InvoiceValidator;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.io.UncheckedIOException;
@@ -15,9 +15,9 @@ import java.util.List;
 import java.util.stream.Stream;
 
 /**
- * Command-line front end for {@link EbInterface61Validator}: validates one or more files or
- * directories and prints a German-first report per file, mirroring the console output an enterprise
- * reviewer or CI log would want to read.
+ * Command-line front end for {@link InvoiceValidator}: validates one or more files or directories
+ * and prints a German-first report per file, mirroring the console output an enterprise reviewer or
+ * CI log would want to read.
  *
  * <p>Each positional argument is either a file — validated as given, regardless of its extension —
  * or a directory, whose {@code *.xml} files are discovered by a recursive walk ({@link Files#walk},
@@ -94,7 +94,7 @@ public final class ValidationRunner {
       return EXIT_USAGE_OR_IO_ERROR;
     }
 
-    EbInterface61Validator validator = new EbInterface61Validator();
+    InvoiceValidator validator = new InvoiceValidator();
     boolean allValid = true;
     for (Path file : files) {
       byte[] content;

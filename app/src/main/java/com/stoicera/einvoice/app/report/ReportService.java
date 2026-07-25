@@ -6,7 +6,7 @@ import com.stoicera.einvoice.app.persistence.ReportEntity;
 import com.stoicera.einvoice.app.persistence.ReportRepository;
 import com.stoicera.einvoice.core.validation.Finding;
 import com.stoicera.einvoice.core.validation.ValidationReport;
-import com.stoicera.einvoice.validation.EbInterface61Validator;
+import com.stoicera.einvoice.validation.InvoiceValidator;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
@@ -41,7 +41,7 @@ public class ReportService {
 
   private final ReportRepository reports;
   private final AuditService audit;
-  private final EbInterface61Validator validator;
+  private final InvoiceValidator validator;
 
   /**
    * Serializes/deserializes the findings list to and from the report's JSONB column. Same default
@@ -50,8 +50,7 @@ public class ReportService {
    */
   private final JsonMapper findingsMapper = JsonMapper.builder().build();
 
-  public ReportService(
-      ReportRepository reports, AuditService audit, EbInterface61Validator validator) {
+  public ReportService(ReportRepository reports, AuditService audit, InvoiceValidator validator) {
     this.reports = reports;
     this.audit = audit;
     this.validator = validator;

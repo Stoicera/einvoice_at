@@ -1,5 +1,5 @@
 /**
- * {@code ValidationRunner}: a plain-Java command-line front end for {@code EbInterface61Validator}.
+ * {@code ValidationRunner}: a plain-Java command-line front end for {@code InvoiceValidator}.
  *
  * <p><strong>Boundary contract.</strong> No Spring, no logging framework — this package exists so
  * the validator can run standalone via {@code exec:java} (README "Validation pipeline" quickstart)

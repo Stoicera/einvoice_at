@@ -75,5 +75,17 @@ public final class RuleIds {
    */
   public static final String AT_B2G_05 = "AT-B2G-05";
 
+  /**
+   * Fallback id for an OpenPeppol finding that arrives without a rule identifier of its own.
+   *
+   * <p>Deliberately a fallback and not the id every Peppol finding carries: the official rule set
+   * names its own assertions ({@code BR-01}, {@code PEPPOL-EN16931-R001}, {@code UBL-CR-412}, …),
+   * and those identifiers are far more useful to a reader than a flat project-local code would be,
+   * so they are passed through verbatim. Only a diagnostic with no id of its own — an XSD violation
+   * inside the Peppol VES, for instance — lands here. Which means, unlike every other id in this
+   * registry, the {@code PEPPOL-*} space is not closed: see {@code PeppolValidationStage}.
+   */
+  public static final String PEPPOL_01 = "PEPPOL-01";
+
   private RuleIds() {}
 }

@@ -9,9 +9,9 @@ import java.util.List;
  * against, and the ordered {@link Finding}s it produced.
  *
  * <p>{@code sourceFormat} names the document format validated, e.g. {@code "ebinterface-6.1"} (the
- * token {@code EbInterface61Validator} emits) or a future {@code "ubl-2.1"}; {@code profile} names
- * the validation profile applied, e.g. an Austrian B2G profile identifier or a Peppol BIS
- * customization id.
+ * token {@code InvoiceValidator} emits) or a future {@code "ubl-2.1"}; {@code profile} names the
+ * validation profile applied, e.g. an Austrian B2G profile identifier or a Peppol BIS customization
+ * id.
  */
 public record ValidationReport(String sourceFormat, String profile, List<Finding> findings) {
 

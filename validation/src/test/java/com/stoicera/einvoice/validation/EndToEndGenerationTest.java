@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>{@code samples/invoice-b2g-sample.json} → {@link InvoiceJsonReader} → {@link
  * InvoiceToEbInterface61Mapper} → {@link EbInterface61Strategy#write} → {@link
- * EbInterface61Validator#validate}. A clean report (zero findings) proves the platform generates a
+ * InvoiceValidator#validate}. A clean report (zero findings) proves the platform generates a
  * document that passes its own validator; the committed twin {@code
  * samples/invoice-b2g-sample.ebinterface.xml} is asserted byte-for-byte (line-ending-normalized)
  * equal to what the pipeline just wrote, so the committed artifact provably is the pipeline's own
@@ -41,7 +41,7 @@ class EndToEndGenerationTest {
   private static final Path SAMPLE_XML_TWIN = SAMPLES.resolve("invoice-b2g-sample.ebinterface.xml");
   private static final String CORPUS_B2G_FULL_RESOURCE = "corpus/valid/b2g-full.xml";
 
-  private final EbInterface61Validator validator = new EbInterface61Validator();
+  private final InvoiceValidator validator = new InvoiceValidator();
 
   @Test
   void b2gSampleGeneratesAValidEbInterface61Document() throws IOException {
@@ -49,8 +49,8 @@ class EndToEndGenerationTest {
 
     ValidationReport report = validator.validate(writtenXml.getBytes(StandardCharsets.UTF_8));
 
-    assertThat(report.sourceFormat()).isEqualTo(EbInterface61Validator.SOURCE_EBINTERFACE_61);
-    assertThat(report.profile()).isEqualTo(EbInterface61Validator.PROFILE_AT_B2G);
+    assertThat(report.sourceFormat()).isEqualTo(DocumentFormat.EBINTERFACE_61.sourceFormat());
+    assertThat(report.profile()).isEqualTo(InvoiceValidator.PROFILE_AT_B2G);
     assertThat(report.findingsOf(Severity.ERROR)).isEmpty();
     assertThat(report.findingsOf(Severity.WARN)).isEmpty();
     assertThat(report.isValid()).isTrue();

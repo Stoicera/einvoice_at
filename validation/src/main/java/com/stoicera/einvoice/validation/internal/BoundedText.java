@@ -34,6 +34,15 @@ public final class BoundedText {
    */
   public static final int MAX_LOCATION = 512;
 
+  /**
+   * Safe cap for a rule id that comes from a foreign rule set rather than from this project's own
+   * {@code RuleIds} registry. The OpenPeppol Schematron supplies each finding's id itself (M4), and
+   * while every published one is short ({@code BR-01}, {@code PEPPOL-EN16931-R001}), the id is
+   * still text this codebase did not write — so it is bounded like any other foreign text before it
+   * reaches core {@code Finding}'s own 128-character rule-id cap.
+   */
+  public static final int MAX_RULE_ID = 100;
+
   private BoundedText() {}
 
   /**

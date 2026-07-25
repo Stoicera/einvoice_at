@@ -72,6 +72,28 @@
       <groupId>com.helger.phive.rules</groupId>
       <artifactId>phive-rules-ebinterface</artifactId>
     </dependency>
+    <!-- The official OpenPeppol validation artefacts (M4): EN 16931 + Peppol BIS Billing 3.0
+         Schematron, packaged as phive VES and consumed UNMODIFIED — the promise SPEC §7 made when
+         M2 had to write its own ebInterface Schematron because AUSTRIAPRO publishes none. Which
+         rule-set version is used is pinned in code (PeppolUblValidator), not left to whatever the
+         library defaults to. Parent-managed (phive-rules 4.4.1), never redeclared. -->
+    <dependency>
+      <groupId>com.helger.phive.rules</groupId>
+      <artifactId>phive-rules-peppol</artifactId>
+    </dependency>
+    <!-- UBL 2.1 JAXB types + the marshallers the Peppol VES needs on the classpath to register its
+         executor sets. Parent-managed (ph-ubl 10.2.0), never redeclared. -->
+    <dependency>
+      <groupId>com.helger.ubl</groupId>
+      <artifactId>ph-ubl21</artifactId>
+    </dependency>
+    <!-- UBL namespace lookup and the lenient readers used by the validation context, mirroring the
+         formats-ebinterface dependency above. Project module; reactor-versioned. -->
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>formats-ubl</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <!-- ebInterface 6.1 JAXB types (Ebi61InvoiceType) reached by the validation context's lenient
          reader. Parent-managed (8.1.0), never redeclared. -->
     <dependency>

@@ -27,9 +27,9 @@ import org.springframework.web.multipart.MultipartFile;
  * com.stoicera.einvoice.app.security.SecurityConfig permitAll} for anonymous callers.
  *
  * <p>An uploaded ebInterface 6.1 document (multipart part {@code file}) is read once and run
- * through {@link com.stoicera.einvoice.validation.EbInterface61Validator}; the validator never
- * throws on bad input — malformed XML, an unrecognised format or an oversized document all become
- * findings in a normal 200 response.
+ * through {@link com.stoicera.einvoice.validation.InvoiceValidator}; the validator never throws on
+ * bad input — malformed XML, an unrecognised format or an oversized document all become findings in
+ * a normal 200 response.
  *
  * <p>Persistence depends on who is calling: an anonymous caller gets the report back and nothing is
  * written (GDPR stance, SPEC section 8); an authenticated caller (JWT login or API key)

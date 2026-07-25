@@ -7,16 +7,25 @@ import com.stoicera.einvoice.core.validation.Severity;
 import com.stoicera.einvoice.core.validation.ValidationReport;
 import org.junit.jupiter.api.Test;
 
-class EbInterface61ValidatorTest {
+class InvoiceValidatorTest {
 
-  private final EbInterface61Validator validator = new EbInterface61Validator();
+  private final InvoiceValidator validator = new InvoiceValidator();
 
+  /**
+   * An unidentifiable document reports profile {@code none}, not {@code at-b2g}.
+   *
+   * <p>This changed in M4 and is a deliberate correction rather than a consequence: the validator
+   * had exactly one profile when it only spoke ebInterface, so stamping {@code at-b2g} onto a
+   * document it could not even parse cost nothing. With two profiles that would be a claim about a
+   * document nobody has identified — so "we do not know what this is" now reports no profile at
+   * all.
+   */
   @Test
   void malformedXmlYieldsSingleXml01AndIsInvalid() {
     ValidationReport report = validator.validate(TestDocuments.bytes(TestDocuments.malformed()));
 
     assertThat(report.sourceFormat()).isEqualTo("unknown");
-    assertThat(report.profile()).isEqualTo(EbInterface61Validator.PROFILE_AT_B2G);
+    assertThat(report.profile()).isEqualTo(InvoiceValidator.PROFILE_NONE);
     assertThat(report.findings()).hasSize(1);
     assertThat(report.findings().get(0).ruleId()).isEqualTo("XML-01");
     assertThat(report.findings().get(0).severity()).isEqualTo(Severity.ERROR);
@@ -155,7 +164,7 @@ class EbInterface61ValidatorTest {
   void oversizedInputYieldsSingleXml02ErrorAndStops() {
     // P2-9 (size half): a document one byte above the module's defensive input cap is rejected up
     // front with a single XML-02 finding, German first, before any parse is attempted.
-    byte[] oversized = new byte[EbInterface61Validator.MAX_INPUT_BYTES + 1];
+    byte[] oversized = new byte[InvoiceValidator.MAX_INPUT_BYTES + 1];
 
     ValidationReport report = validator.validate(oversized);
 
@@ -176,7 +185,7 @@ class EbInterface61ValidatorTest {
     // guard (which rejects only strictly larger uploads) and reach the parser, where these non-XML
     // bytes become a single XML-01 — never an XML-02. Pins the `>` boundary against a `>=` slip
     // that would reject a legitimately-sized document up front.
-    byte[] atCap = new byte[EbInterface61Validator.MAX_INPUT_BYTES];
+    byte[] atCap = new byte[InvoiceValidator.MAX_INPUT_BYTES];
 
     ValidationReport report = validator.validate(atCap);
 

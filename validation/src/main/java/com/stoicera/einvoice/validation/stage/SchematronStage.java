@@ -90,7 +90,7 @@ public final class SchematronStage implements ValidationStage {
    * {@code SCHEMATRON}, so once initialisation completes the resource is fully bound and every
    * subsequent {@code applySchematronValidationToSVRL} only ever takes the already-bound read path
    * — no thread re-enters the write. This is what makes the stage's "safe to share" claim true; a
-   * concurrency regression test ({@code EbInterface61ValidatorConcurrencyTest}) pins it.
+   * concurrency regression test ({@code InvoiceValidatorConcurrencyTest}) pins it.
    */
   private static final class SchematronHolder {
 

@@ -12,7 +12,7 @@ import com.stoicera.einvoice.core.validation.ValidationReport;
 import com.stoicera.einvoice.formats.ebinterface.EbInterface61Strategy;
 import com.stoicera.einvoice.mapping.ebinterface.InvoiceToEbInterface61Mapper;
 import com.stoicera.einvoice.mapping.json.InvoiceJsonReader;
-import com.stoicera.einvoice.validation.EbInterface61Validator;
+import com.stoicera.einvoice.validation.InvoiceValidator;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -52,7 +52,7 @@ public class InvoiceService {
   private final InvoiceJsonReader jsonReader;
   private final InvoiceToEbInterface61Mapper ebiMapper;
   private final EbInterface61Strategy ebiStrategy;
-  private final EbInterface61Validator validator;
+  private final InvoiceValidator validator;
 
   /**
    * Serializes the findings list into the report's JSONB column. A dedicated Jackson 3 mapper: the
@@ -69,7 +69,7 @@ public class InvoiceService {
       InvoiceJsonReader jsonReader,
       InvoiceToEbInterface61Mapper ebiMapper,
       EbInterface61Strategy ebiStrategy,
-      EbInterface61Validator validator) {
+      InvoiceValidator validator) {
     this.invoices = invoices;
     this.reports = reports;
     this.audit = audit;

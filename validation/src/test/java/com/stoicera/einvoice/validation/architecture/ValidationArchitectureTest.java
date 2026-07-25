@@ -80,6 +80,7 @@ class ValidationArchitectureTest {
             "com.stoicera.einvoice.core..",
             "com.stoicera.einvoice.formats.api..",
             "com.stoicera.einvoice.formats.ebinterface..",
+            "com.stoicera.einvoice.formats.ubl..",
             "com.helger..",
             "java..",
             "javax.xml..",
