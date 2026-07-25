@@ -28,7 +28,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Converts an uploaded invoice document from one format to the other, reporting what the trip cost.
@@ -93,7 +92,17 @@ public class ConversionService {
    * @throws com.stoicera.einvoice.core.InvariantViolationException the document parses but
    *     describes an invoice the canonical model rejects (mapped to 422)
    */
-  @Transactional
+  // Deliberately NOT @Transactional. It was, and that was a scalability defect the M4 hostile
+  // review caught (finding F8): the annotation opened a database transaction, and therefore held a
+  // HikariCP connection, across the read, both mappings, the write AND a full Peppol XSLT
+  // validation run — seconds of pure CPU on a real document — in order to protect a single audit
+  // INSERT on the last line. Under concurrency the connection pool, which has nothing to do with
+  // any of that work, is the first thing to exhaust.
+  //
+  // Nothing is lost by removing it: the only database write is AuditService.record, which carries
+  // its own @Transactional and so still commits atomically. There is no second write for it to be
+  // atomic *with*. The conversion itself is a pure function over the upload — it persists nothing,
+  // so there is nothing a rollback could undo.
   public ConvertResult convert(
       UUID tenantId, byte[] source, ConversionFormat from, ConversionFormat to) {
     if (from == to) {
@@ -120,6 +129,15 @@ public class ConversionService {
    * <p>The declared format is checked rather than trusted: a caller who says {@code
    * from=ebinterface} and uploads UBL would otherwise get a confusing parse failure from deep
    * inside a mapper instead of a clear "that is not what you said it was".
+   *
+   * <p><strong>The order of the two steps below is a security boundary, not a formality.</strong>
+   * {@link InvoiceValidator#detectFormat} parses through {@code SecureXml}, which refuses a
+   * document that so much as declares a {@code DOCTYPE}; such a document therefore detects as
+   * {@link DocumentFormat#UNKNOWN} and is rejected here, before its bytes ever reach a format
+   * adapter's own JAXB reader — a parser this module does not configure and must not assume is
+   * hardened. Moving the detection after the read, or skipping it on a branch where its result
+   * looks unused, would open an XXE path. {@code ConvertApiIT
+   * .neverResolvesAnExternalEntityInAnUploadedDocument} pins it (M4 hostile review, finding F10).
    */
   private CanonicalResult read(byte[] source, ConversionFormat from) {
     DocumentFormat detected = validator.detectFormat(source);

@@ -160,6 +160,72 @@ class ConvertApiIT extends AbstractKeycloakIT {
     assertProblem(response, 400, "unsupported-conversion");
   }
 
+  /**
+   * An unusable currency code is a 422, never a 500 — M4 hostile review, finding F2.
+   *
+   * <p>Neither format adapter validates against its schema when reading (that is the validation
+   * module's job), so a currency code reaches the mapper exactly as the uploader wrote it. Handed
+   * straight to {@code Currency.getInstance} it produced a raw {@code IllegalArgumentException},
+   * which no handler maps: the caller got an opaque 500 and the server logged a stack trace, for a
+   * request that was simply invalid. This is the end-to-end proof that it is now the same
+   * well-described 422 every other domain rejection on this path produces.
+   */
+  @Test
+  void answers422NotAServerErrorForAnUnusableCurrencyCode() throws Exception {
+    byte[] bogusCurrency =
+        new String(Fixtures.validFileBytes(), StandardCharsets.UTF_8)
+            .replace("InvoiceCurrency=\"EUR\"", "InvoiceCurrency=\"BOGUS\"")
+            .getBytes(StandardCharsets.UTF_8);
+
+    HttpResponse<String> response =
+        convert(
+            bogusCurrency, "ebinterface", "ubl", fetchAccessToken(TEST_USERNAME, TEST_PASSWORD));
+
+    assertProblem(response, 422, "invalid-invoice");
+    assertThat(json.readTree(response.body()).get("detail").asText())
+        .contains("BOGUS")
+        .contains("ISO 4217");
+  }
+
+  /**
+   * The conversion path never expands an external entity — M4 hostile review, finding F10.
+   *
+   * <p>This is a regression test for an ordering that is load-bearing but easy to mistake for a
+   * redundant sanity check. {@code ConversionService.read} asks {@code InvoiceValidator
+   * .detectFormat} what the upload is <em>before</em> handing the raw bytes to a format adapter's
+   * own JAXB reader, and {@code detectFormat} parses through {@code SecureXml}, which rejects any
+   * document that so much as declares a {@code DOCTYPE}. A refactor that reordered those two
+   * statements — or that "optimised away" a detection step whose result looks unused on the
+   * ebInterface branch — would send untrusted XML straight into a parser this module never
+   * configured.
+   *
+   * <p>Asserting the status alone would not catch that: an adapter might reject the document for
+   * its own reasons <em>after</em> resolving the entity. So the response body is checked for the
+   * file's content too.
+   */
+  @Test
+  void neverResolvesAnExternalEntityInAnUploadedDocument() throws Exception {
+    String xxe =
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE Invoice [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
+        <Invoice xmlns="http://www.ebinterface.at/schema/6p1/" GeneratingSystem="x"\
+         DocumentType="Invoice" InvoiceCurrency="EUR" Language="de">
+          <InvoiceNumber>&xxe;</InvoiceNumber>
+        </Invoice>
+        """;
+
+    HttpResponse<String> response =
+        convert(
+            xxe.getBytes(StandardCharsets.UTF_8),
+            "ebinterface",
+            "ubl",
+            fetchAccessToken(TEST_USERNAME, TEST_PASSWORD));
+
+    assertProblem(response, 400, "unsupported-conversion");
+    assertThat(response.body()).doesNotContain("root:").doesNotContain("/bin/");
+  }
+
   private HttpResponse<String> convert(byte[] document, String from, String to, String token)
       throws Exception {
     MultipartBodies.Multipart multipart =

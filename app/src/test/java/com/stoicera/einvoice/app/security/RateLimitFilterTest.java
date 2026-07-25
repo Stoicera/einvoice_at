@@ -35,7 +35,12 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 class RateLimitFilterTest {
 
   private static final String VALIDATE = "/api/v1/validate";
+  private static final String CONVERT = "/api/v1/convert";
   private static final ObjectMapper JSON = new ObjectMapper();
+
+  /** Any limit will do for the eviction test; only the map's size is under assertion there. */
+  private static final RateLimitFilter.Limit SWEEP_LIMIT =
+      new RateLimitFilter.Limit("validate", VALIDATE, 10, 10, true);
 
   @AfterEach
   void clearSecurityContext() {
@@ -46,7 +51,7 @@ class RateLimitFilterTest {
 
   @Test
   void anonymousRequestsUpToCapacityPassThroughThenTheNextIsRejectedWith429() throws Exception {
-    RateLimitFilter filter = new RateLimitFilter(3, 3);
+    RateLimitFilter filter = new RateLimitFilter(3, 3, 1000, 1000);
     CountingChain chain = new CountingChain();
     String ip = "203.0.113.1";
 
@@ -64,7 +69,7 @@ class RateLimitFilterTest {
 
   @Test
   void aRejectedRequestGetsAProblemJsonBodyAndAPositiveIntegerRetryAfterHeader() throws Exception {
-    RateLimitFilter filter = new RateLimitFilter(1, 1);
+    RateLimitFilter filter = new RateLimitFilter(1, 1, 1000, 1000);
     CountingChain chain = new CountingChain();
     String ip = "203.0.113.2";
 
@@ -90,7 +95,8 @@ class RateLimitFilterTest {
   @Test
   void refillAfterTheConfiguredPeriodElapsesAllowsAnotherRequest() throws Exception {
     MutableTimeMeter clock = new MutableTimeMeter();
-    RateLimitFilter filter = new RateLimitFilter(1, 1, clock); // 1 token, 1 token per minute
+    RateLimitFilter filter =
+        new RateLimitFilter(1, 1, 1000, 1000, clock); // 1 token, 1 token per minute
     CountingChain chain = new CountingChain();
     String ip = "198.51.100.7";
 
@@ -109,7 +115,7 @@ class RateLimitFilterTest {
 
   @Test
   void distinctClientIpsEachGetTheirOwnCapacity() throws Exception {
-    RateLimitFilter filter = new RateLimitFilter(1, 1);
+    RateLimitFilter filter = new RateLimitFilter(1, 1, 1000, 1000);
     CountingChain chain = new CountingChain();
 
     filter.doFilter(anonymousPost("203.0.113.10"), new MockHttpServletResponse(), chain);
@@ -121,7 +127,7 @@ class RateLimitFilterTest {
   @Test
   void onlyExactPostToValidateIsRateLimitedOtherRoutesAndMethodsPassThroughUnthrottled()
       throws Exception {
-    RateLimitFilter filter = new RateLimitFilter(1, 1);
+    RateLimitFilter filter = new RateLimitFilter(1, 1, 1000, 1000);
     CountingChain chain = new CountingChain();
     String ip = "203.0.113.20";
 
@@ -155,7 +161,7 @@ class RateLimitFilterTest {
     assertThat(anonymous.isAuthenticated()).isTrue();
     SecurityContextHolder.getContext().setAuthentication(anonymous);
 
-    RateLimitFilter filter = new RateLimitFilter(1, 1);
+    RateLimitFilter filter = new RateLimitFilter(1, 1, 1000, 1000);
     CountingChain chain = new CountingChain();
     String ip = "203.0.113.30";
 
@@ -170,7 +176,7 @@ class RateLimitFilterTest {
   @Test
   void aJwtAuthenticatedCallerBypassesTheLimiterEvenAfterTheAnonymousBucketIsExhausted()
       throws Exception {
-    RateLimitFilter filter = new RateLimitFilter(1, 1);
+    RateLimitFilter filter = new RateLimitFilter(1, 1, 1000, 1000);
     CountingChain chain = new CountingChain();
     String ip = "203.0.113.40";
 
@@ -189,7 +195,7 @@ class RateLimitFilterTest {
   @Test
   void anApiKeyAuthenticatedCallerBypassesTheLimiterEvenAfterTheAnonymousBucketIsExhausted()
       throws Exception {
-    RateLimitFilter filter = new RateLimitFilter(1, 1);
+    RateLimitFilter filter = new RateLimitFilter(1, 1, 1000, 1000);
     CountingChain chain = new CountingChain();
     String ip = "203.0.113.41";
 
@@ -209,11 +215,12 @@ class RateLimitFilterTest {
 
   @Test
   void trackedClientsAreBoundedByASweepOnceTheHardCapIsExceeded() {
-    RateLimitFilter filter = new RateLimitFilter(10, 10);
+    RateLimitFilter filter = new RateLimitFilter(10, 10, 1000, 1000);
 
     // MAX_TRACKED_CLIENTS is 10_000 (see RateLimitFilter); one over that forces a sweep.
     for (int i = 0; i <= 10_000; i++) {
-      filter.bucketFor("10." + (i / (256 * 256)) + "." + ((i / 256) % 256) + "." + (i % 256));
+      filter.bucketFor(
+          "10." + (i / (256 * 256)) + "." + ((i / 256) % 256) + "." + (i % 256), SWEEP_LIMIT);
     }
 
     assertThat(filter.trackedClientCount()).isLessThanOrEqualTo(10_000);
@@ -221,10 +228,87 @@ class RateLimitFilterTest {
     assertThat(filter.trackedClientCount()).isLessThan(9_000);
   }
 
+  /**
+   * {@code /convert} limits authenticated callers — the opposite of {@code /validate}, and the
+   * whole point of the M4 hostile review's finding F9.
+   *
+   * <p>That endpoint requires authentication. Had it inherited the validator's "authenticated
+   * callers are exempt" policy, the limit would apply to exactly nobody, which is the state M4
+   * shipped in: the most expensive operation in the platform, unlimited.
+   */
+  @Test
+  void convertLimitsAuthenticatedCallersUnlikeValidate() throws Exception {
+    RateLimitFilter filter = new RateLimitFilter(1000, 1000, 1, 1);
+    CountingChain chain = new CountingChain();
+    SecurityContextHolder.getContext()
+        .setAuthentication(
+            ApiKeyAuthenticationToken.authenticated(UUID.randomUUID(), UUID.randomUUID()));
+
+    filter.doFilter(post(CONVERT, "203.0.113.50"), new MockHttpServletResponse(), chain);
+    MockHttpServletResponse blocked = new MockHttpServletResponse();
+    filter.doFilter(post(CONVERT, "203.0.113.50"), blocked, chain);
+
+    assertThat(chain.invocations()).isEqualTo(1);
+    assertThat(blocked.getStatus()).isEqualTo(429);
+    assertThat(blocked.getContentAsString()).contains(CONVERT);
+  }
+
+  /**
+   * Two tenants sharing one egress address do not share an allowance: an authenticated caller is
+   * bucketed by credential, not by IP. Keying {@code /convert} by IP would punish every tenant
+   * behind a NAT for one tenant's traffic — and let one tenant multiply their own allowance by
+   * calling from several addresses.
+   */
+  @Test
+  void convertBucketsAuthenticatedCallersByCredentialNotByIp() throws Exception {
+    RateLimitFilter filter = new RateLimitFilter(1000, 1000, 1, 1);
+    CountingChain chain = new CountingChain();
+    String sharedIp = "203.0.113.51";
+
+    SecurityContextHolder.getContext()
+        .setAuthentication(
+            ApiKeyAuthenticationToken.authenticated(UUID.randomUUID(), UUID.randomUUID()));
+    filter.doFilter(post(CONVERT, sharedIp), new MockHttpServletResponse(), chain);
+
+    // A different tenant, same address: their own bucket, still full.
+    SecurityContextHolder.getContext()
+        .setAuthentication(
+            ApiKeyAuthenticationToken.authenticated(UUID.randomUUID(), UUID.randomUUID()));
+    MockHttpServletResponse second = new MockHttpServletResponse();
+    filter.doFilter(post(CONVERT, sharedIp), second, chain);
+
+    assertThat(chain.invocations()).isEqualTo(2);
+    assertThat(second.getStatus()).isEqualTo(200);
+  }
+
+  /** The two routes hold separate buckets, so conversions cannot spend a validator's allowance. */
+  @Test
+  void theTwoRoutesDoNotShareABucket() throws Exception {
+    RateLimitFilter filter = new RateLimitFilter(1, 1, 1, 1);
+    CountingChain chain = new CountingChain();
+    String ip = "203.0.113.52";
+
+    filter.doFilter(post(CONVERT, ip), new MockHttpServletResponse(), chain);
+    MockHttpServletResponse convertBlocked = new MockHttpServletResponse();
+    filter.doFilter(post(CONVERT, ip), convertBlocked, chain);
+    assertThat(convertBlocked.getStatus()).isEqualTo(429);
+
+    // The same anonymous client's validate bucket is untouched.
+    MockHttpServletResponse validateAllowed = new MockHttpServletResponse();
+    filter.doFilter(anonymousPost(ip), validateAllowed, chain);
+
+    assertThat(validateAllowed.getStatus()).isEqualTo(200);
+    assertThat(chain.invocations()).isEqualTo(2);
+  }
+
   // --- helpers ---------------------------------------------------------------------------------
 
   private static MockHttpServletRequest anonymousPost(String remoteAddr) {
-    MockHttpServletRequest request = new MockHttpServletRequest("POST", VALIDATE);
+    return post(VALIDATE, remoteAddr);
+  }
+
+  private static MockHttpServletRequest post(String path, String remoteAddr) {
+    MockHttpServletRequest request = new MockHttpServletRequest("POST", path);
     request.setRemoteAddr(remoteAddr);
     return request;
   }

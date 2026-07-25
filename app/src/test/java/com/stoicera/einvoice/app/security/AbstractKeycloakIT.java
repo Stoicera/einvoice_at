@@ -51,7 +51,13 @@ import org.testcontainers.utility.MountableFile;
 @TestPropertySource(
     properties = {
       "app.rate-limit.validate.capacity=1000",
-      "app.rate-limit.validate.refill-per-minute=1000"
+      "app.rate-limit.validate.refill-per-minute=1000",
+      // Same reason as the validate pair above: the shared ITs make a handful of /convert calls in
+      // a burst and must never collide with the production default, which is deliberately low
+      // because a conversion is expensive (M4 hostile review, finding F9). RateLimitIT owns the
+      // dedicated context that actually exercises the 429 path.
+      "app.rate-limit.convert.capacity=1000",
+      "app.rate-limit.convert.refill-per-minute=1000"
     })
 public abstract class AbstractKeycloakIT extends AbstractPostgresIT {
 

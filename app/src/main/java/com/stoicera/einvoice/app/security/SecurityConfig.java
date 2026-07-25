@@ -57,7 +57,9 @@ public class SecurityConfig {
       ApiKeyRepository apiKeys,
       JwtDecoder jwtDecoder,
       @Value("${app.rate-limit.validate.capacity}") long rateLimitCapacity,
-      @Value("${app.rate-limit.validate.refill-per-minute}") long rateLimitRefillPerMinute)
+      @Value("${app.rate-limit.validate.refill-per-minute}") long rateLimitRefillPerMinute,
+      @Value("${app.rate-limit.convert.capacity}") long convertRateLimitCapacity,
+      @Value("${app.rate-limit.convert.refill-per-minute}") long convertRateLimitRefillPerMinute)
       throws Exception {
     http.authorizeHttpRequests(
             authorize ->
@@ -91,7 +93,11 @@ public class SecurityConfig {
         // then) and only ever sees requests that already cleared authorization — see
         // RateLimitFilter's own Javadoc for the full placement rationale.
         .addFilterAfter(
-            new RateLimitFilter(rateLimitCapacity, rateLimitRefillPerMinute),
+            new RateLimitFilter(
+                rateLimitCapacity,
+                rateLimitRefillPerMinute,
+                convertRateLimitCapacity,
+                convertRateLimitRefillPerMinute),
             AuthorizationFilter.class)
         .oauth2ResourceServer(
             oauth2 ->
