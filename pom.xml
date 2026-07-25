@@ -57,6 +57,14 @@
          that ph-jaxb 12.1.0 brings in. -->
     <jaxb-runtime.version>4.0.5</jaxb-runtime.version>
 
+    <!-- PDF generation for the rendering module (M4). Version verified against Maven Central
+         maven-metadata.xml on 2026-07-25: 3.0.8 is both <latest> and <release>. Apache-2.0, the
+         same licence as this repository — which is why PDFBox and not OpenPDF, whose LGPL/MPL dual
+         licence would add a licence-compatibility question to a portfolio repo for no gain. SPEC §1
+         names both as acceptable; see ADR-0008 for the full comparison, including why an HTML→PDF
+         stack (openhtmltopdf) was not chosen. -->
+    <pdfbox.version>3.0.8</pdfbox.version>
+
     <spotless-maven-plugin.version>3.8.0</spotless-maven-plugin.version>
     <google-java-format.version>1.35.0</google-java-format.version>
     <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
@@ -149,6 +157,11 @@
         <groupId>com.helger.phive.rules</groupId>
         <artifactId>phive-rules-peppol</artifactId>
         <version>${phive-rules.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.pdfbox</groupId>
+        <artifactId>pdfbox</artifactId>
+        <version>${pdfbox.version}</version>
       </dependency>
       <dependency>
         <groupId>com.bucket4j</groupId>
