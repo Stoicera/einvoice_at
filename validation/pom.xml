@@ -75,7 +75,7 @@
     <!-- The official OpenPeppol validation artefacts (M4): EN 16931 + Peppol BIS Billing 3.0
          Schematron, packaged as phive VES and consumed UNMODIFIED — the promise SPEC §7 made when
          M2 had to write its own ebInterface Schematron because AUSTRIAPRO publishes none. Which
-         rule-set version is used is pinned in code (PeppolUblValidator), not left to whatever the
+         rule-set version is used is pinned in code (PeppolValidationStage), not left to whatever the
          library defaults to. Parent-managed (phive-rules 4.4.1), never redeclared. -->
     <dependency>
       <groupId>com.helger.phive.rules</groupId>
