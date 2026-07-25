@@ -282,6 +282,15 @@ public final class CanonicalInvoiceArbitraries {
     return Arbitraries.strings()
         .withCharRange('0', '9')
         .ofLength(8)
+        // "ATU00000000" is excluded on purpose, and the exclusion is domain modelling rather than
+        // test convenience. e-rechnung.gv.at uses that exact string as the sentinel for "this party
+        // has no UID", so it is not a VAT id a party can hold — it is the absence of one, spelled
+        // inside the value space. jqwik found this by generating all-zero digits and watching the
+        // round trip turn a "VAT id" into null; the round trip is right and the generator was
+        // wrong. The genuine consequence — that an ebInterface document literally carrying
+        // ATU00000000 is read back as "no VAT id", and cannot be read back any other way — is a
+        // property of the convention itself and is documented on EbInterface61ToInvoiceMapper.
+        .filter(digits -> !digits.equals("00000000"))
         .map(digits -> "ATU" + digits)
         .injectNull(0.2);
   }
