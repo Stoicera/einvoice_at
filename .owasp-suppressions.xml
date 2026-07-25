@@ -17,4 +17,30 @@
   ArchUnit and coverage gates get.
 -->
 <suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+
+  <!--
+    CVE-2023-5443 matched against THIS PROJECT'S OWN MODULES, not against a dependency.
+
+    Added 2026-07-25, on the scan's first real run (the one after NVD_API_KEY was configured).
+    Dependency-Check assigned every com.stoicera.einvoice artifact the CPE
+    `cpe:2.3:a:e-invoice_project:e-invoice` purely because the groupId contains the word
+    "einvoice", and then reported that unrelated product's CVE against all seven modules.
+
+    This is the wrong-component case the header allows, and it is unambiguous: CVE-2023-5443 is a
+    vulnerability in a different piece of software that this repository neither contains nor
+    depends on. The suppression is scoped by packageUrl to our own groupId, so it can never mask a
+    finding in a third-party dependency — the only thing the scan exists to find.
+
+    No <until>: this claim does not decay, because it is about mistaken identity rather than about
+    a version we might later upgrade past. Revisit only if the module coordinates change.
+  -->
+  <suppress>
+    <notes><![CDATA[
+      False positive: our own multi-module artifacts CPE-matched to the unrelated
+      "e-invoice_project:e-invoice" product on a groupId substring. See the block comment above.
+    ]]></notes>
+    <packageUrl regex="true">^pkg:maven/com\.stoicera\.einvoice/.*$</packageUrl>
+    <cve>CVE-2023-5443</cve>
+  </suppress>
+
 </suppressions>

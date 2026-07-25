@@ -57,6 +57,22 @@
          that ph-jaxb 12.1.0 brings in. -->
     <jaxb-runtime.version>4.0.5</jaxb-runtime.version>
 
+    <!-- SECURITY OVERRIDES of versions spring-boot-dependencies 4.1.0 manages.
+
+         Both raise a dependency the OWASP scan flagged at CVSS >= 7 on the first run after the
+         NVD_API_KEY secret was configured (2026-07-25) — i.e. the gate's first real verdict, not a
+         hypothetical. Upgrading is the required first response; suppressing a genuine finding to
+         get a green build is what .owasp-suppressions.xml's own policy forbids.
+
+         Boot 4.1.0 is the newest release at this date, so there is no parent bump that carries
+         these fixes; the properties are overridden here instead, which is the mechanism
+         spring-boot-dependencies documents for exactly this. Both versions verified against Maven
+         Central maven-metadata.xml on 2026-07-25 as <latest> and <release>. Drop these overrides
+         once a Boot release manages versions at least this high — leaving them pinned below Boot's
+         own floor would silently downgrade. -->
+    <postgresql.version>42.7.13</postgresql.version>
+    <tomcat.version>11.0.24</tomcat.version>
+
     <!-- PDF generation for the rendering module (M4). Version verified against Maven Central
          maven-metadata.xml on 2026-07-25: 3.0.8 is both <latest> and <release>. Apache-2.0, the
          same licence as this repository — which is why PDFBox and not OpenPDF, whose LGPL/MPL dual
