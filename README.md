@@ -7,16 +7,19 @@
 
 A self-hostable Java 25 / Spring Boot platform built by [Stoicera Software Group](https://stoicera.com) as a production-grade reference system. Austria's federal government only accepts structured e-invoices (ebInterface or Peppol BIS) via e-rechnung.gv.at — and rejected invoices come back with Schematron output that non-technical users cannot read. This platform closes that gap.
 
-> **Status: Milestone M4 — UBL BIS 3.0 + conversion + PDF.** The platform now speaks both Austrian
-> e-invoice formats. On top of M3's REST API it reads and writes **Peppol BIS Billing 3.0 (UBL
-> 2.1)**, validates it against the **official OpenPeppol rule set** (executed unmodified, at a
-> pinned version), **converts** between ebInterface and UBL through the canonical model with a
-> per-document loss report, and renders a **German PDF print view**. The web UI lands in a later
-> milestone. See [docs/MILESTONES.md](docs/MILESTONES.md).
+> **Status: Milestone M5 (in progress) — public web validator + AI explanations.** On top of M4's
+> two formats, conversion and PDF, the platform now has a **browser surface**: a German,
+> SEO-oriented [public validator](#web-ui) that stores nothing, a report view grouping findings by
+> severity, and an optional **AI explanation** per finding (off by default, degrades to a notice when
+> the provider is down). The Peppol findings that Austrian filers actually hit now carry **real
+> German messages** rather than a German frame around English. **Still open in M5:** the
+> authenticated dashboard (invoice wizard, API-key UI), the GDPR tenant-delete endpoint and retention
+> job, the Selenium E2E suite and the Gatling scenario — see
+> [docs/worklog.md](docs/worklog.md). Milestone plan: [docs/MILESTONES.md](docs/MILESTONES.md).
 
 ## Deutsche Kurzfassung
 
-**einvoice-at** ist eine selbst hostbare Plattform für die österreichische E-Rechnung: Sie **erzeugt** ebInterface 6.1 und Peppol BIS Billing 3.0 (UBL) aus strukturierten Rechnungsdaten, **validiert** hochgeladene XML-Rechnungen gegen XSD, Schematron und österreichische Geschäftsregeln — mit einem menschenlesbaren, deutschen Prüfbericht — und **konvertiert** zwischen beiden Formaten mit dokumentierten Mapping-Grenzen. Optional erklärt ein abschaltbarer KI-Assistent jeden Prüfungsfehler in einfacher Sprache. Aktueller Stand: Milestone M4 (beide Formate, Konvertierung mit Verlust-Report, PDF-Druckansicht; die Web-UI folgt in einem späteren Milestone).
+**einvoice-at** ist eine selbst hostbare Plattform für die österreichische E-Rechnung: Sie **erzeugt** ebInterface 6.1 und Peppol BIS Billing 3.0 (UBL) aus strukturierten Rechnungsdaten, **validiert** hochgeladene XML-Rechnungen gegen XSD, Schematron und österreichische Geschäftsregeln — mit einem menschenlesbaren, deutschen Prüfbericht — und **konvertiert** zwischen beiden Formaten mit dokumentierten Mapping-Grenzen. Ein abschaltbarer KI-Assistent erklärt jeden Befund auf Wunsch in einfacher Sprache; personenbezogene Daten werden vorher maskiert und das geprüfte Dokument verlässt die Plattform nie ([docs/privacy.md](docs/privacy.md)). Aktueller Stand: Milestone M5 in Arbeit — öffentliche Prüfer-Seite und KI-Erklärungen sind fertig, das Dashboard noch nicht.
 
 ## Architecture
 
@@ -31,13 +34,13 @@ einvoice-at
 ├── mapping               canonical ↔ formats (both directions), conversion loss report, golden-file tested
 ├── validation            ebInterface: XSD + own AT-B2G Schematron + business rules; UBL: the official OpenPeppol rule set
 ├── rendering             invoice → German PDF print view (Apache PDFBox)
-├── ai-assist             LlmClient port + OpenRouter adapter, feature-flagged, degradable — planned M5
-└── app                   Spring Boot app: REST API, security, persistence, audit (live since M3); web UI planned for a later milestone
+├── ai-assist             LlmClient port + OpenRouter adapter, PII scrubbing, feature-flagged, degradable
+└── app                   Spring Boot app: REST API, public web UI, security, persistence, audit
 ```
 
-Every module except `ai-assist` is built and tested as of M4; `ai-assist` is a `package-info.java`-only stub until M5.
+Every module is built and tested as of M5.
 
-Stack: Java 25, Spring Boot 4.1, PostgreSQL 17 + Flyway, Thymeleaf + htmx, Keycloak, Testcontainers, Selenium. Rationale in [ADR-0001](docs/adr/0001-java-spring-boot-stack.md).
+Stack: Java 25, Spring Boot 4.1, PostgreSQL 17 + Flyway, Thymeleaf (server-rendered, no CSS/JS build step — [ADR-0009](docs/adr/0009-web-ui.md)), Keycloak, Testcontainers. Rationale in [ADR-0001](docs/adr/0001-java-spring-boot-stack.md).
 
 ## Quickstart
 
@@ -52,6 +55,8 @@ docker compose up -d   # starts postgres, keycloak (dev realm auto-imported), ma
 curl http://localhost:8080/actuator/health
 # {"groups":["liveness","readiness"],"status":"UP"}
 ```
+
+Then open **<http://localhost:8080/validator>** and drop an ebInterface or UBL invoice on it.
 
 ## REST API
 
@@ -176,33 +181,87 @@ turns it into a real gate with no workflow change.
 
 ## Testing
 
-JUnit 5 + AssertJ + Mockito for unit tests, ArchUnit for module-boundary rules, Testcontainers for integration tests, Selenium WebDriver for E2E — built out milestone by milestone per [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md).
+JUnit 5 + AssertJ + Mockito for unit tests, ArchUnit for module-boundary rules, Testcontainers for integration tests — built out milestone by milestone per [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md). **Selenium WebDriver E2E and the Gatling load scenario are not built yet**; both are M5 work still open (see [docs/worklog.md](docs/worklog.md)). The browser flows they would cover are meanwhile asserted at the HTTP level, driving the real forms with real CSRF tokens — less than a browser proves, and said so rather than implied.
 
-**Domain modules.** Every implemented module carries a JaCoCo gate, and five of them a [PIT](https://pitest.org) mutation gate on top, so the coverage numbers have teeth rather than just line reach. Figures below are read off the JaCoCo CSV of a full `./mvnw verify`, not estimated:
+**Domain modules.** Every module carries a JaCoCo gate, and six of them a [PIT](https://pitest.org) mutation gate on top, so the coverage numbers have teeth rather than just line reach. Figures below are read off the JaCoCo CSV of a full `./mvnw verify`, not estimated:
 
 | Module | Line | Branch | JaCoCo gate | PIT (mutations killed) |
 |---|---|---|---|---|
 | `core` | 99.6 % | 98.3 % | 95/90 | 98 % (126/129) |
 | `mapping` | 99.2 % | 90.6 % | 95/90 | 99 % (411/417) |
-| `validation` | 92.7 % | 87.7 % | 90/85 | 86 % (126/147) |
+| `validation` | 94.3 % | 87.7 % | 90/85 | 86 % (126/147) |
 | `formats-ebinterface` | 100 % | 100 % | 90/85 | 100 % (12/12) |
 | `formats-ubl` | 98.6 % | 96.3 % | 90/85 | 93 % (27/29) |
 | `rendering` | 95.6 % | 88.8 % | 90/85 | — |
 | `formats-api` | 100 % | 100 % | 100/100 | — |
+| `ai-assist` | 97.3 % | 97.8 % | 90/85 | 91 % (86/95) |
 
 `core` carries a [jqwik](https://jqwik.net) property suite for money/VAT arithmetic; `mapping` carries round-trip properties in both directions, including one that re-emits a read document and demands byte equality. `formats-api` gates at 100/100 — one record and one interface, where anything less would be a line nobody bothered to test.
 
 **Round trips and golden files.** The two mapper pairs are exercised by jqwik round-trip properties over one shared input space, which is how the formats' asymmetries were established rather than assumed. `UblEndToEndGenerationTest` is the milestone's strongest automated claim: the sample invoice, generated through the real chain, is judged **Peppol-clean by the official OpenPeppol rule set** — an external verdict, not a self-assessment, since those rules are OpenPeppol's and this project only runs them.
 
-**`app` module.** 95.0 % line / 84.3 % branch (JaCoCo gate 90/78, measured across unit *and* integration runs merged — most of this module's behaviour is only observable end to end). 52 unit tests and 83 integration tests across 16 IT classes, the latter against real PostgreSQL and real Keycloak via Testcontainers:
+**`app` module.** 93.4 % line / 78.7 % branch (JaCoCo gate 90/78, measured across unit *and* integration runs merged — most of this module's behaviour is only observable end to end). 53 unit tests and 104 integration tests across 18 IT classes, the latter against real PostgreSQL and real Keycloak via Testcontainers:
 
 - **Auth matrix** (`AuthMatrixIT`) — both directions of every mechanism: anonymous, unknown key, revoked key, valid key, valid JWT, a bearer header that is not a JWT, an `alg=none` token, a genuine Keycloak token with a rewritten payload, and a request presenting two competing credentials.
 - **Token validation** (`JwtDecoderTest`) — a throwaway JWKS over loopback and self-minted tokens, so wrong issuer, expired `exp`, a foreign signing key, and a foreign key impersonating the real `kid` can each be varied one at a time.
 - **Tenant isolation** — for invoices, reports *and* API keys: one tenant can never read, revoke or list another's rows.
 - **Transactional guarantees** (`ApiKeyServiceTransactionIT`) — a failing audit write rolls the key write back with it.
+- **The browser surface** (`PublicWebIT`) — the forms are driven the way a browser drives them: fetch the page, harvest the session cookie and the `_csrf` token Thymeleaf injected, post both back. A token-less post is asserted to be **refused**, so the CSRF enforcement is proven rather than worked around. Also asserts the two filter chains still own their own paths, and that an anonymous upload leaves the `report` row count unchanged.
+- **The AI flow, both ways** (`AiExplanationIT`) — upload → report → erklären against a real stub provider on a loopback port, with the request body read back to prove no IBAN, e-mail, VAT id or sampling parameter left the JVM; plus the outage path, the cache, and the cost/token meters. Its sibling assertions in `PublicWebIT` cover the flag-off half: no button, no client, nothing lost.
 - **The rest** — Flyway migration and index assertions, repository round-trips through JSONB/`char`/`numeric` columns, rate limiting, request-body caps, security headers, the OpenAPI document and its off-switch, and the ArchUnit cross-module rules.
 
 PIT is deliberately *not* applied to `app`: mutating a module whose tests each boot a Spring context and two containers costs minutes per mutant for little signal, and its genuinely algorithmic parts are covered by fast unit tests.
+
+## Web UI
+
+The browser surface is server-rendered Thymeleaf with **no CSS or JavaScript build step** — a
+hand-authored stylesheet and ~40 lines of first-party script. Both are deliberate deviations from
+SPEC §1's Tailwind CLI and htmx, and [ADR-0009](docs/adr/0009-web-ui.md) records why and what they
+cost. **Every page works with JavaScript disabled**; the script only avoids a full page reload for the
+two fragment swaps.
+
+| Page | Auth | What it is |
+|---|---|---|
+| `GET /` | — | Landing page, German-first with SEO meta |
+| `GET /validator` | — | The public "Österreichischer E-Rechnungs-Prüfer" (PRD §2's lead magnet) |
+| `POST /validator/pruefen` | — | Upload → report fragment. Rate-limited, 2 MB cap, **nothing stored** |
+| `POST /validator/erklaeren` | — | One finding → AI explanation fragment (only when the flag is on) |
+
+**Two security filter chains, not one.** `/api/**` keeps M3/M4's policy byte for byte — stateless,
+CSRF disabled, bearer token or `X-Api-Key`. The browser surface gets its own chain with a session,
+**CSRF enforcement** (the ENGINEERING_STANDARDS §4 requirement that had nothing to protect while the
+app was API-only) and `oauth2Login` against Keycloak. The chain order is load-bearing: an API path
+placed outside `/api/**` would fall through to the browser chain and answer a login redirect instead of
+a 401, so `PublicWebIT` asserts the split rather than trusting it.
+
+**The public upload stores nothing, through the same code as the API.** It calls the *same*
+`ReportService.validate(bytes, Optional.empty())` the anonymous REST endpoint calls, where the empty
+`Optional` means "write nothing". A UI-specific validation path would have been a second place for
+that promise to break; instead there is one, and an integration test asserts the `report` row count
+does not move after an anonymous upload.
+
+## AI explanations
+
+Off by default. `FEATURES_AI_EXPLANATIONS=true` plus an `AI_API_KEY` turns on a "Fehler erklären"
+button per finding, which returns two short German paragraphs: what the finding means, and the one
+change that fixes it. Design and honest limits: [ADR-0010](docs/adr/0010-ai-assist.md); data flow:
+[docs/privacy.md](docs/privacy.md).
+
+Four properties worth stating, because each is enforced by a test rather than by intent:
+
+- **The document is never sent.** Only the finding — rule id, severity, location, message. SPEC §6
+  originally described sending ~40 lines of XML around the location; that is not built and *cannot* be
+  without keeping uploads, which is the promise above. PII scrubbing is undiminished by this: a
+  Schematron message quotes the offending document value verbatim, so IBAN / e-mail / VAT-id /
+  long-number masking has real work to do on the finding text itself.
+- **Nothing unmasked leaves the JVM.** `AiExplanationIT` runs the real flow against a stub provider on
+  a loopback port and reads the bytes that were actually sent.
+- **Switched off means no beans, not failing calls.** With the flag off there is no provider client in
+  the context and no button on the page. With it on but the provider unreachable, the report renders
+  unchanged and the button answers a friendly notice — `FindingExplainer.explain` never throws.
+- **Cost comes from the provider, not from a price table.** `einvoice.ai.calls`,
+  `einvoice.ai.tokens` and `einvoice.ai.cost.usd` are Micrometer counters fed by the provider's own
+  reported charge; an unknown cost is left out rather than recorded as zero.
 
 ## Conversion and PDF
 

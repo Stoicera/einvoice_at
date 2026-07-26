@@ -17,7 +17,7 @@ Status: v1.0 · 2026-07-23 · Language of repo: English (domain terms stay Germa
 | e-invoice libs | **ph-ebinterface** (ebInterface XSD/model), **phive** + phive-rules (Schematron validation for ebInterface & Peppol), **ph-ubl** (UBL 2.1) — all MIT/Apache, actively maintained by Philip Helger; if a rule set is missing, fall back to official AUSTRIAPRO/OpenPeppol artefacts executed via ph-schematron | Don't reinvent validated standards artefacts; credit upstream in README |
 | Mapping | Dedicated `mapping` module: internal canonical model (EN 16931 core) ↔ ebInterface 6.1 ↔ UBL BIS 3.0. Hand-written and heavily tested (MapStruct evaluated but unrealized as of M2; all mapping turned out semantic) | The canonical model is the heart of the system |
 | PDF | OpenPDF or Apache PDFBox via a `rendering` module (HTML→PDF acceptable: openhtmltopdf) | Print view of invoice |
-| Web UI | **Thymeleaf + htmx + Tailwind (standalone CLI)** | Java-pure server-rendered UI: exactly what enterprise Java shops respect; no SPA build complexity |
+| Web UI | **Thymeleaf**, server-rendered; hand-authored CSS and ~40 lines of first-party JS instead of Tailwind CLI / htmx (M5 sync, [ADR-0009](adr/0009-web-ui.md)) | Java-pure server-rendered UI: exactly what enterprise Java shops respect; no SPA build complexity — and, as realized, no CSS or JS build step at all |
 | AuthN/Z | Spring Security (OAuth2 Resource Server) + **Keycloak** as IdP (docker compose); API keys for machine access (hashed at rest) | Answers the "do we need Keycloak?" question: Spring Security is the framework, Keycloak the IdP — document this in an ADR |
 | AI | `LlmClient` abstraction → **OpenRouter** default (OpenAI-compatible API), model configurable; feature-flagged, degrades gracefully | Explain validation errors in plain German |
 | Observability | OpenTelemetry (Micrometer bridge), Actuator health/readiness, JSON logs (Logback) | Standard |
@@ -84,12 +84,46 @@ _M3 hostile-review fix wave (2026-07-25):_ The 2 MB cap now covers **every** req
 
 Pages: Landing/"Prüfer" (public upload → report, German-first, SEO meta), Report view (findings grouped by severity, "Fehler erklären" button per finding when AI enabled), Dashboard (login): invoice list, create-invoice form (htmx wizard), API-key management. Design: clean, Stoicera-adjacent (dark/gold accents), no framework bloat; Lighthouse ≥ 95 on public pages.
 
+_M5 sync (2026-07-26):_ **The landing page, the public validator and the report view are realized;
+the authenticated dashboard is not yet** — see `docs/worklog.md` for exactly what is open. Security is
+now **two filter chains**: `/api/**` keeps M3/M4's stateless policy unchanged, and the browser surface
+gets its own chain with a session, **CSRF enforcement** (the ENGINEERING_STANDARDS §4 requirement that
+had nothing to protect while the app was API-only) and `oauth2Login` against Keycloak. The public
+upload runs through the *same* `ReportService.validate(bytes, Optional.empty())` as the anonymous REST
+endpoint, so "an anonymous upload is never stored" has one implementation, and the same rate-limit
+bucket, so the page cannot be an unlimited detour around a limited endpoint.
+
+**Two deviations from §1, both deliberate and both recorded in [ADR-0009](adr/0009-web-ui.md):** no
+Tailwind standalone CLI (a ~100 MB platform-specific binary downloaded in every build, for a handful
+of pages) and no htmx (every page works with JavaScript disabled; the two fragment swaps this UI needs
+are 40 lines of first-party script whose markup contract is a subset of htmx's own). Lighthouse ≥ 95
+is measured at M6, where MILESTONES schedules it.
+
 ## 6. AI assist (module `ai-assist`)
 
 - Port: `LlmClient.complete(prompt, opts)`; adapter: OpenRouter (OpenAI-compatible HTTP), model default `anthropic/claude-sonnet-4.5` (configurable via env), timeout 15 s, retries 1.
 - Service: `FindingExplainer` — input: ruleId, rule text, XML fragment (max ~40 lines around location, PII-scrubbed: names/IBANs masked), output: German explanation + concrete fix suggestion. Cache by (ruleId, fragmentHash).
 - Prompts under `ai-assist/src/main/resources/prompts/*.st`, versioned; token/cost counters exported as OTel metrics.
 - Degradation: provider down → report still fully usable, button shows friendly notice. Document data-flow + opt-in in `docs/privacy.md`.
+
+_M5 sync (2026-07-26):_ Realized, with three corrections to this section and one addition. Design and
+honest limits: [ADR-0010](adr/0010-ai-assist.md); data flow: [docs/privacy.md](privacy.md).
+
+1. **The model default is `anthropic/claude-sonnet-5`.** The id named above has a successor; corrected
+   rather than left to fail on the first real call. The tier is unchanged.
+2. **No sampling parameter is sent at all.** The current Anthropic models reject a non-default
+   `temperature`/`top_p`/`top_k` with HTTP 400, and OpenRouter forwards the body as given — so the
+   port deliberately has no such field, and a test asserts none reaches the wire. Tone comes from the
+   prompt template.
+3. **No XML fragment is sent — this is not built, and cannot be without breaking a stronger promise.**
+   The public validator retains no upload and stored invoices hold no XML, so at the moment a user
+   clicks "Erklären" there is no document to quote 40 lines of. PII scrubbing is undiminished by this:
+   a Schematron message quotes the offending document value verbatim, so IBAN/e-mail/UID/long-number
+   masking has real work to do on the finding text itself.
+4. **Added:** the usage/cost numbers leave the module through an `LlmUsageListener` port that `app`
+   bridges to Micrometer, so `ai-assist` stays Spring-free (SPEC §2) while meeting
+   ENGINEERING_STANDARDS §8's token/cost requirement. Cost is the provider's own reported figure, never
+   a local price table.
 
 ## 7. Validation pipeline (module `validation`)
 
@@ -102,6 +136,12 @@ _M4 sync (2026-07-25):_ **Peppol BIS 3.0's official Schematron rule sets arrived
 Postgres schemas: `tenant`, `invoice` (canonical JSONB + extracted columns), `report`, `audit_event`, `api_key` (hash only). Flyway migrations from V1. Retention job: anonymous validation artefacts never persisted; tenant data delete endpoint (GDPR).
 
 _M3 sync (2026-07-24):_ The five "schemas" above are realized as five tables in the single `public` schema (not separate SQL schemas), Flyway from `V1__baseline_schema.sql` — rationale in [ADR-0005](adr/0005-persistence-baseline.md). The "anonymous artefacts never persisted" promise is met and enforced today ([ADR-0006](adr/0006-auth-and-api-security.md)); the tenant-data-delete endpoint and the retention job are deferred to M5 (with the dashboard).
+
+_M5 sync (2026-07-26):_ The anonymous promise now holds for the **web UI too**, through the same code
+path rather than a second one, and `PublicWebIT` asserts the row count does not move. **The
+tenant-delete endpoint and the retention job are still open** — carried again rather than quietly
+dropped, and named as unimplemented in [docs/privacy.md](privacy.md) §4 rather than hidden behind a
+phrase like "Löschkonzept vorhanden".
 
 ## 9. Deployment
 

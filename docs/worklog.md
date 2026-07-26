@@ -1,5 +1,125 @@
 # Worklog — einvoice-at
 
+## 2026-07-26 — M5 (part 1): ai-assist, public web validator, German Peppol messages
+
+**Status: M5 is NOT complete.** What shipped is the public browser surface and the AI feature, both
+tested and green; the dashboard, the GDPR endpoints, Selenium and Gatling are open. The honest
+accounting is at the end of this entry rather than implied by omission.
+
+**What shipped**
+
+- **`ai-assist` filled in** — it had been a `package-info.java` stub since M0. `LlmClient` port (one
+  method: no streaming, tools or conversation state nobody calls), `OpenRouterLlmClient` on the JDK's
+  own `HttpClient`, `PiiScrubber`, versioned prompts under `src/main/resources/prompts/*.st`,
+  `FindingExplainer` with a bounded LRU cache, and `LlmUsageListener` so `app` can bridge cost/token
+  metrics to Micrometer without this module importing Spring or a metrics library. 107 tests, JaCoCo
+  97.3 / 97.8 (gate 90/85), PIT 86/95 = 91 % (gate 85), now in the CI mutation job.
+- **German Peppol messages** (`PeppolMessagesDe`, 78 assertions) — the gap M4 recorded honestly and
+  handed to M5 by name. Every `PEPPOL-EN16931-R*` rule plus the EN 16931 rules an Austrian filer
+  realistically trips, including the four VAT-category families for 20/13/10/0 %, Übergang der
+  Steuerschuld and Steuerbefreiung.
+- **The public browser surface** — landing page, `/validator` with the DSGVO notice MILESTONES names
+  by name, and a report view grouping findings by severity, German first. Two security filter chains
+  (ADR-0009). `app`: 53 unit + 104 integration tests (was 52 + 83), coverage 93.4 / 78.7 against the
+  unchanged 90/78 gate.
+- **AI explanations wired** behind `features.ai-explanations`, default off, with the "Erklären" button
+  per finding and a friendly notice when the provider is unreachable.
+- **Docs:** ADR-0009 (web UI), ADR-0010 (AI assist), `docs/privacy.md`, README (status, module map,
+  two new sections, testing), SPEC §1/§5/§6/§8 sync, glossary M5 section, `.env.example`,
+  compose, dev realm.
+
+**Decisions**
+
+- **The rule text was read off the artefacts, not recalled.** The 78 German messages are translations
+  of the assertion texts in `CEN-EN16931-UBL.xslt` and `PEPPOL-EN16931-UBL.xslt` as shipped by
+  phive-rules-peppol 4.4.1 (OpenPeppol 2025.11), extracted from the jar to translate against. A
+  translation written from memory would have been the same amount of typing and worth much less.
+  `messageEn` is never touched: this project executes those rules unmodified (ADR-0007), and that
+  principle extends to their wording.
+- **No `temperature`, `top_p` or `top_k` is sent — and this was nearly a bug.** The current Anthropic
+  models reject a non-default value for any of the three with HTTP 400 (removed with Opus 4.7 /
+  Sonnet 5), and OpenRouter forwards the body it is given. A well-meaning `temperature: 0.2` in the
+  adapter would therefore have failed *every* request against this platform's own default model, and
+  would have looked entirely reasonable in review. Two tests pin the absence — one on the adapter, one
+  on the bytes the wired application actually sends. SPEC §6's model id was stale for the same
+  underlying reason and is corrected to `anthropic/claude-sonnet-5`.
+- **Two filter chains, not one widened one.** An API client wants 401 + problem+json where a browser
+  wants a login redirect; an API request must create no session where a form needs one; CSRF matters
+  for a cookie session and is meaningless for a bearer call. One chain would have meant a condition per
+  difference. `/api/**` is byte-for-byte M4's policy; the browser chain is new. The order is
+  load-bearing and asserted, not assumed.
+- **`oauth2Login` is applied only when a `ClientRegistrationRepository` exists.** Calling it
+  unconditionally fails context startup wherever no OAuth2 client is configured — which is every
+  persistence and API integration test. This is the same mistake the M3 fix wave made once with the JWT
+  validator list, and the same fix: ask whether the collaborator is there.
+- **A browser login and an API token for one person are ONE tenant.** Both resolve through the
+  Keycloak `sub`. Keying them separately would have been easy and would have quietly partitioned each
+  user's data in two — invoices created through the API invisible in the dashboard.
+- **The public upload runs through the same service as the anonymous API**, with the same empty
+  `Optional` that means "write nothing". A UI-specific validation path would have been a second place
+  for the DSGVO promise to break; a test asserts the `report` row count does not move.
+- **No XML fragment is sent to the LLM, and it cannot be.** SPEC §6 described ~40 lines around the
+  location. The public validator retains no upload and stored invoices hold no XML, so at click time
+  there is no document to quote. Building it would mean keeping uploads — a worse trade than a less
+  specific explanation. This does not weaken the scrubber: a Schematron message quotes the offending
+  value verbatim, which is exactly what it masks.
+- **The cache key is the *scrubbed* text, with a consequence worth being deliberate about.** Two
+  documents violating `AT-B2G-02` with different IBANs both scrub to `IBAN [IBAN] ungültig` and share
+  one explanation. That is right, not a leak — the model saw neither IBAN, so its answer cannot depend
+  on which it was — and it is one fewer paid call. A test pins it so it is not later "fixed".
+  My first version of that test asserted the opposite and was wrong.
+- **No Tailwind and no htmx** (ADR-0009). Tailwind's standalone CLI is a ~100 MB platform-specific
+  binary downloaded in every build, for a handful of server-rendered pages; htmx is a fine library but
+  every page here works with JavaScript disabled and the two fragment swaps needed are 40 lines of
+  first-party script whose markup contract is a subset of htmx's own. Both are deviations from SPEC §1,
+  both recorded with what they cost, and both reversible in one file.
+- **CSRF is enforced on the browser chain and the tests drive it properly** — fetching the page,
+  harvesting the token, posting it back, and asserting a token-less post is refused. Excluding the
+  public routes from CSRF would have been three lines and would have made the token decoration.
+- **`Texts.safeEcho` promoted out of `core.internal`**, closing a carry item open since M1. The note
+  said "once `app` starts consuming it directly"; the trigger had actually fired at M2, at `mapping`.
+- **The security scan and the M4 review's own guard both earned their keep.** `everyLibModuleIsListed`
+  failed the moment `ai-assist` gained its first class — exactly the drift M4 added it to catch.
+
+**Verification**
+
+- `./mvnw clean verify` green across all 10 modules (2 m 01 s), every JaCoCo gate met.
+- **898 tests**, up from 769. Per module: `core` 220, `formats-api` 7, `formats-ebinterface` 14,
+  `formats-ubl` 31, `mapping` 201, `validation` 125, `rendering` 36, `ai-assist` 107, `app` 53 unit +
+  104 integration.
+- **Correction to the M4 entry's numbers.** The 769 baseline is a *clean-build* count. Reading
+  `target/` without cleaning first reports 785, because it still held reports for test classes that no
+  longer exist — `EbInterface61ValidatorTest` and its concurrency sibling (M4 deleted that facade),
+  plus three scratch classes. Any test count in this worklog should be read as a clean-build number.
+- `./mvnw spotless:apply` clean before every commit.
+- **Not verified in a browser or in compose.** The flows are asserted at the HTTP level against a real
+  context, real Postgres and a real stub provider — which is more than a mock and less than a browser.
+  A compose smoke run and a look at the rendered pages are the first thing the next session should do.
+
+**Not done — the open M5 scope**
+
+1. **The authenticated dashboard.** Invoice list and detail, report list and detail, the htmx
+   create-invoice wizard, and the API-key management page. The security chain, the login and the tenant
+   mapping for it are in place and tested; the pages are not written. This is the largest open item.
+2. **GDPR tenant delete + retention job.** Carried from M3 to M4 to M5 and now carried again. Named as
+   unimplemented in `docs/privacy.md` §4 rather than hidden behind "Löschkonzept vorhanden" — until it
+   exists, that document says the platform is not ready for real customer data.
+3. **Selenium E2E** (`Upload → Report → Erklären`) and the **Gatling** validator scenario, with the
+   `e2e` CI job on `main`. The flow itself is covered by `AiExplanationIT` at the HTTP level; what is
+   missing is the browser and the load profile. ENGINEERING_STANDARDS §3 requires both.
+4. **`POST /api/v1/reports/{id}/explain`** — the REST counterpart of the UI's explain route (SPEC §4).
+   The UI route and the service behind it exist; the API endpoint does not.
+5. **Lighthouse ≥ 95** on the public pages — MILESTONES schedules the measurement at M6, so this is
+   not overdue, but the pages are built for it (tiny CSS, deferred script, no external requests).
+
+**Next**
+
+- Finish the five items above, in that order; 1 and 2 are what "M5 complete" hinges on.
+- Owner decision worth having before the dashboard is written: keep the 40-line script, or vendor real
+  htmx? ADR-0009 argues for the former at this size, and the answer changes as the dashboard grows.
+- Carried from M4: the Peppol rule-set upgrade due 2026-08-17 (2026.5 is published; the procedure is in
+  ADR-0007), and whether `ConversionLosses` should be exhaustive.
+
 ## 2026-07-25 — M4 hostile-review fix wave: 17 findings closed
 
 **What**

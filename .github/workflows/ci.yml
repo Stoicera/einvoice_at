@@ -34,7 +34,7 @@ jobs:
           retention-days: 14
 
   mutation:
-    name: Mutation tests (core, mapping, validation, formats-ebinterface, formats-ubl)
+    name: Mutation tests (core, mapping, validation, formats-ebinterface, formats-ubl, ai-assist)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -49,15 +49,16 @@ jobs:
       # comment and the exec-maven-plugin precedent in the root pom.xml). All five gated modules
       # carry the "mutation" profile (core, mapping, validation, formats-ebinterface, formats-ubl),
       # so the bare goal is safe against this explicit "-pl" list — every project it selects has its
-      # own pitest wiring. It is still run WITHOUT "-am": "-am" would drag in profile-less modules
+      # own pitest wiring. M5 adds ai-assist to that list: its scrubber and retry logic are exactly the
+      # small, branch-dense, security-relevant code where line coverage alone proves little. It is still run WITHOUT "-am": "-am" would drag in profile-less modules
       # (e.g. app, formats-api) and the bare goal would fail on them. The install step (with "-am")
       # first puts the whole dependency closure — including mapping, which validation needs at test
       # scope — in the local repo so the second reactor resolves every inter-module edge without
       # rebuilding it.
       - name: Install dependency closure (mutation-gated modules)
-        run: ./mvnw -B -ntp -pl core,mapping,validation,formats-ebinterface,formats-ubl -am install -DskipTests
+        run: ./mvnw -B -ntp -pl core,mapping,validation,formats-ebinterface,formats-ubl,ai-assist -am install -DskipTests
       - name: PIT mutation coverage (mutation-gated modules)
-        run: ./mvnw -B -ntp -pl core,mapping,validation,formats-ebinterface,formats-ubl -Pmutation test-compile org.pitest:pitest-maven:mutationCoverage
+        run: ./mvnw -B -ntp -pl core,mapping,validation,formats-ebinterface,formats-ubl,ai-assist -Pmutation test-compile org.pitest:pitest-maven:mutationCoverage
 
   security-scan:
     name: Security scan (OWASP Dependency-Check)
