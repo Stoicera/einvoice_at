@@ -227,6 +227,31 @@ class OpenRouterLlmClientTest {
   }
 
   @Test
+  void anInterruptDuringTheBackoffStopsRetryingAndPreservesTheFlag() {
+    // Never swallow an interrupt: the thread was asked to stop, and retrying is precisely what an
+    // interrupt says not to do. Same rule the send path already follows.
+    respondWith(503, "{\"error\":\"overloaded\"}");
+    OpenRouterSettings settings =
+        new OpenRouterSettings(
+            baseUri(), "sk-test", "anthropic/claude-sonnet-5", Duration.ofSeconds(5), 3, 700);
+    OpenRouterLlmClient client =
+        new OpenRouterLlmClient(
+            HttpClient.newHttpClient(),
+            settings,
+            LlmUsageListener.NONE,
+            duration -> {
+              throw new InterruptedException("asked to stop");
+            });
+
+    LlmException thrown = failureOf(client);
+
+    assertThat(thrown).hasMessageContaining("interrupted");
+    assertThat(thrown.isRetryable()).isFalse();
+    assertThat(requestCount).hasValue(1); // the first attempt only; no repeat after the interrupt
+    assertThat(Thread.interrupted()).as("the interrupt flag is restored").isTrue();
+  }
+
+  @Test
   void fallsBackToTheScheduleWhenRetryAfterIsAnHttpDateOrNonsense() {
     // Only delta-seconds is honoured; an HTTP-date would mean trusting a third party's clock. An
     // unreadable header must fall back to the exponential schedule, never to zero.

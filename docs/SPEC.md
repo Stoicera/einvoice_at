@@ -17,7 +17,7 @@ Status: v1.0 · 2026-07-23 · Language of repo: English (domain terms stay Germa
 | e-invoice libs | **ph-ebinterface** (ebInterface XSD/model), **phive** + phive-rules (Schematron validation for ebInterface & Peppol), **ph-ubl** (UBL 2.1) — all MIT/Apache, actively maintained by Philip Helger; if a rule set is missing, fall back to official AUSTRIAPRO/OpenPeppol artefacts executed via ph-schematron | Don't reinvent validated standards artefacts; credit upstream in README |
 | Mapping | Dedicated `mapping` module: internal canonical model (EN 16931 core) ↔ ebInterface 6.1 ↔ UBL BIS 3.0. Hand-written and heavily tested (MapStruct evaluated but unrealized as of M2; all mapping turned out semantic) | The canonical model is the heart of the system |
 | PDF | OpenPDF or Apache PDFBox via a `rendering` module (HTML→PDF acceptable: openhtmltopdf) | Print view of invoice |
-| Web UI | **Thymeleaf**, server-rendered; hand-authored CSS and ~40 lines of first-party JS instead of Tailwind CLI / htmx (M5 sync, [ADR-0009](adr/0009-web-ui.md)) | Java-pure server-rendered UI: exactly what enterprise Java shops respect; no SPA build complexity — and, as realized, no CSS or JS build step at all |
+| Web UI | **Thymeleaf**, server-rendered; hand-authored CSS and ~20 lines of first-party JS instead of Tailwind CLI / htmx (M5 sync, [ADR-0009](adr/0009-web-ui.md)) | Java-pure server-rendered UI: exactly what enterprise Java shops respect; no SPA build complexity — and, as realized, no CSS or JS build step at all |
 | AuthN/Z | Spring Security (OAuth2 Resource Server) + **Keycloak** as IdP (docker compose); API keys for machine access (hashed at rest) | Answers the "do we need Keycloak?" question: Spring Security is the framework, Keycloak the IdP — document this in an ADR |
 | AI | `LlmClient` abstraction → **OpenRouter** default (OpenAI-compatible API), model configurable; feature-flagged, degrades gracefully | Explain validation errors in plain German |
 | Observability | OpenTelemetry (Micrometer bridge), Actuator health/readiness, JSON logs (Logback) | Standard |
@@ -96,9 +96,16 @@ the API key used for the call is erased by it. See [ADR-0011](adr/0011-retention
 
 _M3 hostile-review fix wave (2026-07-25):_ The 2 MB cap now covers **every** request body, not only multipart uploads — no Boot or Tomcat property bounds an ordinary body, and `POST /invoices` buffers its own whole, so an application-layer filter ahead of Spring Security enforces it and answers the same 413 `content-too-large` the multipart cap does. Three further bounds/switches, all documented in `.env.example`: `OAUTH2_AUDIENCE` (optional `aud` validation, closing the limit ADR-0006 had recorded as open), `API_KEYS_MAX_ACTIVE_PER_TENANT` (default 25 active keys, revoked rows retained and uncounted), and `API_DOCS_ENABLED` (default on; `false` removes the OpenAPI document and Swagger UI).
 
-## 5. Web UI (Thymeleaf + htmx)
+## 5. Web UI (Thymeleaf, server-rendered)
 
 Pages: Landing/"Prüfer" (public upload → report, German-first, SEO meta), Report view (findings grouped by severity, "Fehler erklären" button per finding when AI enabled), Dashboard (login): invoice list, create-invoice form (server-rendered multi-step wizard — corrected from "htmx wizard", see ADR-0009 Entscheidung 5), API-key management. Design: clean, Stoicera-adjacent (dark/gold accents), no framework bloat; Lighthouse ≥ 95 on public pages.
+
+_M5 hostile-review sync (2026-07-26):_ the section heading said "Thymeleaf + htmx" while
+[ADR-0009](adr/0009-web-ui.md) Entscheidung 5 had decided against htmx and the repository ships none.
+Corrected here, and in ADR-0009's own title and Entscheidung 2, which still described htmx as
+vendored in a directory that never existed (F11). Two counts in the same family were also wrong and
+are corrected wherever they appear: `app.js` is 66 lines (about twenty of logic), not 40, and
+`app.css` is 625, not the "~430" ADR-0009 measured itself against its own 700-line trigger (F12).
 
 _M5 sync (2026-07-26):_ **The landing page, the public validator and the report view are realized;
 the authenticated dashboard is not yet** — see `docs/worklog.md` for exactly what is open. Security is
@@ -142,7 +149,7 @@ and `security` profiles already use. The consequence is stated rather than impli
 **Two deviations from §1, both deliberate and both recorded in [ADR-0009](adr/0009-web-ui.md):** no
 Tailwind standalone CLI (a ~100 MB platform-specific binary downloaded in every build, for a handful
 of pages) and no htmx (every page works with JavaScript disabled; the two fragment swaps this UI needs
-are 40 lines of first-party script whose markup contract is a subset of htmx's own). Lighthouse ≥ 95
+are ~20 lines of first-party script whose markup contract is a subset of htmx's own). Lighthouse ≥ 95
 is measured at M6, where MILESTONES schedules it.
 
 ## 6. AI assist (module `ai-assist`)

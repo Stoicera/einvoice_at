@@ -277,15 +277,21 @@ public final class OpenRouterLlmClient implements LlmClient {
 
     private static final long serialVersionUID = 1L;
 
-    private final transient Optional<Duration> retryAfter;
+    /**
+     * Nullable {@link Duration} rather than an {@code Optional} field: {@code Optional} is not
+     * {@link java.io.Serializable} and this is an exception, and a {@code transient} field would
+     * need a null guard on read — a branch no test could ever reach, which ENGINEERING_STANDARDS §1
+     * calls a dead path. {@code Duration} serializes.
+     */
+    private final Duration retryAfter;
 
     private RetryableFailure(String message, Optional<Duration> retryAfter, Throwable cause) {
       super(message, true, cause);
-      this.retryAfter = retryAfter;
+      this.retryAfter = retryAfter.orElse(null);
     }
 
     private Optional<Duration> retryAfter() {
-      return retryAfter == null ? Optional.empty() : retryAfter;
+      return Optional.ofNullable(retryAfter);
     }
   }
 

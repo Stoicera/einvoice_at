@@ -194,7 +194,7 @@ turns it into a real gate with no workflow change.
 
 JUnit 5 + AssertJ + Mockito for unit tests, ArchUnit for module-boundary rules, Testcontainers for integration tests, **Selenium** for the browser flow and **Gatling** for the load scenario — built out milestone by milestone per [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md).
 
-**1017 tests** in a clean `./mvnw verify`, plus 3 browser E2E tests under `-Pe2e`.
+**1048 tests** in a clean `./mvnw verify`, plus 3 browser E2E tests under `-Pe2e`.
 
 **The `e2e` module, and what a green build does and does not mean.** Selenium and Gatling live in their own module because neither belongs on `app`'s test classpath, and because a Chrome image and a load profile do not belong in every developer's inner loop. Its tests are always *compiled* — a module whose tests are never built is a module that quietly stops compiling — but they only *run* under `-Pe2e` (browser) and `-Pload` (Gatling), in a dedicated CI job alongside the existing mutation and security jobs. Stated plainly rather than implied: **a green plain `./mvnw verify` does not mean the browser flow works; the `e2e` job is what means that.**
 
@@ -212,18 +212,18 @@ The browser suite covers what no HTTP assertion can: that the report fragment is
 |---|---|---|---|---|
 | `core` | 99.6 % | 98.3 % | 95/90 | 98 % (126/129) |
 | `mapping` | 99.2 % | 90.6 % | 95/90 | 99 % (411/417) |
-| `validation` | 94.3 % | 87.7 % | 90/85 | 86 % (126/147) |
+| `validation` | 94.3 % | 87.7 % | 90/85 | 86 % (129/150) |
 | `formats-ebinterface` | 100 % | 100 % | 90/85 | 100 % (12/12) |
 | `formats-ubl` | 98.6 % | 96.3 % | 90/85 | 93 % (27/29) |
 | `rendering` | 95.6 % | 88.8 % | 90/85 | — |
 | `formats-api` | 100 % | 100 % | 100/100 | — |
-| `ai-assist` | 97.3 % | 97.8 % | 90/85 | 91 % (86/95) |
+| `ai-assist` | 97.0 % | 97.2 % | 90/85 | 90 % (99/110) |
 
 `core` carries a [jqwik](https://jqwik.net) property suite for money/VAT arithmetic; `mapping` carries round-trip properties in both directions, including one that re-emits a read document and demands byte equality. `formats-api` gates at 100/100 — one record and one interface, where anything less would be a line nobody bothered to test.
 
 **Round trips and golden files.** The two mapper pairs are exercised by jqwik round-trip properties over one shared input space, which is how the formats' asymmetries were established rather than assumed. `UblEndToEndGenerationTest` is the milestone's strongest automated claim: the sample invoice, generated through the real chain, is judged **Peppol-clean by the official OpenPeppol rule set** — an external verdict, not a self-assessment, since those rules are OpenPeppol's and this project only runs them.
 
-**`app` module.** 94.7 % line / 81.0 % branch (JaCoCo gate 90/78, measured across unit *and* integration runs merged — most of this module's behaviour is only observable end to end). 90 unit tests and 186 integration tests across 27 IT classes, the latter against real PostgreSQL and real Keycloak via Testcontainers:
+**`app` module.** 94.8 % line / 81.3 % branch (JaCoCo gate 90/78, measured across unit *and* integration runs merged — most of this module's behaviour is only observable end to end). 101 unit tests and 196 integration tests across 28 IT classes, the latter against real PostgreSQL and real Keycloak via Testcontainers:
 
 - **Auth matrix** (`AuthMatrixIT`) — both directions of every mechanism: anonymous, unknown key, revoked key, valid key, valid JWT, a bearer header that is not a JWT, an `alg=none` token, a genuine Keycloak token with a rewritten payload, and a request presenting two competing credentials.
 - **Token validation** (`JwtDecoderTest`) — a throwaway JWKS over loopback and self-minted tokens, so wrong issuer, expired `exp`, a foreign signing key, and a foreign key impersonating the real `kid` can each be varied one at a time.
@@ -241,7 +241,7 @@ PIT is deliberately *not* applied to `app`: mutating a module whose tests each b
 ## Web UI
 
 The browser surface is server-rendered Thymeleaf with **no CSS or JavaScript build step** — a
-hand-authored stylesheet and ~40 lines of first-party script. Both are deliberate deviations from
+hand-authored stylesheet and ~20 lines of first-party script. Both are deliberate deviations from
 SPEC §1's Tailwind CLI and htmx, and [ADR-0009](docs/adr/0009-web-ui.md) records why and what they
 cost. **Every page works with JavaScript disabled**; the script only avoids a full page reload for the
 two fragment swaps.

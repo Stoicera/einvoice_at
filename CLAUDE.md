@@ -10,7 +10,7 @@ You are working on **einvoice-at**: a production-grade Java/Spring Boot platform
 5. `docs/MILESTONES.md` — work strictly milestone by milestone
 
 ## Hard rules
-- **Stack:** Java 25, Spring Boot 4.1.x, Maven multi-module, PostgreSQL + Flyway, Thymeleaf + htmx UI, Keycloak IdP, Testcontainers, Selenium E2E. Do not introduce other frameworks/languages without an ADR and explicit approval.
+- **Stack:** Java 25, Spring Boot 4.1.x, Maven multi-module, PostgreSQL + Flyway, server-rendered Thymeleaf UI (no htmx — ADR-0009), Keycloak IdP, Testcontainers, Selenium E2E. Do not introduce other frameworks/languages without an ADR and explicit approval.
 - **Architecture:** modular monolith as laid out in SPEC §2. `core` has zero Spring/JPA dependencies. ArchUnit rules enforce module boundaries — never weaken a rule to make a test pass; fix the design instead.
 - **Money is `BigDecimal`** with explicit scale/rounding. Any invoice arithmetic change needs property-based tests (jqwik).
 - **Standards artefacts:** use ph-ebinterface / phive / ph-ubl for XSD/Schematron; never hand-copy XSDs or Schematron rules into the repo without provenance notes. Credit upstream in README.

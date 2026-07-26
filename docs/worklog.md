@@ -1,5 +1,85 @@
 # Worklog — einvoice-at
 
+## 2026-07-26 — M5 hostile review: 17 findings, all closed
+
+The per-milestone quality gate, run on `feat/m5-web-ui-ai` before the merge rather than after it.
+Baseline re-measured rather than taken from the entry below: `./mvnw clean verify` green, 11 modules,
+1017 tests, every JaCoCo gate met. After the wave: **1048 tests**, all gates met, both mutation gates
+still met (`ai-assist` 90 %, `validation` 86 %), and `./mvnw -pl e2e verify -Pe2e` green in a real
+browser — which is what makes the Content-Security-Policy below a verified change rather than a
+hopeful one.
+
+Findings and their resolutions are in `.superpowers/m5-hostile-review-findings.md`, committed.
+
+**The three that would have blocked a merge**
+
+1. **An API key could erase the entire tenant.** `DELETE /api/v1/tenant` matched no explicit rule and
+   fell through to `.anyRequest().authenticated()`, so the platform's most destructive operation —
+   every invoice, report, key and audit event, irreversibly, no backup — was reachable by the
+   longest-lived and most widely copied credential class there is. Two lines above it, *listing* API
+   keys was already OAuth2-only, on the stated grounds that key management must be denied to keys "in
+   the security layer itself". A key could not read the key list but could destroy everything.
+   Invoices sharpen it: `RetentionService` refuses to expire them **because § 132 BAO obliges seven
+   years**, and the same sentence says a leaked integration key must not be able to delete them
+   either. Now `hasRole("USER")`. Proven before the fix — the test expected 403 and got 204.
+2. **`SecurityConfig` cited a test that did not exist.** It called the chain order "load-bearing" and
+   said `SecurityChainRoutingIT` asserted it; ADR-0009 repeated the claim in German. `grep` returned
+   exactly one hit: the sentence itself. Writing the class closed two properties nothing had covered —
+   that the API chain creates no session even on its error path, and the CSRF contrast between the
+   chains. This is the M4 pattern for the third milestone running: **the worst defects here are false
+   statements, not ugly code.**
+3. **A lowercase IBAN left the platform unmasked.** `PiiScrubber`'s IBAN and VAT-id patterns were
+   `[A-Z]`-only with no `CASE_INSENSITIVE` flag. They do not run against canonical values — they run
+   against a Schematron diagnostic that quotes the document verbatim, and nothing upper-cases what a
+   sender wrote. `at611904300234573201` scrubbed to `at[NUMMER]`: the digit run masked, the value
+   misclassified, and the country code left in place, against a `privacy.md` table promising the
+   masking unconditionally. The property test generated upper case only, which is exactly why four
+   properties passed over it; it now generates upper, lower and mixed.
+
+**What the rest were about**
+
+- **A paid endpoint with no rate.** `RateLimitFilter`'s Javadoc argued that an LLM call needs a limit
+  for the same reason CPU does, then limited only the *anonymous* route. The two authenticated explain
+  routes spend the operator's provider budget per click and were limited by nothing;
+  `AI_MAX_FINDINGS_PER_REQUEST` bounds one request, not a rate — the identical distinction the M4
+  review drew for `/convert`. They now share a per-credential bucket of their own.
+- **Cost metrics nobody could read, tagged with a string nobody owns.** `include: health,info` meant
+  no endpoint stood in front of `einvoice.ai.*`, and the `model` tag came straight out of the
+  provider's response body while `AI_BASE_URL` may point anywhere — an unbounded tag value is an
+  unbounded number of meters that are never collected.
+- **A retry that did not wait.** The loop re-issued a 429 in the same millisecond with `Retry-After`
+  unread. Now the provider's own value when it sent one, exponential otherwise, capped at 5 s because
+  `Retry-After` is a third party's number and the request thread is ours.
+- **The env guard checked one direction.** M5's own CI step asserts documented ⊆ wired-into-compose.
+  It could not see that three variables the application *reads* were documented nowhere. Same bug
+  class as the one it was written to catch, mirrored.
+- **No CSP on the surface that renders model output** and assigns markup into `innerHTML`, and
+  `SecurityHeadersIT` was never extended past `/api/**`. Getting to a policy with no `'unsafe-inline'`
+  meant replacing ten inline `style="…"` attributes with five stylesheet rules — an inline style
+  attribute is precisely what forces that allowance.
+- **Two tests that did not do what their names said, and a number that nothing checked.**
+  `boundsAnOverlongTranslation…` asserted a map lookup. `PeppolMessagesDe.SIZE_NOTE` was described in
+  its own Javadoc as "asserted by the stage test", was referenced nowhere outside its file, and said
+  78 when the catalogue held **80** — a number `docs/worklog.md` repeated five times, including in the
+  checklist for the mandatory 2026-08-17 Peppol 2026.5 upgrade. All five corrected; a test now makes
+  the sentence true.
+- **An ADR that contradicted itself.** ADR-0009's title and Entscheidung 2 still specified htmx and
+  described it as vendored in `static/vendor/` — a directory that never existed — while Entscheidung 5
+  sixty lines below decided against it. `SPEC.md`, `MILESTONES.md`, `CLAUDE.md` and `ADR-0001` all
+  still said htmx too. Two numbers in the same family were wrong, and one of them is a *trigger*:
+  `app.css` was measured against its own 700-line re-evaluation threshold as "~430 Zeilen" and is 625.
+
+**Bug introduced and fixed inside the wave, recorded rather than amended away:** the first pass at
+removing the inline styles left a duplicate `class` attribute on the validator's upload form.
+attoparser rejects that, so every public page 500'd. The tests written for the CSP finding caught it
+within the same run.
+
+**Deferred, with the governing document named** — Lighthouse ≥ 95, the retention job's instance
+election, `X-Forwarded-For` handling, and a real authorization-code login in an automated test. All
+four are M6 in MILESTONES, and none was pulled forward silently.
+
+**Next:** merge to `main` with CI green.
+
 ## 2026-07-26 — M5 (part 2): dashboard, GDPR erasure, retention, explain API, browser E2E — M5 complete
 
 **Status: M5 is complete.** All five items the part-1 entry listed as open are done, plus three defects
