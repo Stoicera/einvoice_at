@@ -97,12 +97,14 @@ revoke keys. Full auth design and honest known limits:
 [ADR-0006](docs/adr/0006-auth-and-api-security.md).
 
 **Limits.** Request bodies are capped at 2 MB (`MAX_REQUEST_BODY_SIZE`) for multipart uploads and
-plain bodies alike, both answering 413. Two endpoints are rate-limited, with deliberately different
+plain bodies alike, both answering 413. Three buckets are rate-limited, with deliberately different
 policies: anonymous `POST /validate` **per IP** (an authenticated caller is not the threat an open
-endpoint's limit exists for), and `POST /convert` **per credential, authenticated callers
+endpoint's limit exists for), `POST /convert` **per credential, authenticated callers
 included** — that endpoint admits no others, so an authenticated bypass would leave a limit
-covering nobody, and a conversion costs a read, two mappings, a write *and* a full Peppol XSLT run.
-Both answer 429 with `Retry-After`. A tenant holds at most 25 active API keys (`API_KEYS_MAX_ACTIVE_PER_TENANT`); revoked keys keep their rows
+covering nobody, and a conversion costs a read, two mappings, a write *and* a full Peppol XSLT run —
+and the **explain** routes (`POST /reports/{id}/explain` and the dashboard's per-finding button) on
+that same per-credential policy, because they are the only routes whose cost is denominated in euros
+rather than in CPU seconds. All answer 429 with `Retry-After`. A tenant holds at most 25 active API keys (`API_KEYS_MAX_ACTIVE_PER_TENANT`); revoked keys keep their rows
 for the audit trail and do not count. `OAUTH2_AUDIENCE` optionally requires every token's `aud` to
 name this API — off by default for the single-audience dev realm, recommended for any shared one.
 `API_DOCS_ENABLED=false` removes the OpenAPI document and Swagger UI entirely.
@@ -310,7 +312,13 @@ Four properties worth stating, because each is enforced by a test rather than by
   unchanged and the button answers a friendly notice — `FindingExplainer.explain` never throws.
 - **Cost comes from the provider, not from a price table.** `einvoice.ai.calls`,
   `einvoice.ai.tokens` and `einvoice.ai.cost.usd` are Micrometer counters fed by the provider's own
-  reported charge; an unknown cost is left out rather than recorded as zero.
+  reported charge; an unknown cost is left out rather than recorded as zero. Read them at
+  `GET /actuator/metrics/einvoice.ai.cost.usd` (authenticated — only the health probes are
+  anonymous). The `model` tag is bounded rather than taken verbatim: it comes out of the provider's
+  response body, and an unbounded tag value is an unbounded number of meters.
+- **A paid route has a rate limit, not just a per-request cap.** `AI_MAX_FINDINGS_PER_REQUEST`
+  bounds one request; `RATE_LIMIT_EXPLAIN_*` bounds the rate. A retry after a provider 429 waits —
+  honouring `Retry-After` when the provider sent one, exponentially otherwise, capped at 5 s.
 
 ## Conversion and PDF
 

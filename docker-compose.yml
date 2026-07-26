@@ -11,7 +11,8 @@ services:
       # Datasource resolves from POSTGRES_* (see application.yml). Inside the compose network the
       # database is reachable at host `postgres` on its internal port 5432; credentials come from
       # .env. No secrets are hard-coded here.
-      POSTGRES_HOST: postgres
+      # Overridable, but blank in .env means this default — see .env.example.
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-einvoice}
       POSTGRES_USER: ${POSTGRES_USER:-einvoice}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — copy .env.example to .env and set a generated value}
@@ -20,8 +21,8 @@ services:
       # signing keys over the compose network at `keycloak:8080`. SecurityConfig validates `iss`
       # against OAUTH2_ISSUER_URI and pulls JWKS from OAUTH2_JWK_SET_URI, so the two never have to be
       # the same host.
-      OAUTH2_ISSUER_URI: http://localhost:${KEYCLOAK_PORT:-8081}/realms/einvoice
-      OAUTH2_JWK_SET_URI: http://keycloak:8080/realms/einvoice/protocol/openid-connect/certs
+      OAUTH2_ISSUER_URI: ${OAUTH2_ISSUER_URI:-http://localhost:${KEYCLOAK_PORT:-8081}/realms/einvoice}
+      OAUTH2_JWK_SET_URI: ${OAUTH2_JWK_SET_URI:-http://keycloak:8080/realms/einvoice/protocol/openid-connect/certs}
       # Optional audience check, blank by default for the dev realm (see .env.example / ADR-0006).
       OAUTH2_AUDIENCE: ${OAUTH2_AUDIENCE:-}
       # OpenAPI document + Swagger UI. On for the local stack; a deployment that should not publish
@@ -38,6 +39,8 @@ services:
       RATE_LIMIT_VALIDATE_REFILL_PER_MINUTE: ${RATE_LIMIT_VALIDATE_REFILL_PER_MINUTE:-10}
       RATE_LIMIT_CONVERT_CAPACITY: ${RATE_LIMIT_CONVERT_CAPACITY:-20}
       RATE_LIMIT_CONVERT_REFILL_PER_MINUTE: ${RATE_LIMIT_CONVERT_REFILL_PER_MINUTE:-20}
+      RATE_LIMIT_EXPLAIN_CAPACITY: ${RATE_LIMIT_EXPLAIN_CAPACITY:-30}
+      RATE_LIMIT_EXPLAIN_REFILL_PER_MINUTE: ${RATE_LIMIT_EXPLAIN_REFILL_PER_MINUTE:-30}
       MAX_REQUEST_BODY_SIZE: ${MAX_REQUEST_BODY_SIZE:-2MB}
       API_KEYS_MAX_ACTIVE_PER_TENANT: ${API_KEYS_MAX_ACTIVE_PER_TENANT:-25}
       # Retention windows (GDPR Art. 5(1)(e)). Zero or negative means keep forever; invoices are never

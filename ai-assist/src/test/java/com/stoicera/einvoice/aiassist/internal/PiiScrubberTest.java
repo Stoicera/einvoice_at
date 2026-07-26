@@ -43,6 +43,24 @@ class PiiScrubberTest {
     assertThat(PiiScrubber.scrub("UID ATU12345678 unbekannt")).isEqualTo("UID [UID] unbekannt");
   }
 
+  /**
+   * M5 hostile review, F3. The IBAN and VAT-id patterns were {@code [A-Z]}-only and carried no
+   * {@code CASE_INSENSITIVE} flag, so a document that spelled either in lower case sent it to the
+   * provider in the clear — while {@code docs/privacy.md} §3.1 promised the masking
+   * unconditionally, in a table. Nothing here upper-cases a value: a Schematron diagnostic quotes
+   * what the sender wrote.
+   */
+  @Test
+  void masksAnIbanAndAVatIdWhateverTheirCasing() {
+    assertThat(PiiScrubber.scrub("Konto " + IBAN.toLowerCase(java.util.Locale.ROOT) + " ungültig"))
+        .isEqualTo("Konto [IBAN] ungültig");
+    assertThat(PiiScrubber.scrub("Konto at611904300234573201 ungültig"))
+        .doesNotContain("at611904300234573201");
+    assertThat(PiiScrubber.scrub("UID atu12345678 unbekannt")).isEqualTo("UID [UID] unbekannt");
+    // Mixed case is the shape a hand-edited XML most often has.
+    assertThat(PiiScrubber.scrub("UID AtU12345678 unbekannt")).isEqualTo("UID [UID] unbekannt");
+  }
+
   @Test
   void masksAGenericEuVatId() {
     assertThat(PiiScrubber.scrub("Käufer-UID DE123456789")).isEqualTo("Käufer-UID [UID]");

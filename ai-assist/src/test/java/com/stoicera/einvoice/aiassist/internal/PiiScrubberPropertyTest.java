@@ -3,9 +3,11 @@ package com.stoicera.einvoice.aiassist.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigInteger;
+import java.util.Locale;
 import java.util.Set;
 import net.jqwik.api.Arbitraries;
 import net.jqwik.api.Arbitrary;
+import net.jqwik.api.Combinators;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
@@ -20,13 +22,39 @@ import net.jqwik.api.Provide;
  */
 class PiiScrubberPropertyTest {
 
-  /** Structurally valid Austrian IBANs (AT + 2 check digits + 16 BBAN digits). */
+  /**
+   * Structurally valid Austrian IBANs (AT + 2 check digits + 16 BBAN digits), in <strong>every
+   * casing a document can carry</strong>.
+   *
+   * <p>The casing is the point, and it is what this generator was missing until the M5 hostile
+   * review (finding F3): it produced upper-case values only, so a scrubber pattern that was
+   * case-sensitive passed every property here while letting {@code at61…} through to a third-party
+   * provider unmasked. Nothing in this pipeline upper-cases a document value — a Schematron
+   * diagnostic quotes what the sender wrote, verbatim, which is the entire premise of this class —
+   * so lower and mixed case are not exotic inputs, they are ordinary ones.
+   */
   @Provide
   Arbitrary<String> validAustrianIbans() {
-    return Arbitraries.strings()
-        .numeric()
-        .ofLength(16)
-        .map(PiiScrubberPropertyTest::withCheckDigits);
+    Arbitrary<String> canonical =
+        Arbitraries.strings().numeric().ofLength(16).map(PiiScrubberPropertyTest::withCheckDigits);
+    return Combinators.combine(canonical, Arbitraries.of(Casing.values()))
+        .as((iban, casing) -> casing.apply(iban));
+  }
+
+  /** How a document might spell a value the scrubber has to recognise regardless. */
+  private enum Casing {
+    UPPER,
+    LOWER,
+    MIXED;
+
+    String apply(String value) {
+      return switch (this) {
+        case UPPER -> value.toUpperCase(Locale.ROOT);
+        case LOWER -> value.toLowerCase(Locale.ROOT);
+        // Country prefix down, the rest as written: the shape a hand-edited XML most often has.
+        case MIXED -> value.substring(0, 2).toLowerCase(Locale.ROOT) + value.substring(2);
+      };
+    }
   }
 
   private static String withCheckDigits(String bban) {

@@ -36,6 +36,11 @@ class RateLimitFilterTest {
 
   private static final String VALIDATE = "/api/v1/validate";
   private static final String CONVERT = "/api/v1/convert";
+  private static final String API_EXPLAIN =
+      "/api/v1/reports/1c1a9b6e-0000-0000-0000-000000000001/explain";
+  private static final String UI_EXPLAIN =
+      "/app/berichte/1c1a9b6e-0000-0000-0000-000000000001/erklaeren";
+  private static final String PUBLIC_EXPLAIN = "/validator/erklaeren";
   private static final ObjectMapper JSON = new ObjectMapper();
 
   /** Any limit will do for the eviction test; only the map's size is under assertion there. */
@@ -51,7 +56,7 @@ class RateLimitFilterTest {
 
   @Test
   void anonymousRequestsUpToCapacityPassThroughThenTheNextIsRejectedWith429() throws Exception {
-    RateLimitFilter filter = new RateLimitFilter(3, 3, 1000, 1000);
+    RateLimitFilter filter = new RateLimitFilter(3, 3, 1000, 1000, 1000, 1000);
     CountingChain chain = new CountingChain();
     String ip = "203.0.113.1";
 
@@ -69,7 +74,7 @@ class RateLimitFilterTest {
 
   @Test
   void aRejectedRequestGetsAProblemJsonBodyAndAPositiveIntegerRetryAfterHeader() throws Exception {
-    RateLimitFilter filter = new RateLimitFilter(1, 1, 1000, 1000);
+    RateLimitFilter filter = new RateLimitFilter(1, 1, 1000, 1000, 1000, 1000);
     CountingChain chain = new CountingChain();
     String ip = "203.0.113.2";
 
@@ -96,7 +101,7 @@ class RateLimitFilterTest {
   void refillAfterTheConfiguredPeriodElapsesAllowsAnotherRequest() throws Exception {
     MutableTimeMeter clock = new MutableTimeMeter();
     RateLimitFilter filter =
-        new RateLimitFilter(1, 1, 1000, 1000, clock); // 1 token, 1 token per minute
+        new RateLimitFilter(1, 1, 1000, 1000, 1000, 1000, clock); // 1 token, 1 token per minute
     CountingChain chain = new CountingChain();
     String ip = "198.51.100.7";
 
@@ -115,7 +120,7 @@ class RateLimitFilterTest {
 
   @Test
   void distinctClientIpsEachGetTheirOwnCapacity() throws Exception {
-    RateLimitFilter filter = new RateLimitFilter(1, 1, 1000, 1000);
+    RateLimitFilter filter = new RateLimitFilter(1, 1, 1000, 1000, 1000, 1000);
     CountingChain chain = new CountingChain();
 
     filter.doFilter(anonymousPost("203.0.113.10"), new MockHttpServletResponse(), chain);
@@ -127,7 +132,7 @@ class RateLimitFilterTest {
   @Test
   void onlyExactPostToValidateIsRateLimitedOtherRoutesAndMethodsPassThroughUnthrottled()
       throws Exception {
-    RateLimitFilter filter = new RateLimitFilter(1, 1, 1000, 1000);
+    RateLimitFilter filter = new RateLimitFilter(1, 1, 1000, 1000, 1000, 1000);
     CountingChain chain = new CountingChain();
     String ip = "203.0.113.20";
 
@@ -161,7 +166,7 @@ class RateLimitFilterTest {
     assertThat(anonymous.isAuthenticated()).isTrue();
     SecurityContextHolder.getContext().setAuthentication(anonymous);
 
-    RateLimitFilter filter = new RateLimitFilter(1, 1, 1000, 1000);
+    RateLimitFilter filter = new RateLimitFilter(1, 1, 1000, 1000, 1000, 1000);
     CountingChain chain = new CountingChain();
     String ip = "203.0.113.30";
 
@@ -176,7 +181,7 @@ class RateLimitFilterTest {
   @Test
   void aJwtAuthenticatedCallerBypassesTheLimiterEvenAfterTheAnonymousBucketIsExhausted()
       throws Exception {
-    RateLimitFilter filter = new RateLimitFilter(1, 1, 1000, 1000);
+    RateLimitFilter filter = new RateLimitFilter(1, 1, 1000, 1000, 1000, 1000);
     CountingChain chain = new CountingChain();
     String ip = "203.0.113.40";
 
@@ -195,7 +200,7 @@ class RateLimitFilterTest {
   @Test
   void anApiKeyAuthenticatedCallerBypassesTheLimiterEvenAfterTheAnonymousBucketIsExhausted()
       throws Exception {
-    RateLimitFilter filter = new RateLimitFilter(1, 1, 1000, 1000);
+    RateLimitFilter filter = new RateLimitFilter(1, 1, 1000, 1000, 1000, 1000);
     CountingChain chain = new CountingChain();
     String ip = "203.0.113.41";
 
@@ -215,7 +220,7 @@ class RateLimitFilterTest {
 
   @Test
   void trackedClientsAreBoundedByASweepOnceTheHardCapIsExceeded() {
-    RateLimitFilter filter = new RateLimitFilter(10, 10, 1000, 1000);
+    RateLimitFilter filter = new RateLimitFilter(10, 10, 1000, 1000, 1000, 1000);
 
     // MAX_TRACKED_CLIENTS is 10_000 (see RateLimitFilter); one over that forces a sweep.
     for (int i = 0; i <= 10_000; i++) {
@@ -238,7 +243,7 @@ class RateLimitFilterTest {
    */
   @Test
   void convertLimitsAuthenticatedCallersUnlikeValidate() throws Exception {
-    RateLimitFilter filter = new RateLimitFilter(1000, 1000, 1, 1);
+    RateLimitFilter filter = new RateLimitFilter(1000, 1000, 1, 1, 1000, 1000);
     CountingChain chain = new CountingChain();
     SecurityContextHolder.getContext()
         .setAuthentication(
@@ -261,7 +266,7 @@ class RateLimitFilterTest {
    */
   @Test
   void convertBucketsAuthenticatedCallersByCredentialNotByIp() throws Exception {
-    RateLimitFilter filter = new RateLimitFilter(1000, 1000, 1, 1);
+    RateLimitFilter filter = new RateLimitFilter(1000, 1000, 1, 1, 1000, 1000);
     CountingChain chain = new CountingChain();
     String sharedIp = "203.0.113.51";
 
@@ -284,7 +289,7 @@ class RateLimitFilterTest {
   /** The two routes hold separate buckets, so conversions cannot spend a validator's allowance. */
   @Test
   void theTwoRoutesDoNotShareABucket() throws Exception {
-    RateLimitFilter filter = new RateLimitFilter(1, 1, 1, 1);
+    RateLimitFilter filter = new RateLimitFilter(1, 1, 1, 1, 1000, 1000);
     CountingChain chain = new CountingChain();
     String ip = "203.0.113.52";
 
@@ -299,6 +304,115 @@ class RateLimitFilterTest {
 
     assertThat(validateAllowed.getStatus()).isEqualTo(200);
     assertThat(chain.invocations()).isEqualTo(2);
+  }
+
+  // --- the explain routes (M5 hostile review, F4) -----------------------------------------------
+
+  /**
+   * The finding this closes: {@code RateLimitFilter}'s own Javadoc argued that a paid LLM call
+   * needs a limit for the same reason CPU does — and then limited only the <em>anonymous</em>
+   * route. The two authenticated explain routes, which spend the operator's provider budget per
+   * click, were limited by nothing at all. {@code app.ai.max-findings-per-request} bounds one
+   * request; it says nothing about a rate.
+   */
+  @Test
+  void theAuthenticatedExplainRoutesAreLimitedForAuthenticatedCallersToo() throws Exception {
+    for (String path : new String[] {API_EXPLAIN, UI_EXPLAIN}) {
+      RateLimitFilter filter = new RateLimitFilter(1000, 1000, 1000, 1000, 1, 1);
+      CountingChain chain = new CountingChain();
+      SecurityContextHolder.getContext()
+          .setAuthentication(
+              ApiKeyAuthenticationToken.authenticated(UUID.randomUUID(), UUID.randomUUID()));
+
+      filter.doFilter(post(path, "203.0.113.60"), new MockHttpServletResponse(), chain);
+      MockHttpServletResponse blocked = new MockHttpServletResponse();
+      filter.doFilter(post(path, "203.0.113.60"), blocked, chain);
+
+      assertThat(chain.invocations()).as("%s", path).isEqualTo(1);
+      assertThat(blocked.getStatus()).as("%s", path).isEqualTo(429);
+    }
+  }
+
+  @Test
+  void theExplainBucketIsSeparateFromValidateAndConvert() throws Exception {
+    // Exhausting explanations must not stop a tenant validating or converting, and vice versa: the
+    // three routes cost different things and one budget for all of them would couple them.
+    RateLimitFilter filter = new RateLimitFilter(1, 1, 1, 1, 1, 1);
+    CountingChain chain = new CountingChain();
+    SecurityContextHolder.getContext()
+        .setAuthentication(
+            ApiKeyAuthenticationToken.authenticated(UUID.randomUUID(), UUID.randomUUID()));
+
+    filter.doFilter(post(API_EXPLAIN, "203.0.113.61"), new MockHttpServletResponse(), chain);
+    MockHttpServletResponse explainBlocked = new MockHttpServletResponse();
+    filter.doFilter(post(API_EXPLAIN, "203.0.113.61"), explainBlocked, chain);
+    assertThat(explainBlocked.getStatus()).isEqualTo(429);
+
+    MockHttpServletResponse convertAllowed = new MockHttpServletResponse();
+    filter.doFilter(post(CONVERT, "203.0.113.61"), convertAllowed, chain);
+
+    assertThat(convertAllowed.getStatus()).isEqualTo(200);
+    assertThat(chain.invocations()).isEqualTo(2);
+  }
+
+  @Test
+  void theTwoExplainRoutesShareOneBudgetBecauseTheyBuyTheSameThing() throws Exception {
+    // The dashboard button and the API endpoint explain the same stored report through the same
+    // provider. Separate buckets would hand one tenant two allowances for one bill.
+    RateLimitFilter filter = new RateLimitFilter(1000, 1000, 1000, 1000, 1, 1);
+    CountingChain chain = new CountingChain();
+    SecurityContextHolder.getContext()
+        .setAuthentication(
+            ApiKeyAuthenticationToken.authenticated(UUID.randomUUID(), UUID.randomUUID()));
+
+    filter.doFilter(post(UI_EXPLAIN, "203.0.113.62"), new MockHttpServletResponse(), chain);
+    MockHttpServletResponse blocked = new MockHttpServletResponse();
+    filter.doFilter(post(API_EXPLAIN, "203.0.113.62"), blocked, chain);
+
+    assertThat(chain.invocations()).isEqualTo(1);
+    assertThat(blocked.getStatus()).isEqualTo(429);
+  }
+
+  @Test
+  void theExplainLimitMatchesAnyReportIdNotJustOne() throws Exception {
+    // A per-path-literal matcher would be trivially bypassed by explaining a different report each
+    // time, which is exactly what a caller burning the budget would do.
+    RateLimitFilter filter = new RateLimitFilter(1000, 1000, 1000, 1000, 1, 1);
+    CountingChain chain = new CountingChain();
+    SecurityContextHolder.getContext()
+        .setAuthentication(
+            ApiKeyAuthenticationToken.authenticated(UUID.randomUUID(), UUID.randomUUID()));
+
+    filter.doFilter(
+        post("/api/v1/reports/" + UUID.randomUUID() + "/explain", "203.0.113.63"),
+        new MockHttpServletResponse(),
+        chain);
+    MockHttpServletResponse blocked = new MockHttpServletResponse();
+    filter.doFilter(
+        post("/api/v1/reports/" + UUID.randomUUID() + "/explain", "203.0.113.63"), blocked, chain);
+
+    assertThat(chain.invocations()).isEqualTo(1);
+    assertThat(blocked.getStatus()).isEqualTo(429);
+  }
+
+  /**
+   * The public route keeps its own policy, unchanged: it shares the validate bucket and exempts
+   * authenticated callers. It is anonymous-reachable, so its risk is abuse of a free endpoint; the
+   * authenticated routes' risk is a tenant's own spending, which is a different bucket and a
+   * different rule.
+   */
+  @Test
+  void thePublicExplainRouteStillSharesTheValidateBucket() throws Exception {
+    RateLimitFilter filter = new RateLimitFilter(1, 1, 1000, 1000, 1000, 1000);
+    CountingChain chain = new CountingChain();
+    String ip = "203.0.113.64";
+
+    filter.doFilter(anonymousPost(ip), new MockHttpServletResponse(), chain);
+    MockHttpServletResponse blocked = new MockHttpServletResponse();
+    filter.doFilter(post(PUBLIC_EXPLAIN, ip), blocked, chain);
+
+    assertThat(chain.invocations()).isEqualTo(1);
+    assertThat(blocked.getStatus()).isEqualTo(429);
   }
 
   // --- helpers ---------------------------------------------------------------------------------

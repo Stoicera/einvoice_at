@@ -84,6 +84,20 @@ app:
     convert:
       capacity: ${RATE_LIMIT_CONVERT_CAPACITY:20}
       refill-per-minute: ${RATE_LIMIT_CONVERT_REFILL_PER_MINUTE:20}
+    # POST /api/v1/reports/{id}/explain and the dashboard's per-finding "Erklären" — the two routes
+    # where a request becomes a PAID third-party call. Limited per credential and applied to
+    # authenticated callers too, exactly like convert: both routes require authentication, so an
+    # authenticated exemption would leave a limit covering nobody. They share one bucket because
+    # they buy the same thing from the same provider, and it is a bucket of its own so that spending
+    # the explanation allowance never stops a tenant validating (which costs CPU, not money).
+    #
+    # The M5 hostile review (F4) found both unlimited: app.ai.max-findings-per-request bounds one
+    # request, and nothing bounded the rate. Lower than the others on purpose — this is the only
+    # limit here whose unit is euros. The public /validator/erklaeren keeps the anonymous-only
+    # validate policy instead; it is a different threat (abuse of a free endpoint).
+    explain:
+      capacity: ${RATE_LIMIT_EXPLAIN_CAPACITY:30}
+      refill-per-minute: ${RATE_LIMIT_EXPLAIN_REFILL_PER_MINUTE:30}
 
   # Storage limitation (GDPR Art. 5(1)(e)) — RetentionService, scheduled by PrivacyConfig.
   #
@@ -147,11 +161,17 @@ springdoc:
 server:
   port: 8080
 
+# Actuator surface. `metrics` is exposed alongside the probes because M5 ships cost metrics
+# (einvoice.ai.calls / .tokens / .cost.usd) and a metric an operator cannot read is not a metric —
+# the M5 hostile review (F5) found all three recorded into a registry with no endpoint in front of
+# it. All of /actuator/** except the health probes requires authentication (SecurityConfig), so this
+# publishes nothing anonymously; a Prometheus scrape endpoint belongs to M6, where observability is
+# the milestone's subject.
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics
   endpoint:
     health:
       probes:

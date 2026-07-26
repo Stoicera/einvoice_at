@@ -106,7 +106,10 @@ während es wie Datenschutzarbeit aussähe.
 ### 3.3 Zwischenspeicher
 
 Erklärungen werden im Arbeitsspeicher zwischengespeichert (max. 500 Einträge, älteste werden
-verdrängt), damit derselbe Befund keinen zweiten bezahlten Aufruf auslöst. Der Schlüssel ist die
+verdrängt), damit derselbe Befund keinen zweiten bezahlten Aufruf auslöst. Zusätzlich sind alle
+Erklärungs-Routen **ratenbegrenzt** — die öffentliche über dasselbe anonyme Kontingent wie der
+Prüfer-Upload, die angemeldeten pro Credential (`RATE_LIMIT_EXPLAIN_*`). Das begrenzt nicht nur
+Kosten, sondern auch, wie viel Text pro Zeiteinheit überhaupt an den Anbieter gehen kann. Der Schlüssel ist die
 Regel-ID plus ein SHA-256 des **bereits maskierten** Textes. Es wird nichts persistiert; ein Neustart
 leert den Cache.
 

@@ -251,12 +251,16 @@ public class SecurityConfig {
       @Value("${app.rate-limit.validate.capacity}") long rateLimitCapacity,
       @Value("${app.rate-limit.validate.refill-per-minute}") long rateLimitRefillPerMinute,
       @Value("${app.rate-limit.convert.capacity}") long convertRateLimitCapacity,
-      @Value("${app.rate-limit.convert.refill-per-minute}") long convertRateLimitRefillPerMinute) {
+      @Value("${app.rate-limit.convert.refill-per-minute}") long convertRateLimitRefillPerMinute,
+      @Value("${app.rate-limit.explain.capacity}") long explainRateLimitCapacity,
+      @Value("${app.rate-limit.explain.refill-per-minute}") long explainRateLimitRefillPerMinute) {
     return new RateLimitFilter(
         rateLimitCapacity,
         rateLimitRefillPerMinute,
         convertRateLimitCapacity,
-        convertRateLimitRefillPerMinute);
+        convertRateLimitRefillPerMinute,
+        explainRateLimitCapacity,
+        explainRateLimitRefillPerMinute);
   }
 
   private JwtAuthenticationConverter jwtConverter() {

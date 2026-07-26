@@ -163,6 +163,86 @@ class OpenRouterLlmClientTest {
     assertThat(requestCount).hasValue(1); // maxRetries 0 means one attempt, no retry
   }
 
+  // -------------------------------------------------------------------- backoff
+
+  /**
+   * M5 hostile review, F6. The loop re-issued immediately, so a 429 — the provider explicitly
+   * asking for less traffic — was answered by asking again in the same millisecond. Asserted
+   * through the {@code Sleeper} seam rather than by measuring elapsed time, so the schedule is
+   * pinned exactly and the test costs nothing.
+   */
+  @Test
+  void waitsBeforeEachRetryAndDoublesTheWait() {
+    respondWith(503, "{\"error\":\"overloaded\"}");
+    List<Duration> waited = new ArrayList<>();
+
+    failureOf(client(3, LlmUsageListener.NONE, waited::add));
+
+    assertThat(requestCount).hasValue(4); // the first attempt plus three retries
+    assertThat(waited)
+        .containsExactly(Duration.ofMillis(500), Duration.ofSeconds(1), Duration.ofSeconds(2));
+  }
+
+  @Test
+  void doesNotWaitAtAllWhenTheFirstAttemptSucceeds() throws Exception {
+    respondWith(200, completionJson("Sofort.", 1, 1, "0.1"));
+    List<Duration> waited = new ArrayList<>();
+
+    client(2, LlmUsageListener.NONE, waited::add).complete(PROMPT);
+
+    assertThat(waited).isEmpty();
+  }
+
+  @Test
+  void honoursTheProvidersOwnRetryAfterInsteadOfGuessing() {
+    // The provider is the only party that knows when its limit resets. Ignoring the header in
+    // favour of a locally computed 500 ms is how a client turns a rate limit into a ban.
+    server.createContext(
+        "/chat/completions",
+        exchange -> {
+          exchange.getResponseHeaders().add("Retry-After", "3");
+          write(exchange, 429, "{\"error\":\"rate limited\"}");
+        });
+    List<Duration> waited = new ArrayList<>();
+
+    failureOf(client(1, LlmUsageListener.NONE, waited::add));
+
+    assertThat(waited).containsExactly(Duration.ofSeconds(3));
+  }
+
+  @Test
+  void capsAnAbsurdRetryAfterRatherThanParkingTheThread() {
+    // Retry-After is a third party's number and a request thread is ours. A day is not a wait.
+    server.createContext(
+        "/chat/completions",
+        exchange -> {
+          exchange.getResponseHeaders().add("Retry-After", "86400");
+          write(exchange, 429, "{\"error\":\"rate limited\"}");
+        });
+    List<Duration> waited = new ArrayList<>();
+
+    failureOf(client(1, LlmUsageListener.NONE, waited::add));
+
+    assertThat(waited).containsExactly(OpenRouterLlmClient.MAX_BACKOFF);
+  }
+
+  @Test
+  void fallsBackToTheScheduleWhenRetryAfterIsAnHttpDateOrNonsense() {
+    // Only delta-seconds is honoured; an HTTP-date would mean trusting a third party's clock. An
+    // unreadable header must fall back to the exponential schedule, never to zero.
+    server.createContext(
+        "/chat/completions",
+        exchange -> {
+          exchange.getResponseHeaders().add("Retry-After", "Wed, 21 Oct 2026 07:28:00 GMT");
+          write(exchange, 429, "{\"error\":\"rate limited\"}");
+        });
+    List<Duration> waited = new ArrayList<>();
+
+    failureOf(client(1, LlmUsageListener.NONE, waited::add));
+
+    assertThat(waited).containsExactly(OpenRouterLlmClient.BASE_BACKOFF);
+  }
+
   @Test
   void reportsNoUsageWhenEveryAttemptFails() {
     respondWith(500, "{}");
@@ -345,6 +425,13 @@ class OpenRouterLlmClientTest {
   }
 
   private OpenRouterLlmClient client(int maxRetries, LlmUsageListener listener) {
+    // A no-op sleeper by default: every test in this class that is not ABOUT the backoff would
+    // otherwise pay it in wall-clock time.
+    return client(maxRetries, listener, duration -> {});
+  }
+
+  private OpenRouterLlmClient client(
+      int maxRetries, LlmUsageListener listener, Consumer<Duration> onSleep) {
     OpenRouterSettings settings =
         new OpenRouterSettings(
             baseUri(),
@@ -353,7 +440,7 @@ class OpenRouterLlmClientTest {
             Duration.ofSeconds(5),
             maxRetries,
             700);
-    return new OpenRouterLlmClient(HttpClient.newHttpClient(), settings, listener);
+    return new OpenRouterLlmClient(HttpClient.newHttpClient(), settings, listener, onSleep::accept);
   }
 
   private URI baseUri() {

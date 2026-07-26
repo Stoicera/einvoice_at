@@ -25,7 +25,9 @@ import java.util.regex.Pattern;
  *       <em>name</em>: "Bundesbeschaffung GmbH" and "Auftragsreferenz" are the same shape to a
  *       regular expression, and a pattern that caught the first would eat half the rule text.
  *   <li><strong>Pattern masking</strong> (always applied): IBANs, e-mail addresses, EU VAT ids and
- *       long digit runs, which do have reliable shapes.
+ *       long digit runs, which do have reliable shapes. Every pattern is <strong>case-insensitive
+ *       </strong>, because the text it runs against is a diagnostic quoting a document value as the
+ *       sender wrote it — not a value this platform normalised.
  * </ol>
  *
  * <p><strong>Known limit, stated rather than papered over:</strong> when the caller supplies no
@@ -57,8 +59,17 @@ public final class PiiScrubber {
   /**
    * An IBAN: two letters, two check digits, then 10–30 alphanumerics (the ISO 13616 range, Norway's
    * 15 through Malta's 31 in total). Matched before the VAT-id pattern, which its prefix also fits.
+   *
+   * <p><strong>Case-insensitive, and that is load-bearing rather than tidy.</strong> ISO 13616
+   * writes IBANs in upper case, but this pattern is not applied to a canonical value — it is
+   * applied to a Schematron or XSD diagnostic that <em>quotes the document verbatim</em>, and
+   * nothing in this pipeline upper-cases what a sender wrote. Without the flag, {@code at61…}
+   * matched neither this pattern nor the VAT-id one and reached the provider with only its digit
+   * run masked, as {@code at[NUMMER]} — the leak the M5 hostile review found (F3), against a {@code
+   * docs/privacy.md} table that promised the masking unconditionally.
    */
-  private static final Pattern IBAN = Pattern.compile("\\b[A-Z]{2}[0-9]{2}[A-Z0-9]{10,30}\\b");
+  private static final Pattern IBAN =
+      Pattern.compile("\\b[A-Z]{2}[0-9]{2}[A-Z0-9]{10,30}\\b", Pattern.CASE_INSENSITIVE);
 
   /**
    * An e-mail address — deliberately loose. Precision costs nothing here and a false positive only
@@ -75,10 +86,14 @@ public final class PiiScrubber {
    * [A-Z]{2}[A-Z0-9]{8,12}} would also swallow the rule identifiers that are the whole point of the
    * explanation — and a masked {@code PEPPOL-EN16931-R010} would make the finding unexplainable
    * while looking like privacy work. Requiring digits after the prefix keeps rule ids (which are
-   * letter-and-hyphen shaped) out of range.
+   * letter-and-hyphen shaped) out of range: the longest digit run in any of them is {@code 16931},
+   * five, so eight is a comfortable floor.
+   *
+   * <p>Case-insensitive for the same reason as {@link #IBAN}: the text being scrubbed is a quoted
+   * document value, not a normalised one.
    */
   private static final Pattern VAT_ID =
-      Pattern.compile("\\b(?:ATU[0-9]{8}|[A-Z]{2}[0-9]{8,12})\\b");
+      Pattern.compile("\\b(?:ATU[0-9]{8}|[A-Z]{2}[0-9]{8,12})\\b", Pattern.CASE_INSENSITIVE);
 
   /**
    * Seven or more consecutive digits: account numbers, {@code Lieferantennummer}s, phone numbers,

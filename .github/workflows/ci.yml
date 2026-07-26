@@ -176,18 +176,42 @@ jobs:
       # all. Seven of them had accumulated by M5 — including the whole RATE_LIMIT_* family — and the
       # Gatling run below is what exposed them, because raising the limit had no effect and the
       # simulation refused to report a p95 measured through a rate limiter.
-      - name: Every documented environment variable reaches the container
+      # Guards BOTH directions, because the milestone that fixed one of them left the other open
+      # (M5 hostile review, F7):
+      #
+      #   documented -> wired    a variable in .env.example that compose never passes through does
+      #                          nothing at all when set, silently. Seven had accumulated by M5,
+      #                          the whole RATE_LIMIT_* family among them, and the Gatling run is
+      #                          what exposed it — raising the limit had no effect.
+      #   read       -> documented   a variable application.yml reads that .env.example never names
+      #                          is a required setting nobody outside this repo can discover. Three
+      #                          were undocumented (OAUTH2_ISSUER_URI, OAUTH2_JWK_SET_URI,
+      #                          POSTGRES_HOST), and the one-directional check above could not see
+      #                          them. CLAUDE.md: ".env.example stays complete and current."
+      - name: Documented and actual configuration agree, in both directions
         run: |
           set -euo pipefail
           grep -oE '^[A-Z][A-Z0-9_]+=' .env.example | tr -d '=' | sort > /tmp/documented.txt
           grep -oE '\$\{[A-Z][A-Z0-9_]+' docker-compose.yml | tr -d '${' | sort -u > /tmp/wired.txt
-          missing="$(comm -23 /tmp/documented.txt /tmp/wired.txt)"
-          if [ -n "$missing" ]; then
+          grep -oE '\$\{[A-Z][A-Z0-9_]+' app/src/main/resources/application.yml \
+            | tr -d '${' | sort -u > /tmp/read.txt
+
+          status=0
+          unwired="$(comm -23 /tmp/documented.txt /tmp/wired.txt)"
+          if [ -n "$unwired" ]; then
             echo "::error::.env.example documents variables that docker-compose.yml never passes through:"
-            echo "$missing"
-            exit 1
+            echo "$unwired"
+            status=1
           fi
-          echo "All $(wc -l < /tmp/documented.txt) documented variables are wired into compose."
+          undocumented="$(comm -13 /tmp/documented.txt /tmp/read.txt)"
+          if [ -n "$undocumented" ]; then
+            echo "::error::application.yml reads variables that .env.example never documents:"
+            echo "$undocumented"
+            status=1
+          fi
+          [ "$status" -eq 0 ] || exit 1
+          echo "$(wc -l < /tmp/documented.txt) documented variables, all wired into compose;"
+          echo "$(wc -l < /tmp/read.txt) variables read by the application, all documented."
 
       # Installs app (and its test-jar, which the e2e module reuses for the Testcontainers wiring).
       - name: Install modules the e2e tests depend on
