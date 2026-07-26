@@ -53,13 +53,115 @@ class PeppolValidationStageTest {
   void usesTheSchematronAssertionIdAsTheRuleId() {
     Finding finding =
         PeppolValidationStage.toFinding(
-            error(EErrorLevel.ERROR, "PEPPOL-EN16931-R020", "Endpoint identifier scheme missing"));
+            error(
+                EErrorLevel.ERROR,
+                "PEPPOL-EN16931-R020",
+                "Seller electronic address MUST be provided"));
 
     assertThat(finding.ruleId()).isEqualTo("PEPPOL-EN16931-R020");
     assertThat(finding.severity()).isEqualTo(Severity.ERROR);
-    assertThat(finding.messageEn()).isEqualTo("Endpoint identifier scheme missing");
+    // The official English wording is preserved verbatim, translated or not (ADR-0007).
+    assertThat(finding.messageEn()).isEqualTo("Seller electronic address MUST be provided");
+  }
+
+  /**
+   * M5: a catalogued rule gets a real German message instead of M4's German frame around English.
+   * This is the milestone closing the gap M4 recorded honestly rather than papering over.
+   */
+  @Test
+  void usesTheGermanTranslationWhenTheRuleIsCatalogued() {
+    Finding finding =
+        PeppolValidationStage.toFinding(
+            error(
+                EErrorLevel.ERROR,
+                "PEPPOL-EN16931-R020",
+                "Seller electronic address MUST be provided"));
+
     assertThat(finding.messageDe())
-        .isEqualTo("Peppol BIS Billing 3.0: Endpoint identifier scheme missing");
+        .isEqualTo(
+            "Peppol BIS Billing 3.0: Die elektronische Adresse des Verkäufers (BT-34) muss"
+                + " angegeben werden.")
+        // A German message that still quotes the English rule text would mean the lookup silently
+        // missed.
+        .doesNotContain("MUST be provided");
+  }
+
+  @Test
+  void keepsTheGermanFrameAroundEnglishForAnUncataloguedRule() {
+    // The fallback is deliberately unchanged from M4: worse than a translation, never wrong. Uses a
+    // rule id the catalog does not cover, so this test keeps testing the fallback even as the
+    // catalog
+    // grows.
+    Finding finding =
+        PeppolValidationStage.toFinding(
+            error(
+                EErrorLevel.WARN, "UBL-CR-412", "cbc:CompanyLegalFormCode should not be present"));
+
+    assertThat(finding.messageDe())
+        .isEqualTo("Peppol BIS Billing 3.0: cbc:CompanyLegalFormCode should not be present");
+  }
+
+  @Test
+  void everyCataloguedGermanMessageIsUsableAsAFinding() {
+    // Guards the whole catalog at once against the two ways an entry can be wrong in a way no
+    // individual test would notice: a blank value, or one long enough that Finding's own cap would
+    // throw out of validate() and break the never-throws contract.
+    assertThat(PeppolMessagesDe.all()).isNotEmpty();
+    assertThat(PeppolMessagesDe.all())
+        .allSatisfy(
+            (ruleId, german) -> {
+              assertThat(german).as("German message for %s", ruleId).isNotBlank();
+              assertThat(german)
+                  .as("German message for %s must fit Finding's cap", ruleId)
+                  .hasSizeLessThanOrEqualTo(BoundedText.MAX_MESSAGE_DETAIL);
+              // Constructing the finding is the real assertion: it runs Finding's own invariants.
+              assertThat(Finding.of(Severity.ERROR, ruleId, null, german, "en")).isNotNull();
+            });
+  }
+
+  @Test
+  void theCatalogCoversEveryPeppolSpecificRuleOfThePinnedRuleSet() {
+    // The PEPPOL-EN16931-R* layer is small and entirely relevant to an Austrian filer, so partial
+    // coverage of it would be an oversight rather than a scoping decision. The EN 16931 layer is
+    // deliberately partial — see PeppolMessagesDe's Javadoc.
+    assertThat(PeppolMessagesDe.all().keySet())
+        .contains(
+            "PEPPOL-EN16931-R001",
+            "PEPPOL-EN16931-R002",
+            "PEPPOL-EN16931-R003",
+            "PEPPOL-EN16931-R004",
+            "PEPPOL-EN16931-R005",
+            "PEPPOL-EN16931-R007",
+            "PEPPOL-EN16931-R008",
+            "PEPPOL-EN16931-R010",
+            "PEPPOL-EN16931-R020",
+            "PEPPOL-EN16931-R040",
+            "PEPPOL-EN16931-R041",
+            "PEPPOL-EN16931-R042",
+            "PEPPOL-EN16931-R043",
+            "PEPPOL-EN16931-R044",
+            "PEPPOL-EN16931-R046",
+            "PEPPOL-EN16931-R051",
+            "PEPPOL-EN16931-R053",
+            "PEPPOL-EN16931-R054",
+            "PEPPOL-EN16931-R055",
+            "PEPPOL-EN16931-R061",
+            "PEPPOL-EN16931-R080",
+            "PEPPOL-EN16931-R100",
+            "PEPPOL-EN16931-R101",
+            "PEPPOL-EN16931-R110",
+            "PEPPOL-EN16931-R111",
+            "PEPPOL-EN16931-R120",
+            "PEPPOL-EN16931-R121",
+            "PEPPOL-EN16931-R130");
+  }
+
+  @Test
+  void boundsAnOverlongTranslationTheSameWayAsForeignText() {
+    // The translations are ours, but the cap is applied to them too rather than trusted: an entry
+    // someone extends past the cap must truncate, not throw out of validate().
+    assertThat(PeppolMessagesDe.forRule("BR-02")).isPresent();
+    assertThat(PeppolMessagesDe.forRule("does-not-exist")).isEmpty();
   }
 
   @Test

@@ -125,12 +125,20 @@ public final class PeppolValidationStage implements ValidationStage {
    * document values verbatim, which can exceed {@code Finding}'s own caps and make its constructor
    * throw — the same reachable-crash class the M2 hostile review closed for the XSD stage.
    *
-   * <p>The German half is our lead-in plus the rule set's own English text. Unlike the XSD stage,
-   * which can re-run Xerces under a German locale, the OpenPeppol Schematron ships English message
-   * text only; inventing a German translation of several hundred rules would be a maintenance
-   * liability and a fresh source of error, so the German message is honestly a German frame around
-   * the official English wording. Translating the rules that actually matter to Austrian filers is
-   * a later, deliberate piece of work (ADR-0007), not something to fake here.
+   * <h3>The German half (M5)</h3>
+   *
+   * <p>Unlike the XSD stage, which can re-run Xerces under a German locale, the OpenPeppol
+   * Schematron ships English message text only. M4 therefore made {@code messageDe} a German
+   * lead-in around the official English wording and named translating "the rules that actually
+   * matter to Austrian filers" as deliberate later work. That work is {@link PeppolMessagesDe}:
+   * when the assertion id is catalogued, the German half is the lead-in plus a translation of the
+   * published assertion text; when it is not, the M4 behaviour stands unchanged — a German frame
+   * around English, which is a worse message but never a wrong one.
+   *
+   * <p><strong>{@code messageEn} is always the rule set's own text, translated or not.</strong>
+   * This project executes the OpenPeppol rules unmodified (ADR-0007) and that principle extends to
+   * their wording: the translation is an addition for the reader, never a replacement of the
+   * official record.
    */
   static Finding toFinding(IError error) {
     String assertionId = error.getErrorID();
@@ -149,7 +157,15 @@ public final class PeppolValidationStage implements ValidationStage {
 
     Severity severity =
         error.getErrorLevel().isGE(EErrorLevel.ERROR) ? Severity.ERROR : Severity.WARN;
-    return Finding.of(severity, ruleId, location, GERMAN_LEAD_IN + detail, detail);
+    // The translation is looked up by the rule set's OWN assertion id, and bounded like every other
+    // foreign-text seam even though this text is ours — a catalogued entry that outgrew Finding's
+    // cap
+    // would otherwise throw out of validate() and break the never-throws contract.
+    String germanDetail =
+        PeppolMessagesDe.forRule(ruleId)
+            .map(translation -> BoundedText.cap(translation, BoundedText.MAX_MESSAGE_DETAIL))
+            .orElse(detail);
+    return Finding.of(severity, ruleId, location, GERMAN_LEAD_IN + germanDetail, detail);
   }
 
   /**
