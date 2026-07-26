@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="de">
+  <head
+    th:replace="~{fragments/layout :: head(
+      'Nicht gefunden',
+      'Diese Seite oder dieser Datensatz existiert nicht.')}"
+  ></head>
+  <body>
+    <div th:replace="~{fragments/layout :: masthead}"></div>
+
+    <main class="shell">
+      <h1>Nicht gefunden</h1>
+      <p class="lede">
+        Diesen Datensatz gibt es nicht — oder er gehört nicht zu Ihrem Konto. Beides sieht hier
+        absichtlich gleich aus.
+      </p>
+      <div class="row">
+        <a class="button" th:href="@{/app}">Zum Dashboard</a>
+        <a class="button secondary" th:href="@{/}">Zur Startseite</a>
+      </div>
+    </main>
+
+    <div th:replace="~{fragments/layout :: colophon}"></div>
+  </body>
+</html>

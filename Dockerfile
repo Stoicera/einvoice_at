@@ -7,7 +7,11 @@ FROM eclipse-temurin:25-jre-alpine@sha256:28db6fdf60e38945e43d840c0333aeaec66c15
 RUN addgroup -S app && adduser -S app -G app
 USER app
 WORKDIR /app
-COPY --from=build /workspace/app/target/app.jar app.jar
+# app-exec.jar, not app.jar: the Spring Boot plugin writes the executable jar under the `exec`
+# classifier so that the plain app.jar can stay the module's Maven artifact — without which the e2e
+# module (and any other consumer of `app`) resolves a fat jar whose classes are hidden under
+# BOOT-INF/classes. See the plugin configuration in app/pom.xml.
+COPY --from=build /workspace/app/target/app-exec.jar app.jar
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=5 \
   CMD wget -qO- http://localhost:8080/actuator/health | grep -q '"status":"UP"' || exit 1

@@ -175,6 +175,34 @@
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- Spring Security's own test support, for the M5 dashboard ITs. Version managed by the Boot
+         parent; test scope only.
+
+         Needed because the dashboard sits on the BROWSER filter chain, which authenticates a cookie
+         session established by an OAuth2 authorization-code login — it deliberately does not accept
+         the bearer tokens and X-Api-Keys every other IT in this module uses (SecurityConfig, ADR-0009).
+         Driving a real Keycloak login form over HttpClient to reach a page assertion would test
+         Keycloak; SecurityMockMvcRequestPostProcessors.oauth2Login() injects the authentication the
+         real flow would have produced and lets the test assert the page. The real authorization-code
+         flow is covered where it belongs — end to end in a real browser against a real Keycloak, in
+         the e2e module. -->
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- MockMvc's Boot autoconfiguration (@AutoConfigureMockMvc), which the dashboard ITs drive.
+         NOTE: Boot 4.1's module split moved this out of spring-boot-test-autoconfigure into its own
+         module, and the annotation with it — org.springframework.boot.test.autoconfigure.web.servlet
+         .AutoConfigureMockMvc no longer exists; it is now
+         org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc. The module is
+         declared directly rather than via spring-boot-starter-webmvc-test, which would also pull in
+         spring-boot-starter-webmvc and resttestclient for nothing. Version from the Boot parent. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-webmvc-test</artifactId>
+      <scope>test</scope>
+    </dependency>
     <!-- Testcontainers: Boot's @ServiceConnection support + the Postgres module. Versions come
          from Boot 4.1's testcontainers BOM import (testcontainers-bom 2.0.5), never pinned.
          NOTE: Boot 4.1 ships Testcontainers 2.x, which renamed the Maven modules from the 1.x
@@ -223,6 +251,21 @@
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+        <configuration>
+          <!-- The executable fat jar gets a CLASSIFIER, so the plain jar stays this module's main
+               Maven artifact.
+
+               Without this, `repackage` REPLACES app.jar with the executable one, whose classes live
+               under BOOT-INF/classes — invisible to a normal compile classpath. Any module depending
+               on `app` then resolves the fat jar and cannot see a single one of its classes: the
+               `e2e` module failed exactly that way, and the error ("cannot find symbol
+               ReportRepository", while classes from the test-jar resolved fine) points at the source
+               file rather than at the packaging.
+
+               Consequence to keep in step: the runtime jar is now app-exec.jar, which is what the
+               Dockerfile copies. -->
+          <classifier>exec</classifier>
+        </configuration>
       </plugin>
       <!-- Test split by naming convention: Surefire (bound to `test`) runs the fast, Docker-free
            unit tests (`*Test`/`*Tests`); Failsafe (bound to `integration-test`/`verify`) runs the
@@ -231,6 +274,22 @@
            Postgres and Keycloak containers. The `verify` goal makes the build fail on IT failures
            (Failsafe defers failures to it), which the reactor `verify` in CI already runs. Abstract
            bases (AbstractPostgresIT, AbstractKeycloakIT) carry no @Test and are skipped regardless. -->
+      <!-- Publishes app's test classes as a test-jar so the `e2e` module can reuse
+           AbstractPostgresIT and MultipartBodies instead of re-declaring the Testcontainers wiring.
+           Two copies of that wiring would be two things to keep in step, and the E2E stack must boot
+           the same context the integration tests boot or it is testing something else. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>test-jar</id>
+            <goals>
+              <goal>test-jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-failsafe-plugin</artifactId>

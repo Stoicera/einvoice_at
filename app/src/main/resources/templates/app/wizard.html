@@ -1,0 +1,393 @@
+<!--/*
+  The create-invoice wizard, all four steps in one template.
+
+  One file rather than four, because the step indicator, the chrome and the error slot are shared and
+  the steps themselves are short. Each step is a th:if block on ${step}; only one renders.
+*/-->
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="de">
+  <head
+    th:replace="~{fragments/layout :: head(
+      'Rechnung erstellen',
+      'Eine E-Rechnung in vier Schritten erstellen — ebInterface 6.1 und Peppol BIS 3.0 werden daraus erzeugt.')}"
+  ></head>
+  <body>
+    <div th:replace="~{fragments/layout :: masthead}"></div>
+
+    <main class="shell">
+      <h1>Rechnung erstellen</h1>
+      <div th:replace="~{fragments/layout :: dashnav('invoices')}"></div>
+
+      <!--/* The step indicator. `done` for steps already passed, `current` for this one. */-->
+      <ol class="steps">
+        <li
+          th:classappend="${step == 'kopf'} ? 'current' : 'done'"
+        >
+          1. Kopfdaten
+        </li>
+        <li
+          th:classappend="${step == 'parteien'} ? 'current' : (${step == 'kopf'} ? '' : 'done')"
+        >
+          2. Parteien
+        </li>
+        <li
+          th:classappend="${step == 'positionen'} ? 'current' : (${step == 'zahlung'} ? 'done' : '')"
+        >
+          3. Positionen
+        </li>
+        <li th:classappend="${step == 'zahlung'} ? 'current'">4. Zahlung &amp; Prüfen</li>
+      </ol>
+
+      <p class="errors" th:if="${formError}" th:text="${formError}"></p>
+
+      <!-- ------------------------------------------------------------- 1. Kopfdaten -->
+      <form
+        th:if="${step == 'kopf'}"
+        th:action="@{/app/rechnungen/neu/kopf}"
+        method="post"
+        class="stack"
+      >
+        <div class="field-row">
+          <div class="field">
+            <label for="invoiceNumber">Rechnungsnummer</label>
+            <input
+              id="invoiceNumber"
+              name="invoiceNumber"
+              type="text"
+              required
+              th:value="${draft.invoiceNumber}"
+            />
+          </div>
+          <div class="field">
+            <label for="type">Belegart</label>
+            <select id="type" name="type">
+              <option value="INVOICE" th:selected="${draft.type == 'INVOICE'}">Rechnung</option>
+              <option value="CREDIT_NOTE" th:selected="${draft.type == 'CREDIT_NOTE'}">
+                Gutschrift
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="issueDate">Rechnungsdatum</label>
+            <input id="issueDate" name="issueDate" type="date" required th:value="${draft.issueDate}" />
+          </div>
+          <div class="field">
+            <label for="dueDate">Fälligkeitsdatum <span class="muted">(optional)</span></label>
+            <input id="dueDate" name="dueDate" type="date" th:value="${draft.dueDate}" />
+          </div>
+          <div class="field">
+            <label for="deliveryDate">Lieferdatum <span class="muted">(optional)</span></label>
+            <input
+              id="deliveryDate"
+              name="deliveryDate"
+              type="date"
+              th:value="${draft.deliveryDate}"
+            />
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="currency">Währung</label>
+            <input id="currency" name="currency" type="text" maxlength="3" th:value="${draft.currency}" />
+          </div>
+          <!--/* The two fields Austrian federal bodies reject invoices for. Named as such, because
+                 that is the single most common reason a filer ends up on this platform. */-->
+          <div class="field">
+            <label for="orderReference">Auftragsreferenz</label>
+            <input
+              id="orderReference"
+              name="orderReference"
+              type="text"
+              th:value="${draft.orderReference}"
+            />
+          </div>
+          <div class="field">
+            <label for="supplierNumber">Lieferantennummer</label>
+            <input
+              id="supplierNumber"
+              name="supplierNumber"
+              type="text"
+              th:value="${draft.supplierNumber}"
+            />
+          </div>
+        </div>
+        <p class="muted">
+          Auftragsreferenz und Lieferantennummer sind für Rechnungen an
+          <strong>Bundesdienststellen</strong> Pflicht (AT-B2G-01 und AT-B2G-03). Ohne sie wird die
+          Rechnung abgelehnt.
+        </p>
+
+        <div class="row">
+          <button type="submit">Weiter zu den Parteien</button>
+        </div>
+      </form>
+
+      <!-- -------------------------------------------------------------- 2. Parteien -->
+      <form
+        th:if="${step == 'parteien'}"
+        th:action="@{/app/rechnungen/neu/parteien}"
+        method="post"
+        class="stack"
+      >
+        <h2>Rechnungssteller</h2>
+        <div class="field-row">
+          <div class="field">
+            <label for="sellerName">Name</label>
+            <input id="sellerName" name="sellerName" type="text" required th:value="${draft.sellerName}" />
+          </div>
+          <div class="field">
+            <label for="sellerVatId">UID-Nummer</label>
+            <input id="sellerVatId" name="sellerVatId" type="text" th:value="${draft.sellerVatId}" />
+          </div>
+          <div class="field">
+            <label for="sellerEmail">E-Mail</label>
+            <input id="sellerEmail" name="sellerEmail" type="email" th:value="${draft.sellerEmail}" />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="sellerStreet">Straße</label>
+            <input id="sellerStreet" name="sellerStreet" type="text" th:value="${draft.sellerStreet}" />
+          </div>
+          <div class="field">
+            <label for="sellerPostalCode">PLZ</label>
+            <input
+              id="sellerPostalCode"
+              name="sellerPostalCode"
+              type="text"
+              th:value="${draft.sellerPostalCode}"
+            />
+          </div>
+          <div class="field">
+            <label for="sellerCity">Ort</label>
+            <input id="sellerCity" name="sellerCity" type="text" th:value="${draft.sellerCity}" />
+          </div>
+          <div class="field">
+            <label for="sellerCountryCode">Land</label>
+            <input
+              id="sellerCountryCode"
+              name="sellerCountryCode"
+              type="text"
+              maxlength="2"
+              th:value="${draft.sellerCountryCode}"
+            />
+          </div>
+        </div>
+
+        <h2>Empfänger</h2>
+        <div class="field-row">
+          <div class="field">
+            <label for="buyerName">Name</label>
+            <input id="buyerName" name="buyerName" type="text" required th:value="${draft.buyerName}" />
+          </div>
+          <div class="field">
+            <label for="buyerVatId">UID-Nummer</label>
+            <input id="buyerVatId" name="buyerVatId" type="text" th:value="${draft.buyerVatId}" />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="buyerStreet">Straße</label>
+            <input id="buyerStreet" name="buyerStreet" type="text" th:value="${draft.buyerStreet}" />
+          </div>
+          <div class="field">
+            <label for="buyerPostalCode">PLZ</label>
+            <input
+              id="buyerPostalCode"
+              name="buyerPostalCode"
+              type="text"
+              th:value="${draft.buyerPostalCode}"
+            />
+          </div>
+          <div class="field">
+            <label for="buyerCity">Ort</label>
+            <input id="buyerCity" name="buyerCity" type="text" th:value="${draft.buyerCity}" />
+          </div>
+          <div class="field">
+            <label for="buyerCountryCode">Land</label>
+            <input
+              id="buyerCountryCode"
+              name="buyerCountryCode"
+              type="text"
+              maxlength="2"
+              th:value="${draft.buyerCountryCode}"
+            />
+          </div>
+        </div>
+
+        <div class="row">
+          <a class="button secondary" th:href="@{/app/rechnungen/neu}">Zurück</a>
+          <button type="submit">Weiter zu den Positionen</button>
+        </div>
+      </form>
+
+      <!-- ------------------------------------------------------------ 3. Positionen -->
+      <th:block th:if="${step == 'positionen'}">
+        <h2>Positionen</h2>
+        <p class="muted" th:if="${#lists.isEmpty(draft.lines)}">
+          Noch keine Positionen. Fügen Sie unten die erste hinzu.
+        </p>
+        <div class="scroll-x" th:unless="${#lists.isEmpty(draft.lines)}">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Beschreibung</th>
+                <th scope="col" class="num">Menge</th>
+                <th scope="col">Einheit</th>
+                <th scope="col" class="num">Einzelpreis</th>
+                <th scope="col">USt</th>
+                <th scope="col"><span class="muted">Aktion</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr th:each="line, iter : ${draft.lines}">
+                <td th:text="${line.description()}"></td>
+                <td class="num" th:text="${line.quantity()}"></td>
+                <td th:text="${line.unitCode()}"></td>
+                <td class="num" th:text="${line.unitPrice()}"></td>
+                <td th:text="|${line.vatPercent()} % (${line.vatCategory()})|"></td>
+                <td>
+                  <form
+                    th:action="@{/app/rechnungen/neu/positionen/{i}/entfernen(i=${iter.index})}"
+                    method="post"
+                  >
+                    <button class="link" type="submit">Entfernen</button>
+                  </form>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Position hinzufügen</h3>
+        <form th:action="@{/app/rechnungen/neu/positionen/hinzufuegen}" method="post" class="stack">
+          <div class="field-row">
+            <div class="field">
+              <label for="description">Beschreibung</label>
+              <input id="description" name="description" type="text" required />
+            </div>
+            <div class="field">
+              <label for="quantity">Menge</label>
+              <input id="quantity" name="quantity" type="text" required />
+            </div>
+            <div class="field">
+              <label for="unitCode">Einheit (UN/ECE)</label>
+              <input id="unitCode" name="unitCode" type="text" value="C62" />
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="unitPrice">Einzelpreis</label>
+              <input id="unitPrice" name="unitPrice" type="text" required />
+            </div>
+            <div class="field">
+              <label for="vatCategory">USt-Kategorie</label>
+              <select id="vatCategory" name="vatCategory">
+                <option value="STANDARD">Normalsatz / ermäßigt (S)</option>
+                <option value="ZERO_RATED">Nullsatz (Z)</option>
+                <option value="REVERSE_CHARGE">Übergang der Steuerschuld (AE)</option>
+                <option value="EXEMPT">Steuerbefreit (E)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="vatPercent">USt-Satz in %</label>
+              <input id="vatPercent" name="vatPercent" type="text" value="20" />
+            </div>
+          </div>
+          <p class="muted">
+            Österreichische Sätze: 20 % Normalsatz, 13 % und 10 % ermäßigt — alle drei mit Kategorie
+            <strong>S</strong>. Für AE und E muss der Satz 0 sein.
+          </p>
+          <div class="row">
+            <button class="secondary" type="submit">Position hinzufügen</button>
+          </div>
+        </form>
+
+        <form th:action="@{/app/rechnungen/neu/positionen}" method="post">
+          <div class="row" style="margin-top: 1rem">
+            <a class="button secondary" th:href="@{/app/rechnungen/neu/parteien}">Zurück</a>
+            <button type="submit">Weiter zur Zahlung</button>
+          </div>
+        </form>
+      </th:block>
+
+      <!-- ------------------------------------------------- 4. Zahlung und Prüfen -->
+      <th:block th:if="${step == 'zahlung'}">
+        <h2>Zahlung</h2>
+        <form th:action="@{/app/rechnungen/neu/anlegen}" method="post" class="stack">
+          <div class="field-row">
+            <div class="field">
+              <label for="iban">IBAN</label>
+              <input id="iban" name="iban" type="text" th:value="${draft.iban}" />
+            </div>
+            <div class="field">
+              <label for="bic">BIC <span class="muted">(optional)</span></label>
+              <input id="bic" name="bic" type="text" th:value="${draft.bic}" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="paymentTerms">Zahlungsbedingungen</label>
+            <input
+              id="paymentTerms"
+              name="paymentTerms"
+              type="text"
+              th:value="${draft.paymentTerms}"
+            />
+          </div>
+
+          <h2>Prüfen</h2>
+          <div class="card">
+            <h3 th:text="|Rechnung ${draft.invoiceNumber}|"></h3>
+            <p class="muted">
+              <span th:text="${draft.issueDate}"></span>
+              <span th:if="${!#strings.isEmpty(draft.dueDate)}" th:text="|· fällig ${draft.dueDate}|"></span>
+              <span th:text="|· ${draft.currency}|"></span>
+              <span th:if="${!#strings.isEmpty(draft.orderReference)}"
+                th:text="|· Auftragsreferenz ${draft.orderReference}|"
+              ></span>
+            </p>
+            <p>
+              <strong th:text="${draft.sellerName}"></strong> →
+              <strong th:text="${draft.buyerName}"></strong>
+            </p>
+          </div>
+          <div class="scroll-x">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Beschreibung</th>
+                  <th scope="col" class="num">Menge</th>
+                  <th scope="col" class="num">Einzelpreis</th>
+                  <th scope="col">USt</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr th:each="line : ${draft.lines}">
+                  <td th:text="${line.description()}"></td>
+                  <td class="num" th:text="|${line.quantity()} ${line.unitCode()}|"></td>
+                  <td class="num" th:text="${line.unitPrice()}"></td>
+                  <td th:text="|${line.vatPercent()} %|"></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="muted">
+            Summen und USt-Aufteilung werden serverseitig aus den Positionen berechnet — nicht aus
+            einer Eingabe übernommen. Anschließend wird die Rechnung sofort geprüft.
+          </p>
+
+          <div class="row">
+            <a class="button secondary" th:href="@{/app/rechnungen/neu/positionen}">Zurück</a>
+            <button type="submit">Rechnung anlegen</button>
+          </div>
+        </form>
+      </th:block>
+    </main>
+
+    <div th:replace="~{fragments/layout :: colophon}"></div>
+  </body>
+</html>

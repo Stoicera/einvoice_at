@@ -16,6 +16,9 @@
     <meta property="og:locale" content="de_AT" />
     <meta property="og:type" content="website" />
     <link rel="stylesheet" th:href="@{/app.css}" />
+    <!--/* Declared explicitly so the browser stops guessing /favicon.ico, which 404'd on every
+           page load — visible in any console and in the access log. */-->
+    <link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}" />
     <!--/* Deferred so it never blocks the first paint; the pages work without it. */-->
     <script th:src="@{/app.js}" defer></script>
   </head>
@@ -41,6 +44,25 @@
         </nav>
       </div>
     </header>
+
+    <!--/*
+      The dashboard's own second-level navigation. A parameter says which entry is current rather
+      than each page hard-coding its own copy of the list: five pages with five near-identical
+      <nav> blocks is how one of them silently loses a link.
+    */-->
+    <nav class="subnav" th:fragment="dashnav(current)">
+      <a th:href="@{/app}" th:classappend="${current == 'overview'} ? 'current'">Übersicht</a>
+      <a th:href="@{/app/rechnungen}" th:classappend="${current == 'invoices'} ? 'current'"
+        >Rechnungen</a
+      >
+      <a th:href="@{/app/berichte}" th:classappend="${current == 'reports'} ? 'current'"
+        >Prüfberichte</a
+      >
+      <a th:href="@{/app/api-schluessel}" th:classappend="${current == 'keys'} ? 'current'"
+        >API-Schlüssel</a
+      >
+      <a th:href="@{/app/konto}" th:classappend="${current == 'account'} ? 'current'">Konto</a>
+    </nav>
 
     <footer class="colophon" th:fragment="colophon">
       <div class="shell">

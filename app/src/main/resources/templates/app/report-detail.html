@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="de">
+  <head
+    th:replace="~{fragments/layout :: head(
+      'Prüfbericht',
+      'Ein gespeicherter Prüfbericht: Befunde nach Schwere gruppiert, deutsch zuerst.')}"
+  ></head>
+  <body>
+    <div th:replace="~{fragments/layout :: masthead}"></div>
+
+    <main class="shell">
+      <h1>Prüfbericht</h1>
+      <div th:replace="~{fragments/layout :: dashnav('reports')}"></div>
+
+      <p class="muted">
+        <span th:text="${#temporals.format(report.createdAt(), 'dd.MM.yyyy HH:mm')}"></span>
+        <span th:if="${report.invoiceId() != null}">
+          ·
+          <a th:href="@{/app/rechnungen/{id}(id=${report.invoiceId()})}">zur Rechnung</a>
+        </span>
+      </p>
+
+      <!--/*
+        The same report fragment the public validator renders. One template for both, so the German
+        wording, the severity grouping and the "Erklären" affordance cannot drift between the page a
+        visitor sees and the page a customer sees.
+
+        The difference is the explain form's target: here it posts a finding INDEX to a route that
+        reads the finding from the stored row (see reportExplainForm below), because this report has
+        an id — the public page has to post the text itself.
+      */-->
+      <div th:replace="~{fragments/report :: report}"></div>
+    </main>
+
+    <div th:replace="~{fragments/layout :: colophon}"></div>
+  </body>
+</html>

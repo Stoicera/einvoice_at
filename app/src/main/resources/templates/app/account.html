@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="de">
+  <head
+    th:replace="~{fragments/layout :: head(
+      'Konto',
+      'Was einvoice-at über Sie speichert — und wie Sie alles endgültig löschen.')}"
+  ></head>
+  <body>
+    <div th:replace="~{fragments/layout :: masthead}"></div>
+
+    <main class="shell">
+      <h1>Konto</h1>
+      <div th:replace="~{fragments/layout :: dashnav('account')}"></div>
+
+      <p class="lede" th:text="|Angemeldet als ${tenantName}.|"></p>
+
+      <!--/*
+        Art. 15 before Art. 17: what is held, stated plainly, above the button that removes it. Nobody
+        should be asked to destroy data they were never shown.
+      */-->
+      <h2>Gespeicherte Daten</h2>
+      <div class="grid">
+        <div class="stat">
+          <span class="value" th:text="${invoiceCount}">0</span>
+          <span class="label">Rechnungen</span>
+        </div>
+        <div class="stat">
+          <span class="value" th:text="${reportCount}">0</span>
+          <span class="label">Prüfberichte</span>
+        </div>
+        <div class="stat">
+          <span class="value" th:text="${keyCount}">0</span>
+          <span class="label">API-Schlüssel (inkl. widerrufener)</span>
+        </div>
+      </div>
+      <p class="muted">
+        Dazu gehört ein Protokoll-Eintrag je Erstellung, Prüfung und Konvertierung — mit Zeitpunkt und
+        einem Hash der Nutzlast, <strong>nie mit der Nutzlast selbst</strong>. Anonyme Prüfungen auf
+        der öffentlichen Prüfer-Seite sind hier nicht enthalten, weil sie nicht gespeichert werden.
+      </p>
+      <p class="muted">
+        Ihre Daten sind jederzeit über die <a th:href="@{/swagger-ui.html}">REST-API</a> abrufbar
+        (<code>GET /api/v1/invoices</code>, <code>GET /api/v1/reports</code>) — Auskunft nach Art. 15
+        DSGVO ohne Umweg über uns.
+      </p>
+
+      <h2>Aufbewahrung</h2>
+      <p class="muted">
+        Prüfberichte und Protokoll-Einträge werden automatisch gelöscht, sobald sie ihre
+        Aufbewahrungsfrist überschritten haben. <strong>Rechnungen nicht:</strong> § 132 BAO
+        verpflichtet Sie, Rechnungen sieben Jahre aufzubewahren — eine Plattform, die sie
+        stillschweigend wegräumt, würde Ihnen schaden, nicht helfen. Rechnungen verschwinden nur,
+        wenn Sie das unten ausdrücklich verlangen.
+      </p>
+
+      <h2>Konto und alle Daten löschen</h2>
+      <div class="notice danger">
+        <strong>Das ist endgültig.</strong> Gelöscht werden alle Rechnungen, alle Prüfberichte, alle
+        API-Schlüssel — auch die widerrufenen — sämtliche Protokoll-Einträge und Ihr Mandant selbst.
+        Es gibt kein Backup, aus dem wir das für Sie zurückholen. Laden Sie vorher herunter, was Sie
+        behalten müssen; für Rechnungen ist das nach § 132 BAO Ihre Pflicht.
+      </div>
+      <p class="muted">
+        Ihr Login bei der Anmeldestelle (Keycloak) bleibt bestehen — der gehört nicht uns. Wenn Sie
+        sich danach erneut anmelden, entsteht ein neues, leeres Konto.
+      </p>
+
+      <p class="errors" th:if="${formError}" th:text="${formError}"></p>
+
+      <form th:action="@{/app/konto/loeschen}" method="post" class="stack">
+        <div class="field">
+          <label for="confirmation">
+            Zum Bestätigen tippen Sie
+            <strong th:text="${confirmationWord}">LÖSCHEN</strong>
+          </label>
+          <input id="confirmation" name="confirmation" type="text" autocomplete="off" required />
+        </div>
+        <div class="row">
+          <button type="submit">Konto und alle Daten löschen</button>
+        </div>
+      </form>
+    </main>
+
+    <div th:replace="~{fragments/layout :: colophon}"></div>
+  </body>
+</html>

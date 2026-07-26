@@ -336,6 +336,46 @@ td.num {
   overflow-x: auto;
 }
 
+/* --------------------------------------------------------- dashboard chrome */
+
+/* The dashboard's second-level nav. A row of quiet links with the current one in gold, rather than
+   tabs with borders: five entries do not need a widget. */
+.subnav {
+  display: flex;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  margin: 0 0 1.75rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--ink-line);
+  font-size: 0.95rem;
+}
+
+.subnav a {
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.subnav a:hover {
+  color: var(--text);
+}
+
+.subnav a.current {
+  color: var(--gold);
+}
+
+/* Canonical JSON and generated XML, shown for inspection. Wrapped in .scroll-x by the template, so
+   this only has to stop the block from stretching the page. */
+pre.mono {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  background: var(--ink);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  max-width: none;
+}
+
 /* ----------------------------------------------------------------- reports */
 
 .verdict {

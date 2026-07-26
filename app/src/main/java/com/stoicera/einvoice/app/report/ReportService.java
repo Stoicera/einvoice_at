@@ -110,6 +110,20 @@ public class ReportService {
         result.getTotalPages());
   }
 
+  /**
+   * Returns the tenant's reports for one invoice, newest first.
+   *
+   * <p>An invoice accumulates a report per creation, so the dashboard's invoice detail shows them
+   * as a history rather than only the latest. Tenant-scoped like every other read here: an invoice
+   * id belonging to someone else simply yields no rows.
+   */
+  @Transactional(readOnly = true)
+  public List<ReportSummary> listForInvoice(UUID tenantId, UUID invoiceId) {
+    return reports.findByTenantIdAndInvoiceIdOrderByCreatedAtDesc(tenantId, invoiceId).stream()
+        .map(ReportSummary::of)
+        .toList();
+  }
+
   /** Returns the full stored report for one of the tenant's reports. */
   @Transactional(readOnly = true)
   public ReportDetail get(UUID tenantId, UUID id) {

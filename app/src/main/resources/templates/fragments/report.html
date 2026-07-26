@@ -86,11 +86,34 @@
       <!--/*
         "Fehler erklären" — only when the feature is configured at all, which is what makes it
         "abschaltbar ohne Funktionsverlust": with the flag off there is no button, not a button that
-        fails. The finding travels in hidden fields because an anonymous report has no id to look up
-        (nothing was stored) — see PublicWebController's Javadoc.
+        fails.
+
+        TWO FORMS, one per surface, because the two surfaces have genuinely different information:
+
+          - the dashboard (reportId set) posts only the finding's POSITION, and the server reads the
+            finding out of the stored row. The client cannot choose the text to be explained, and the
+            report's own invoice supplies the party names to redact.
+          - the public page (reportId null) has nothing to look up — an anonymous report was never
+            stored — so the finding itself travels in hidden fields. The consequence is stated in
+            PublicWebController's Javadoc: a visitor can have arbitrary text explained, which is why
+            that route is rate-limited.
+
+        Branching here rather than duplicating the whole fragment keeps the wording, the grouping and
+        the markup identical on both surfaces, which is the point of sharing it.
       */-->
       <form
-        th:if="${aiEnabled and !f.hasExplanation()}"
+        th:if="${aiEnabled and !f.hasExplanation() and reportId != null}"
+        th:action="@{/app/berichte/{id}/erklaeren(id=${reportId})}"
+        method="post"
+        th:attr="data-swap='#explanation-' + ${f.index()}"
+        style="margin-top: 0.6rem"
+      >
+        <input type="hidden" name="findingIndex" th:value="${f.index()}" />
+        <button class="secondary" type="submit">Fehler erklären</button>
+        <span class="spinner" data-spinner>Wird erklärt …</span>
+      </form>
+      <form
+        th:if="${aiEnabled and !f.hasExplanation() and reportId == null}"
         th:action="@{/validator/erklaeren}"
         method="post"
         th:attr="data-swap='#explanation-' + ${f.index()}"

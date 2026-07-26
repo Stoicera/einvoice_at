@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="de">
+  <head
+    th:replace="~{fragments/layout :: head(
+      'Rechnungen',
+      'Ihre erzeugten E-Rechnungen bei einvoice-at.')}"
+  ></head>
+  <body>
+    <div th:replace="~{fragments/layout :: masthead}"></div>
+
+    <main class="shell">
+      <h1>Rechnungen</h1>
+      <div th:replace="~{fragments/layout :: dashnav('invoices')}"></div>
+
+      <div class="row">
+        <a class="button" th:href="@{/app/rechnungen/neu}">Rechnung erstellen</a>
+        <span class="muted" th:text="|${totalElements} insgesamt|"></span>
+      </div>
+
+      <p class="muted" th:if="${#lists.isEmpty(invoices)}" style="margin-top: 1.5rem">
+        Noch keine Rechnungen. Legen Sie Ihre erste über den Assistenten an — oder über die
+        <a th:href="@{/swagger-ui.html}">REST-API</a>.
+      </p>
+
+      <!--/* th:unless must not share an element with th:replace (precedence); see overview.html. */-->
+      <th:block th:unless="${#lists.isEmpty(invoices)}">
+        <div th:replace="~{fragments/lists :: invoiceTable(${invoices})}"></div>
+        <div
+          th:replace="~{fragments/lists :: pager('/app/rechnungen', ${page}, ${totalPages})}"
+        ></div>
+      </th:block>
+    </main>
+
+    <div th:replace="~{fragments/layout :: colophon}"></div>
+  </body>
+</html>

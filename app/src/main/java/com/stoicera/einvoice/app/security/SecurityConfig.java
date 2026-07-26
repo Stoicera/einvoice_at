@@ -153,7 +153,8 @@ public class SecurityConfig {
                     // to it, holds no server state, and is rate-limited like the upload itself.
                     .requestMatchers(HttpMethod.POST, "/validator/erklaeren")
                     .permitAll()
-                    .requestMatchers("/app.css", "/app.js", "/favicon.ico", "/robots.txt")
+                    .requestMatchers(
+                        "/app.css", "/app.js", "/favicon.svg", "/favicon.ico", "/robots.txt")
                     .permitAll()
                     // Boot's error dispatch forwards to /error; the AuthorizationFilter runs on
                     // that
