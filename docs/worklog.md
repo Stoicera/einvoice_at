@@ -78,7 +78,18 @@ within the same run.
 election, `X-Forwarded-For` handling, and a real authorization-code login in an automated test. All
 four are M6 in MILESTONES, and none was pulled forward silently.
 
-**Next:** merge to `main` with CI green.
+**Merged:** PR [#8](https://github.com/Stoicera/einvoice_at/pull/8) — M5 and its review wave land on
+`main` as one piece, which is the point of running the gate before the merge rather than after it.
+
+**Next: M6** — OTel across the pipeline stages, an observability compose profile, Hetzner + Dokploy
+deployment with `docs/deployment.md`, a backup/restore drill, `SECURITY.md` (STRIDE-light), Lighthouse
+≥ 95 on the public pages, README final, and the `v0.1.0` release. The four items this review deferred
+all belong to it, and `docs/MILESTONES.md` M6 already names each.
+
+One piece of owner action is still outstanding from M4 and unchanged: **add the `NVD_API_KEY`
+repository secret.** Until it exists the OWASP Dependency-Check job skips the scan loudly — a warning
+annotation plus a job-summary line — rather than failing; adding the secret turns it into a real gate
+with no workflow edit.
 
 ## 2026-07-26 — M5 (part 2): dashboard, GDPR erasure, retention, explain API, browser E2E — M5 complete
 
