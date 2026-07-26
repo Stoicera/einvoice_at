@@ -1,8 +1,8 @@
 package com.stoicera.einvoice.mapping.internal;
 
 import com.stoicera.einvoice.core.InvariantViolationException;
-import com.stoicera.einvoice.core.internal.Texts;
 import com.stoicera.einvoice.core.money.Money;
+import com.stoicera.einvoice.core.text.Texts;
 import java.util.Currency;
 
 /**

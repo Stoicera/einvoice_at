@@ -1,7 +1,6 @@
 package com.stoicera.einvoice.core.invoice;
 
 import com.stoicera.einvoice.core.InvariantViolationException;
-import com.stoicera.einvoice.core.internal.Texts;
 import com.stoicera.einvoice.core.money.Money;
 import com.stoicera.einvoice.core.party.Party;
 import com.stoicera.einvoice.core.payment.PaymentMeans;
@@ -9,6 +8,7 @@ import com.stoicera.einvoice.core.tax.VatBreakdownEntry;
 import com.stoicera.einvoice.core.tax.VatCategory;
 import com.stoicera.einvoice.core.tax.VatExemptionReason;
 import com.stoicera.einvoice.core.tax.VatRate;
+import com.stoicera.einvoice.core.text.Texts;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Currency;

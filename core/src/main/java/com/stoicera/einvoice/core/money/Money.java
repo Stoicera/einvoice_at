@@ -1,7 +1,7 @@
 package com.stoicera.einvoice.core.money;
 
 import com.stoicera.einvoice.core.InvariantViolationException;
-import com.stoicera.einvoice.core.internal.Texts;
+import com.stoicera.einvoice.core.text.Texts;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Currency;
