@@ -85,6 +85,25 @@ app:
       capacity: ${RATE_LIMIT_CONVERT_CAPACITY:20}
       refill-per-minute: ${RATE_LIMIT_CONVERT_REFILL_PER_MINUTE:20}
 
+  # Storage limitation (GDPR Art. 5(1)(e)) — RetentionService, scheduled by PrivacyConfig.
+  #
+  # ZERO OR NEGATIVE MEANS KEEP FOREVER. That is the off switch; there is deliberately no separate
+  # `enabled` flag, because two mechanisms can disagree and one cannot.
+  #
+  # INVOICES ARE NOT LISTED HERE ON PURPOSE and no window will ever expire them: an Austrian business
+  # must keep its invoices for seven years (§ 132 BAO). Deleting them automatically would destroy
+  # records the user is legally required to hold. Erasure on request (DELETE /api/v1/tenant) is a
+  # different operation and does delete them, because the person asked.
+  retention:
+    # A validation verdict is operational output — reproducible by re-validating, and unread after a
+    # year.
+    report-days: ${RETENTION_REPORT_DAYS:365}
+    # The security trail: useful for months, and the fastest-growing table in the schema.
+    audit-days: ${RETENTION_AUDIT_DAYS:730}
+    # Daily, at a quiet hour in the server's zone. A purge is a bulk delete over an indexed timestamp,
+    # so it is short even on a large table.
+    cron: ${RETENTION_CRON:0 15 3 * * *}
+
   # AI-assisted finding explanations (SPEC §6, ADR-0010). Only read when the feature flag below is on;
   # AiConfig contributes no beans at all otherwise, so an unset AI_API_KEY is not a problem until
   # someone switches the feature on — at which point the context fails to start and says so, rather
@@ -96,6 +115,13 @@ app:
     timeout: ${AI_TIMEOUT:15s}
     max-retries: ${AI_MAX_RETRIES:1}
     max-output-tokens: ${AI_MAX_OUTPUT_TOKENS:700}
+    # How many findings ONE POST /api/v1/reports/{id}/explain may explain, errors first. Unlike the
+    # keys above this one is read whether or not the feature is on (ReportExplanationService exists
+    # either way, so it can answer 503 rather than 404). A Peppol report can carry dozens of findings
+    # and each distinct one is a paid provider call, so "explain everything" without a bound would
+    # turn a single request into an unbounded bill; findings past the cap keep a null explanation,
+    # which is already what that field's absence means. Pass ?findingIndex=N to explain exactly one.
+    max-findings-per-request: ${AI_MAX_FINDINGS_PER_REQUEST:10}
 
 # Feature flags. SPEC §2 names this one: "ai-assist is only called from app behind the feature flag
 # features.ai-explanations".
