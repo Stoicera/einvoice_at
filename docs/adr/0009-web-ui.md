@@ -1,4 +1,4 @@
-# ADR-0009 — Web UI: server-rendered Thymeleaf + htmx, two security filter chains, hand-authored CSS
+# ADR-0009 — Web UI: server-rendered Thymeleaf, two security filter chains, hand-authored CSS
 
 Status: accepted · Datum: 2026-07-26 · Milestone: M5
 
@@ -40,18 +40,24 @@ für dieselbe Identität wäre ein Datenleck-Generator. Die `instanceof`-Allow-L
 ADR-0006 wird beibehalten — nie `isAuthenticated()` vertrauen, weil Springs
 `AnonymousAuthenticationToken` darauf `true` antwortet.
 
-## Entscheidung 2 — Thymeleaf + htmx, kein SPA
+## Entscheidung 2 — Thymeleaf, kein SPA
 
-Unverändert aus SPEC §1 übernommen und hier nur bestätigt: server-gerendertes HTML mit Thymeleaf,
-Interaktivität über htmx. Das ist die Wahl, die ein Java-Haus liest und sofort betreiben kann, und
-sie kostet keinen zweiten Build, keinen Node-Toolchain und keine zweite Sprache für die
-Validierungslogik.
+Server-gerendertes HTML mit Thymeleaf. Das ist die Wahl, die ein Java-Haus liest und sofort
+betreiben kann, und sie kostet keinen zweiten Build, keine Node-Toolchain und keine zweite Sprache
+für die Validierungslogik.
 
-htmx wird **im Repository mitgeliefert** (`app/src/main/resources/static/vendor/`), nicht von einem
-CDN geladen: eine öffentliche Seite, die ein Skript von einem fremden Host zieht, hängt ihre
-Verfügbarkeit und ihre Integrität an diesen Host. Version und Herkunft stehen im Header der Datei —
-dieselbe Provenienz-Disziplin, die CLAUDE.md für Standards-Artefakte verlangt, angewandt auf eine
-JavaScript-Bibliothek.
+> **Korrektur 2026-07-26 (M5 Hostile Review, F11).** Dieser Abschnitt lautete ursprünglich
+> „Thymeleaf + htmx" und beschrieb, htmx werde **im Repository mitgeliefert**
+> (`app/src/main/resources/static/vendor/`), mitsamt Provenienz-Begründung. Nichts davon ist
+> passiert: das Verzeichnis existiert nicht, es wurde nie eine Fremddatei eingecheckt, und
+> **Entscheidung 5 weiter unten entscheidet ausdrücklich gegen htmx.** Die beiden Abschnitte
+> widersprachen sich damit innerhalb derselben ADR — wer nachschlug, warum kein htmx eingesetzt
+> wird, las zuerst die widerrufene Entscheidung. Der Text ist hier korrigiert statt kommentiert,
+> weil eine ADR, die zwei Dinge zugleich sagt, keine Entscheidung dokumentiert.
+>
+> Das Prinzip, das der gestrichene Absatz vertrat, gilt unverändert und ist nur gegenstandslos
+> geworden: **würde** eine Fremdbibliothek eingezogen, käme sie aus dem Repository und nicht von
+> einem CDN. Heute gibt es keine.
 
 ## Entscheidung 3 — Hand geschriebenes CSS statt Tailwind-Standalone-CLI
 
@@ -103,7 +109,10 @@ später nicht aus Trägheit weitergilt.
 **CSS: hand geschrieben bleibt es.** Der Auslöser für eine Neubewertung ist keine Meinung, sondern eine
 Zahl: **sobald `app.css` 700 Zeilen übersteigt oder ein zweiter Mensch regelmäßig daran arbeitet.**
 Beides sind die Bedingungen, unter denen eine Utility-Konvention anfängt sich zu bezahlen — vorher ist
-sie ein Build-Schritt für nichts. (Stand M5: ~430 Zeilen, ein Bearbeiter.)
+sie ein Build-Schritt für nichts. (Stand nach dem M5-Review: **625 Zeilen**, ein Bearbeiter. Die
+ursprünglich hier genannten „~430 Zeilen" waren schon beim Schreiben falsch — F12 — und eine Zahl
+neben einem Auslöser, die niemand nachmisst, macht den Auslöser wertlos. Der Abstand ist damit
+kleiner, als dieser Abschnitt behauptete: 625 von 700.)
 
 **htmx: nein — und der Grund hat sich beim Durchdenken des Dashboards *verstärkt*, nicht abgeschwächt.**
 Die Erwartung war, dass das Dashboard mehr Teil-Aktualisierungen braucht und die 40 Zeilen dann wachsen.
@@ -119,7 +128,9 @@ Beim Durchgehen der tatsächlichen Interaktionen trifft das nicht zu:
 Es bleiben genau die **zwei** Interaktionen, die es heute schon gibt: der Prüfer-Upload und
 „Fehler erklären". Beide sind fertig und getestet. htmx würde also für Politur eingezogen, nicht für
 Bedarf — und dann wäre eine minifizierte Fremddatei zu pflegen und zu verifizieren, deren einziger
-Nutzen darin besteht, 40 eigene, im Diff lesbare Zeilen zu ersetzen.
+Nutzen darin besteht, **rund 20 eigene Zeilen Logik** (66 Zeilen Datei, überwiegend Begründung) im
+Diff durch etwas Unlesbares zu ersetzen. Auch diese Zahl stand hier als „40" und war nicht
+nachgemessen (F12).
 
 **Auslöser für eine Neubewertung:** die erste Interaktion, die echte Teil-Aktualisierung *braucht* —
 etwa live mitlaufende Positionssummen im Wizard oder Inline-Validierung während der Eingabe. Dann wird
@@ -181,6 +192,38 @@ Zusätzlich prüft ein CI-Schritt, dass jede in `.env.example` dokumentierte Var
 `RATE_LIMIT_*`-Familie, und das war nicht zu sehen, weil eine nicht durchgereichte Variable einfach
 nichts tut.
 
+## Entscheidung 7 — Die Browser-Chain bekommt eine eigene Content-Security-Policy
+
+Nachtrag 2026-07-26 (M5 Hostile Review, F8). Springs Standard-Header — `X-Content-Type-Options:
+nosniff`, `X-Frame-Options: DENY`, `Cache-Control: no-store` — bleiben auf **beiden** Chains und
+genügen einer JSON-API vollständig. Für die Browser-Hälfte genügen sie nicht, und der Grund ist
+konkret statt allgemein: diese Seiten rendern **Modell-Ausgabe** und schieben server-gerendertes
+Markup per `innerHTML` in die Seite. Genau dort ist eine CSP die Kontrolle, die noch greift, wenn
+ein Escaping-Fehler durchkommt.
+
+Die Richtlinie ist so schmal wie diese Oberfläche tatsächlich ist:
+
+```
+default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:;
+font-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'self'; frame-ancestors 'none'
+```
+
+**`default-src 'none'` statt `'self'`**, damit jede Quellenart einzeln freigeschaltet werden muss:
+ein künftiges `<img src>` von einem fremden Host ist dann ein Konsolenfehler und keine stille neue
+Abhängigkeit. **Kein `'unsafe-inline'`, nirgends** — dafür wurden die zehn `style="…"`-Attribute in
+den Templates durch fünf Regeln im Stylesheet ersetzt, denn ein Inline-Style-Attribut ist genau das,
+was `style-src 'unsafe-inline'` erzwingt, und eine Richtlinie mit `'unsafe-inline'` ist kaum eine
+Richtlinie. Dass das ohne Weiteres ging, ist eine Folge von Entscheidung 2 und 3: es gibt kein
+Inline-Skript, keine CDN-Quelle und keine generierte Utility-Klasse.
+
+`Referrer-Policy: no-referrer` kommt aus einem anderen Grund dazu: die Prüfer-Seite ist eine
+deutsche SEO-Landingpage mit ausgehenden Links, und ohne diesen Header reist ihre vollständige URL
+zu jedem Ziel mit, das jemand anklickt.
+
+**Die API-Chain bekommt beides ausdrücklich nicht.** Eine CSP auf einer JSON-Antwort ist Rauschen,
+und Swagger UI lädt eigene Assets, die unter der Seiten-Richtlinie brechen würden. `SecurityHeadersIT`
+prüft beide Seiten dieses Kontrasts, nicht nur die Anwesenheit der Header.
+
 ## Konsequenzen
 
 - **Positiv:** Die API bleibt bitweise die von M4; jede Änderung dieser ADR betrifft nur die
@@ -189,7 +232,8 @@ nichts tut.
   Extraarbeit. Jede Seite funktioniert ohne JavaScript — was bei einer Behörden-nahen Zielgruppe kein
   Nebeneffekt, sondern ein Merkmal ist.
 - **Negativ:** Zwei Chains sind mehr Konfiguration als eine, und ihre Reihenfolge muss durch Tests
-  gesichert bleiben. Das hand geschriebene CSS ist eine Datei, die niemand generiert — sie muss
+  gesichert bleiben — `SecurityChainRoutingIT` tut das seit dem M5-Review; davor stand diese Zusage
+  hier und im Javadoc, ohne dass ein Test sie einlöste (F2). Das hand geschriebene CSS ist eine Datei, die niemand generiert — sie muss
   klein gehalten werden, sonst wird die Entscheidung von oben rückblickend falsch.
 - **Offen:** Lighthouse ≥ 95 auf den öffentlichen Seiten ist in MILESTONES als M6-Abnahme geführt
   und wird dort gemessen, nicht hier behauptet.

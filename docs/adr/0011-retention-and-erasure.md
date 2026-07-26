@@ -92,6 +92,36 @@ vorgelegt mit dem Credential dieses Mandanten, ist eine unmissverständliche Abs
 dass das Credential den Umfang bestimmt: es gibt keine Mandanten-ID im Request, also lässt sich dieser
 Endpunkt auf niemand anderen richten.
 
+## Entscheidung 6 — Löschen darf nur eine interaktive Identität, kein API-Schlüssel
+
+Nachtrag 2026-07-26 (M5 Hostile Review, F1). `DELETE /api/v1/tenant` war ursprünglich mit **jedem**
+gültigen Credential erreichbar, weil der Endpunkt auf keine eigene Regel traf und in
+`.anyRequest().authenticated()` fiel. Ein `X-Api-Key` konnte damit die zerstörendste Operation der
+Plattform auslösen. Das ist zurückgenommen: erforderlich ist `ROLE_USER`, also ein
+OAuth2-/JWT-Login.
+
+Drei Gründe, in aufsteigender Schwere:
+
+1. **Es widersprach der Regel zwei Zeilen darüber.** `/api/v1/api-keys/**` ist seit M3
+   OAuth2-only, ausdrücklich damit die Schlüsselverwaltung „in der Security-Schicht selbst"
+   verweigert wird. Ein Schlüssel durfte also die Schlüsselliste nicht *lesen*, aber sämtliche
+   Schlüssel, Rechnungen, Berichte und Protokolle *löschen*.
+2. **API-Schlüssel sind eine andere Credential-Klasse.** Sie sind langlebig, liegen in
+   ERP-Konfigurationen und CI-Variablen und werden geteilt. Ein Browser-Login ist eine Person, die
+   sich gerade beim IdP authentifiziert hat. Die unwiderruflichste Aktion der Plattform gehört an
+   die zweite, nicht an die erste.
+3. **Rechnungen machen es schlimmer, nicht harmloser.** Entscheidung 3 verbietet dem
+   Aufbewahrungs-Job, Rechnungen anzufassen, weil § 132 BAO sieben Jahre verlangt. Derselbe Satz
+   gilt hier: ein abgeflossener Integrationsschlüssel darf keine Aufzeichnungen vernichten können,
+   zu deren Aufbewahrung der Kunde gesetzlich verpflichtet ist.
+
+**Was das nicht ändert:** Der Endpunkt bleibt ohne Bestätigungsparameter (Entscheidung 5 gilt nur
+für die Oberfläche), er bleibt idempotent, und er bleibt allein durch das Credential auf den
+eigenen Mandanten begrenzt — es steht weiterhin keine Mandanten-ID in der Anfrage. Erhalten bleibt
+auch, dass ein API-Schlüssel des gelöschten Mandanten mit der Löschung ungültig wird; nur ausgelöst
+werden kann sie von ihm nicht mehr. `TenantErasureApiIT` prüft die vollständige Matrix: anonym 401,
+API-Schlüssel 403, Login 204.
+
 ## Konsequenzen
 
 - **Positiv:** `docs/privacy.md` muss nicht länger davor warnen, dass diese Plattform für echte
@@ -99,6 +129,9 @@ Endpunkt auf niemand anderen richten.
   einen Knopf. Die Protokoll-Tabelle wächst nicht mehr unbegrenzt.
 - **Negativ:** Löschung ist endgültig und es gibt kein Backup, aus dem der Betreiber sie zurückholen
   kann. Das ist der Preis dafür, dass „gelöscht" wahr ist, und die Seite sagt es zweimal.
+- **Negativ:** Eine reine Maschinen-Integration kann Art. 17 nicht mehr selbst auslösen
+  (Entscheidung 6) und braucht dafür einen Login. Das ist beabsichtigt: Auskunft und Export bleiben
+  über den Schlüssel erreichbar, nur die Vernichtung nicht.
 - **Negativ:** Aufbewahrung ist standardmäßig aktiv, also verschwinden Prüfberichte nach einem Jahr
   auf Installationen, die das nie eingestellt haben. Dokumentiert in `.env.example`, auf der
   Konto-Seite und hier; `0` schaltet es ab.

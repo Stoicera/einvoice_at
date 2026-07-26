@@ -27,6 +27,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
 import org.springframework.util.StringUtils;
 
 /**
@@ -91,6 +92,22 @@ public class SecurityConfig {
                     // itself rather than trusting controller code to re-check.
                     .requestMatchers("/api/v1/api-keys/**")
                     .hasRole("USER")
+                    // Erasure is OAuth2-only for the SAME reason, and with more at stake (M5
+                    // hostile review, finding F1). This endpoint deletes every invoice, report,
+                    // key and audit event a tenant owns, irreversibly, with no backup — while the
+                    // rule above already says a machine credential may not so much as LIST the
+                    // keys. Leaving erasure on the .anyRequest() catch-all meant an X-Api-Key,
+                    // the credential class that lives in ERP config files and CI variables, could
+                    // do the single most destructive thing this platform can do. Invoices sharpen
+                    // it rather than soften it: RetentionService never expires them because § 132
+                    // BAO obliges the business to keep them seven years, so a leaked integration
+                    // key must not be able to destroy legally mandated records either.
+                    //
+                    // Erasing therefore requires an interactive identity: the dashboard's typed
+                    // "LÖSCHEN" confirmation, or a JWT. TenantErasureApiIT asserts the whole
+                    // matrix — anonymous 401, API key 403, login 204.
+                    .requestMatchers(HttpMethod.DELETE, "/api/v1/tenant")
+                    .hasRole("USER")
                     .anyRequest()
                     .authenticated())
         // X-Api-Key is resolved before the bearer-token filter.
@@ -153,6 +170,12 @@ public class SecurityConfig {
                     // to it, holds no server state, and is rate-limited like the upload itself.
                     .requestMatchers(HttpMethod.POST, "/validator/erklaeren")
                     .permitAll()
+                    // The static assets the public pages need. /favicon.ico is listed although no
+                    // such file exists and none is intended: the icon is favicon.svg, declared in
+                    // the layout, but browsers and bookmark handlers still probe /favicon.ico
+                    // unprompted, and a probe that fell through to `.anyRequest().authenticated()`
+                    // would answer a login redirect instead of a plain 404 — noise in the access
+                    // log and, with a login configured, a redirect chain for a missing icon.
                     .requestMatchers(
                         "/app.css", "/app.js", "/favicon.svg", "/favicon.ico", "/robots.txt")
                     .permitAll()
@@ -164,6 +187,40 @@ public class SecurityConfig {
                     .permitAll()
                     .anyRequest()
                     .authenticated())
+        // Response headers the API chain does not need and this one does (M5 hostile review, F8).
+        // Spring's defaults — nosniff, X-Frame-Options: DENY, no-store — stay in place and are
+        // enough for a JSON API; an HTML surface that renders LLM output and assigns
+        // server-rendered
+        // markup into innerHTML wants the control that still holds when an escaping bug gets
+        // through.
+        //
+        // The policy is as narrow as this UI actually is: it vendors nothing, loads from no CDN and
+        // uses no inline script (ADR-0009), so 'self' covers script and style with NO
+        // 'unsafe-inline' anywhere — the ten inline style="…" attributes the templates carried were
+        // replaced by five stylesheet rules for exactly this, because an inline style attribute is
+        // what forces 'unsafe-inline' into style-src and a policy with it is barely a policy.
+        // default-src 'none' makes every source type opt-in rather than inherited, so a future
+        // third-party <img src> is a console error here rather than a silent new dependency.
+        // img-src
+        // allows data: for inline SVG; connect-src 'self' is what app.js's fetch needs, no more.
+        .headers(
+            headers ->
+                headers
+                    .contentSecurityPolicy(
+                        csp ->
+                            csp.policyDirectives(
+                                "default-src 'none'; "
+                                    + "script-src 'self'; "
+                                    + "style-src 'self'; "
+                                    + "img-src 'self' data:; "
+                                    + "font-src 'self'; "
+                                    + "connect-src 'self'; "
+                                    + "form-action 'self'; "
+                                    + "base-uri 'self'; "
+                                    + "frame-ancestors 'none'"))
+                    // The public validator is a German-SEO landing page, so it has outbound links;
+                    // without this its full URL travels to whatever a visitor clicks through to.
+                    .referrerPolicy(referrer -> referrer.policy(ReferrerPolicy.NO_REFERRER)))
         .logout(logout -> logout.logoutSuccessUrl("/").permitAll())
         // Same instance as the API chain (a bean, not a `new`), so one caller cannot double their
         // anonymous allowance by alternating between the UI upload and the API endpoint.

@@ -503,9 +503,11 @@ pre.mono {
   margin-bottom: 0;
 }
 
-/* --------------------------------------------------------- htmx affordances */
+/* ------------------------------------------------------- in-flight affordances */
 
-/* Shown only while a request is in flight; htmx toggles .htmx-request on the form. */
+/* Shown only while a request is in flight. app.js toggles .htmx-request on the form — the class
+   name is htmx's, deliberately, so swapping the twenty lines of app.js for real htmx one day needs
+   no stylesheet change (ADR-0009 Entscheidung 5). htmx itself is NOT used here. */
 .spinner {
   display: none;
   color: var(--text-dim);
@@ -518,6 +520,36 @@ pre.mono {
 }
 
 /* ------------------------------------------------------------------- utility */
+
+/* Spacing helpers, and the reason they exist is a security one rather than a style one: the
+   templates used inline `style="margin-top: …"` attributes, and an inline style attribute is
+   exactly what forces `style-src 'unsafe-inline'` into a Content-Security-Policy. Five rules here
+   buy a policy with no inline allowance at all (M5 hostile review, F8). This is not a utility
+   convention creeping in — ADR-0009 Entscheidung 5's trigger for that is unchanged. */
+.spaced {
+  margin-top: 1.5rem;
+}
+
+.spaced-sm {
+  margin-top: 0.6rem;
+}
+
+.spaced-md {
+  margin-top: 1rem;
+}
+
+.spaced-lg {
+  margin: 1.75rem 0;
+}
+
+.inline-form {
+  display: inline;
+}
+
+/* The "automatically generated, not checked" line under an AI explanation. */
+.disclaimer {
+  font-size: 0.8rem;
+}
 
 .muted {
   color: var(--text-dim);

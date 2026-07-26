@@ -61,12 +61,15 @@ import org.testcontainers.utility.MountableFile;
     })
 public abstract class AbstractKeycloakIT extends AbstractPostgresIT {
 
-  static final String REALM = "einvoice";
-  static final String CLIENT_ID = "einvoice-api";
+  // protected rather than package-private: subclasses live outside ..app.security too (the erasure
+  // and explain API ITs sit in ..app.api, where the endpoints they exercise are), and a base class
+  // whose helpers only reach one package is a base class that quietly dictates where tests live.
+  protected static final String REALM = "einvoice";
+  protected static final String CLIENT_ID = "einvoice-api";
   // Dev-only secret, identical to keycloak/dev-realm.json — never a production credential.
-  static final String CLIENT_SECRET = "dev-einvoice-api-secret-not-for-production";
-  static final String TEST_USERNAME = "testuser";
-  static final String TEST_PASSWORD = "testpass";
+  protected static final String CLIENT_SECRET = "dev-einvoice-api-secret-not-for-production";
+  protected static final String TEST_USERNAME = "testuser";
+  protected static final String TEST_PASSWORD = "testpass";
 
   // Digest-pinned to the exact image bytes docker-compose.yml runs. DockerImageName's parser
   // accepts
@@ -103,7 +106,7 @@ public abstract class AbstractKeycloakIT extends AbstractPostgresIT {
   /**
    * The realm issuer URL as seen from the host (matches the {@code iss} of tokens fetched below).
    */
-  static String issuerUri() {
+  protected static String issuerUri() {
     return "http://" + KEYCLOAK.getHost() + ":" + KEYCLOAK.getMappedPort(8080) + "/realms/" + REALM;
   }
 
@@ -118,7 +121,7 @@ public abstract class AbstractKeycloakIT extends AbstractPostgresIT {
    * Fetches a real access token from Keycloak via the Resource Owner Password grant for the given
    * user. Returns the compact JWS string to send as {@code Authorization: Bearer ...}.
    */
-  static String fetchAccessToken(String username, String password) throws Exception {
+  protected static String fetchAccessToken(String username, String password) throws Exception {
     Map<String, String> form =
         Map.of(
             "grant_type", "password",
@@ -149,7 +152,7 @@ public abstract class AbstractKeycloakIT extends AbstractPostgresIT {
   }
 
   /** Extracts the {@code sub} claim from a compact JWS without verifying it (test helper only). */
-  static String subjectOf(String jwt) throws Exception {
+  protected static String subjectOf(String jwt) throws Exception {
     byte[] payload = java.util.Base64.getUrlDecoder().decode(jwt.split("\\.")[1]);
     return new ObjectMapper().readTree(payload).get("sub").asText();
   }

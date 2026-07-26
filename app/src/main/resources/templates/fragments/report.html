@@ -8,7 +8,7 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org" lang="de">
   <body>
-    <div th:fragment="report" class="stack" style="margin-top: 1.5rem">
+    <div th:fragment="report" class="stack spaced">
       <p class="errors" th:if="${uploadError}" th:text="${uploadError}"></p>
 
       <th:block th:unless="${uploadError}">
@@ -106,7 +106,7 @@
         th:action="@{/app/berichte/{id}/erklaeren(id=${reportId})}"
         method="post"
         th:attr="data-swap='#explanation-' + ${f.index()}"
-        style="margin-top: 0.6rem"
+        class="spaced-sm"
       >
         <input type="hidden" name="findingIndex" th:value="${f.index()}" />
         <button class="secondary" type="submit">Fehler erklären</button>
@@ -117,7 +117,7 @@
         th:action="@{/validator/erklaeren}"
         method="post"
         th:attr="data-swap='#explanation-' + ${f.index()}"
-        style="margin-top: 0.6rem"
+        class="spaced-sm"
       >
         <input type="hidden" name="ruleId" th:value="${f.finding().ruleId()}" />
         <input type="hidden" name="severity" th:value="${f.finding().severity().name()}" />

@@ -24,6 +24,17 @@ import org.springframework.boot.test.web.server.LocalServerPort;
  * and they are also the ones that matter for an unauthenticated attacker's browser. {@code
  * Cache-Control: no-store} additionally covers the review's question about the one response that
  * carries an API-key plaintext, since the same default applies to every route.
+ *
+ * <h2>The browser surface has its own requirements (M5)</h2>
+ *
+ * <p>Until the M5 hostile review (finding F8) this class covered {@code /api/**} only, and it was
+ * not extended when M5 added HTML pages — so the surface with the <em>most</em> to gain from
+ * response headers had no assertion at all. An API that answers {@code problem+json} needs nosniff
+ * and no framing; a page that renders model output and assigns server HTML into {@code innerHTML}
+ * additionally wants a <strong>Content-Security-Policy</strong>, because a CSP is the control that
+ * still holds when an escaping bug gets through. {@code Referrer-Policy} is here for a different
+ * reason: the public validator is a German-SEO landing page, so its outbound links would otherwise
+ * leak the full referring URL to third parties.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class SecurityHeadersIT extends AbstractPostgresIT {
@@ -63,6 +74,48 @@ class SecurityHeadersIT extends AbstractPostgresIT {
     assertThat(response.statusCode()).isEqualTo(200);
     assertThat(header(response, "X-Content-Type-Options")).isEqualTo("nosniff");
     assertThat(header(response, "X-Frame-Options")).isEqualTo("DENY");
+  }
+
+  @Test
+  void everyBrowserPageCarriesAContentSecurityPolicyAndAReferrerPolicy() throws Exception {
+    for (String page : new String[] {"/", "/validator"}) {
+      HttpResponse<Void> response = get(page);
+
+      assertThat(response.statusCode()).as("%s", page).isEqualTo(200);
+      assertThat(header(response, "X-Content-Type-Options")).isEqualTo("nosniff");
+      assertThat(header(response, "X-Frame-Options")).isEqualTo("DENY");
+      assertThat(header(response, "Referrer-Policy")).isEqualTo("no-referrer");
+
+      String csp = header(response, "Content-Security-Policy");
+      assertThat(csp).as("a CSP on %s", page).isNotEqualTo("<absent>");
+      // The four clauses that carry the weight, asserted individually so a future edit that
+      // loosens one is a failing test rather than a diff nobody reads.
+      assertThat(csp)
+          // No default source at all: anything not named below is refused outright.
+          .contains("default-src 'none'")
+          // First-party scripts only — this UI vendors nothing and loads from no CDN (ADR-0009),
+          // so 'self' is the whole allowance and there is no 'unsafe-inline' to grant.
+          .contains("script-src 'self'")
+          // The forms post to this origin only; an injected form cannot exfiltrate to another.
+          .contains("form-action 'self'")
+          // Belt over X-Frame-Options for browsers that honour the CSP directive instead.
+          .contains("frame-ancestors 'none'");
+    }
+  }
+
+  @Test
+  void theApiDoesNotCarryTheBrowserPolicy() throws Exception {
+    // The contrast matters: a CSP on a JSON API is noise, and the two chains are configured
+    // separately on purpose (ADR-0009). Swagger UI in particular loads its own assets and would
+    // break under the page policy above, so it must not inherit it.
+    assertThat(header(get("/api/v1/invoices"), "Content-Security-Policy")).isEqualTo("<absent>");
+    assertThat(header(get("/v3/api-docs"), "Content-Security-Policy")).isEqualTo("<absent>");
+  }
+
+  private HttpResponse<Void> get(String path) throws Exception {
+    return http.send(
+        HttpRequest.newBuilder(URI.create("http://localhost:" + port + path)).GET().build(),
+        HttpResponse.BodyHandlers.discarding());
   }
 
   private static String header(HttpResponse<?> response, String name) {

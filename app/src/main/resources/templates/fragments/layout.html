@@ -33,7 +33,7 @@
           <th:block sec:authorize="isAuthenticated()"
                     xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
             <a th:href="@{/app}">Dashboard</a>
-            <form th:action="@{/logout}" method="post" style="display: inline">
+            <form th:action="@{/logout}" method="post" class="inline-form">
               <button class="link" type="submit">Abmelden</button>
             </form>
           </th:block>

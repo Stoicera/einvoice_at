@@ -17,7 +17,7 @@
         <span class="muted" th:text="|${totalElements} insgesamt|"></span>
       </div>
 
-      <p class="muted" th:if="${#lists.isEmpty(invoices)}" style="margin-top: 1.5rem">
+      <p class="muted spaced" th:if="${#lists.isEmpty(invoices)}">
         Noch keine Rechnungen. Legen Sie Ihre erste über den Assistenten an — oder über die
         <a th:href="@{/swagger-ui.html}">REST-API</a>.
       </p>

@@ -83,7 +83,7 @@ The `app` module serves the `/api/v1` REST API (M3). Interactive docs: **Swagger
 | `GET` | `/api/v1/reports` | JWT or API key | The tenant's validation reports, paginated. |
 | `GET` | `/api/v1/reports/{id}` | JWT or API key | One stored report, findings included. |
 | `POST` | `/api/v1/reports/{id}/explain` | JWT or API key | Attach AI explanations to the report's findings, errors first — bounded per call, `?findingIndex=N` for exactly one. Nothing is persisted. `503` when the feature is off, and a *different* `503` when the provider produced nothing. |
-| `DELETE` | `/api/v1/tenant` | JWT or API key | **Erase this tenant and everything it owns** (GDPR Art. 17): invoices, reports, API keys, audit events, the tenant row. Irreversible, no backup; the credential used for the call is erased by it. |
+| `DELETE` | `/api/v1/tenant` | **JWT only** | **Erase this tenant and everything it owns** (GDPR Art. 17): invoices, reports, API keys, audit events, the tenant row. Irreversible, no backup. An `X-Api-Key` is refused with `403`: a long-lived machine credential must not be able to trigger the most destructive operation here, least of all on invoices § 132 BAO obliges the business to keep for seven years ([ADR-0011](docs/adr/0011-retention-and-erasure.md) Entscheidung 6). Any API key of the erased tenant stops working, because its row goes too. |
 | `POST` | `/api/v1/api-keys` | JWT only | Mint an API key; the plaintext is returned exactly once. |
 | `GET` | `/api/v1/api-keys` | JWT only | The tenant's keys (active and revoked), without secrets. |
 | `DELETE` | `/api/v1/api-keys/{id}` | JWT only | Revoke a key (soft: `revokedAt` stamped, row retained). |

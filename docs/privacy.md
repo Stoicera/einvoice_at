@@ -84,9 +84,9 @@ Meldungstext enthält also routinemäßig personenbezogene Daten, auch ohne Doku
 
 | Muster | Ersetzt durch |
 |---|---|
-| IBAN | `[IBAN]` |
+| IBAN (Groß- und Kleinschreibung) | `[IBAN]` |
 | E-Mail-Adresse | `[E-MAIL]` |
-| EU-USt-Identifikationsnummer (inkl. `ATU…`) | `[UID]` |
+| EU-USt-Identifikationsnummer (inkl. `ATU…`, Groß- und Kleinschreibung) | `[UID]` |
 | Ziffernfolgen ab 7 Stellen (Kontonummern, Lieferantennummern, Telefonnummern) | `[NUMMER]` |
 | Namen, die der Aufrufer als personenbezogen benennt (Verkäufer/Käufer einer gespeicherten Rechnung) | `[NAME]` |
 
@@ -119,7 +119,9 @@ leert den Cache.
   Widerrufs-Zeitstempel, zur Nachvollziehbarkeit).
 - **Vollständige Löschung des Mandanten (Art. 17):** **implementiert.** Im Dashboard unter
   **Konto → „Konto und alle Daten löschen"** (Bestätigung durch Eintippen des Wortes `LÖSCHEN`), über
-  die API als `DELETE /api/v1/tenant`. Gelöscht werden in einer Transaktion: Rechnungen, Prüfberichte,
+  die API als `DELETE /api/v1/tenant` — **dort nur mit einem Login (OAuth2/JWT), nicht mit einem
+  API-Schlüssel** (ADR-0011 Entscheidung 6): ein langlebiger Maschinenschlüssel soll die
+  unwiderruflichste Aktion der Plattform nicht auslösen können. Gelöscht werden in einer Transaktion: Rechnungen, Prüfberichte,
   API-Schlüssel (auch widerrufene), **sämtliche Protokoll-Einträge** und die Mandanten-Zeile selbst mit
   Keycloak-Subject und Anzeigename. Es bleibt genau eine Log-Zeile mit der Mandanten-UUID — einem von
   dieser Plattform erzeugten Surrogat, keinem Personenbezug — und den gelöschten Zeilenzahlen.

@@ -103,6 +103,21 @@ class PublicWebIT extends AbstractPostgresIT {
   void theStylesheetAndScriptAreServedAnonymously() throws Exception {
     assertThat(get("/app.css").statusCode()).isEqualTo(200);
     assertThat(get("/app.js").statusCode()).isEqualTo(200);
+    assertThat(get("/favicon.svg").statusCode()).isEqualTo(200);
+  }
+
+  /**
+   * {@code SecurityConfig} permitted {@code /robots.txt} while no such file existed (M5 hostile
+   * review, F15). A permit rule for a path that 404s is a rule nobody can act on, and MILESTONES
+   * names SEO for this page — so the file exists now, and this asserts both that it is served and
+   * that it says the two things it has to say.
+   */
+  @Test
+  void theCrawlerPolicyIsServedAndKeepsTheDashboardOutOfTheIndex() throws Exception {
+    HttpResponse<String> response = get("/robots.txt");
+
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(response.body()).contains("Allow: /validator").contains("Disallow: /app/");
   }
 
   // ------------------------------------------------------------------- uploads
