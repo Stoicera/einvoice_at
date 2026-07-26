@@ -19,8 +19,23 @@ target/
 .DS_Store
 *.log
 
-# Session scratch (never committed)
-.superpowers/
+# Session scratch — plans, SDD working material, anything an agent left behind.
+#
+# The CONTENTS are ignored rather than the directory itself (`.superpowers/*`, not
+# `.superpowers/`), because git does not descend into an ignored directory and a negation for a file
+# inside one therefore never matches. That distinction is the whole reason the exception below
+# works.
+.superpowers/*
+
+# The one exception: a milestone's hostile-review findings are a deliverable, not scratch. They are
+# the record of what the quality gate found and what was done about it, and ENGINEERING_STANDARDS'
+# case for a visible PR history applies to them for the same reason.
+#
+# This exception was missing until M5, so no findings file had ever actually been committed — while
+# the M5 worklog entry, three commit messages and PR #8 all stated that it was. A claim in the
+# repository that the repository itself contradicts is exactly the defect class this review was
+# about, so it is fixed rather than reworded.
+!.superpowers/m*-hostile-review-findings.md
 
 # Playwright MCP scratch output (screenshots, snapshots) from local browser smoke runs.
 .playwright-mcp/
