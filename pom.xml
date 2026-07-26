@@ -78,6 +78,10 @@
     <postgresql.version>42.7.13</postgresql.version>
     <tomcat.version>11.0.24</tomcat.version>
 
+    <!-- Same mechanism, same reason, one milestone later: see the netty-bom import in
+         <dependencyManagement> for why this exists and when to drop it. -->
+    <netty.version>4.2.16.Final</netty.version>
+
     <!-- PDF generation for the rendering module (M4). Version verified against Maven Central
          maven-metadata.xml on 2026-07-25: 3.0.8 is both <latest> and <release>. Apache-2.0, the
          same licence as this repository — which is why PDFBox and not OpenPDF, whose LGPL/MPL dual
@@ -216,6 +220,36 @@
         <artifactId>archunit</artifactId>
         <version>${archunit.version}</version>
         <scope>test</scope>
+      </dependency>
+      <!-- Netty, imported as a BOM purely to lift it off a version the OWASP scan flags.
+
+           Gatling 3.15.1 (the e2e module's load scenario, new in M5) drags in some twenty netty
+           artifacts at 4.2.15.Final, and the scan's first verdict on this branch was three CVSS 7.5
+           advisories against netty-transport: CVE-2026-44891, CVE-2026-55833, CVE-2026-55831.
+           Nothing else in this tree uses netty — the application runs on Tomcat — so this manages
+           exactly one dependency's worth of transitives and touches no shipped artifact.
+
+           A BOM import rather than ~20 explicit <dependency> entries: netty's modules are versioned
+           in lockstep and must stay that way, and pinning a subset is how a NoSuchMethodError at
+           runtime gets built. Placed LAST so it wins over anything an earlier import manages.
+
+           The policy this follows is the one the postgresql/tomcat overrides above already state:
+           upgrading is the required first response, and suppressing a genuine finding to get a
+           green build is what .owasp-suppressions.xml's own policy forbids. It would have been
+           tempting here — netty is test-scope in a module that is never packaged and never
+           deployed — and that is exactly the argument a suppression policy exists to refuse when a
+           fixed release is one patch version away.
+
+           4.2.16.Final verified against Maven Central maven-metadata.xml on 2026-07-26 as the
+           newest 4.2.x release (<latest>/<release> there name the 5.0.0.Alpha line, which is not a
+           stable series and not what Gatling is built against). Drop this import once Gatling ships
+           a release that already resolves at or above it. -->
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-bom</artifactId>
+        <version>${netty.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
       </dependency>
     </dependencies>
   </dependencyManagement>

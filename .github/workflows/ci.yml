@@ -163,6 +163,19 @@ jobs:
   e2e:
     name: Browser E2E + load scenario
     runs-on: ubuntu-latest
+    # The three variables docker-compose.yml declares with the `:?` form, i.e. the ones that make
+    # interpolation of the whole file fail when they are absent. They live at JOB level rather than
+    # on the step that starts the stack, because `docker compose down` interpolates the file too:
+    # with them set only on the "up" step, the "Stop the stack" step failed with
+    # "required variable POSTGRES_PASSWORD is missing a value" and took the job red AFTER every test
+    # and every Gatling assertion had passed. That is what this job's first real CI run found.
+    #
+    # Not secrets: this stack lives for one job on an ephemeral runner and is never reachable from
+    # outside it. Named to say so, so nobody promotes them to repository secrets by pattern-matching.
+    env:
+      POSTGRES_PASSWORD: ci-postgres-not-a-secret
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: ci-keycloak-not-a-secret
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
@@ -227,9 +240,8 @@ jobs:
       # than a convenience.
       - name: Start the stack for the load run
         env:
-          POSTGRES_PASSWORD: ci-postgres-not-a-secret
-          KEYCLOAK_ADMIN: admin
-          KEYCLOAK_ADMIN_PASSWORD: ci-keycloak-not-a-secret
+          # The compose credentials are at job level (see above). Only the deliberate limit override
+          # is scoped here, because it belongs to this one run and nothing else.
           RATE_LIMIT_VALIDATE_CAPACITY: "100000"
           RATE_LIMIT_VALIDATE_REFILL_PER_MINUTE: "100000"
         run: |
