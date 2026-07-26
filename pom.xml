@@ -37,6 +37,11 @@
     <module>rendering</module>
     <module>ai-assist</module>
     <module>app</module>
+    <!-- Browser E2E and the Gatling load scenario (ENGINEERING_STANDARDS §3). Always compiled by a
+         plain `./mvnw verify` so it cannot rot, but its tests do not RUN unless -Pe2e is active —
+         they need a Chrome container and a load profile, which belong in their own CI job next to
+         the mutation and security jobs rather than in every developer's inner loop. See e2e/pom.xml. -->
+    <module>e2e</module>
   </modules>
 
   <properties>

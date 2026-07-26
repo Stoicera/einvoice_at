@@ -21,3 +21,6 @@ target/
 
 # Session scratch (never committed)
 .superpowers/
+
+# Playwright MCP scratch output (screenshots, snapshots) from local browser smoke runs.
+.playwright-mcp/

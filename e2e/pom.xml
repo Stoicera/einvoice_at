@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.stoicera.einvoice</groupId>
+    <artifactId>einvoice-at</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>e2e</artifactId>
+
+  <name>einvoice-at :: e2e</name>
+  <description>
+    Browser end-to-end tests (Selenium in a container) and the Gatling load scenario for the public
+    validator — ENGINEERING_STANDARDS §3, MILESTONES M5.
+
+    A MODULE OF ITS OWN, for two reasons. Selenium and Gatling have no business on `app`'s test
+    classpath: nothing in `app` should be able to compile against a WebDriver. And these tests are
+    the only ones in the tree that need a browser image and a load profile, so keeping them separate
+    is what lets `./mvnw verify` stay a few minutes rather than a coffee break.
+
+    THE TESTS DO NOT RUN UNLESS -Pe2e IS ACTIVE. They are always compiled — a module whose tests are
+    never built is a module that quietly stops compiling — but execution is skipped by default, the
+    same shape the `mutation` and `security` profiles already use in this repository, and it runs as
+    its own CI job. There is one deliberate consequence, stated so nobody is surprised by it: a green
+    plain `./mvnw verify` does not mean the browser flow works. The `e2e` CI job is what means that.
+  </description>
+
+  <properties>
+    <!-- Flipped to false by the e2e profile below. Skips execution, never compilation. -->
+    <skipTests>true</skipTests>
+    <!-- This module contributes no production code, so a coverage gate here would measure nothing. -->
+    <jacoco.skip>true</jacoco.skip>
+    <gatling.version>3.15.1</gatling.version>
+    <gatling-maven-plugin.version>4.21.10</gatling-maven-plugin.version>
+    <!-- Where the load scenario points. Overridden on the command line / in CI; the default is the
+         compose stack's published port, so `./mvnw -pl e2e gatling:test -Pload` works after a
+         `docker compose up -d` with no further arguments. -->
+    <load.base-url>http://localhost:8080</load.base-url>
+  </properties>
+
+  <dependencies>
+    <!-- The application under test, plus its own test utilities (AbstractPostgresIT, MultipartBodies).
+         test-jar rather than a copy: the E2E stack should boot the same context the ITs boot, and
+         re-declaring the Testcontainers wiring here would be a second thing to keep in step. -->
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>app</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>app</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-testcontainers</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Chrome in a container, driven over the W3C WebDriver protocol. Version from Boot 4.1's
+         testcontainers BOM (2.0.5) — note Testcontainers 2.x renamed this module from 1.x's plain
+         "selenium" to "testcontainers-selenium", the same rename that hit the postgresql module.
+         A container rather than a locally installed browser: the E2E job must not depend on what
+         happens to be on the runner, and Testcontainers' own reaper cleans it up. -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-selenium</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Selenium 4.43.0, managed by spring-boot-dependencies — deliberately NOT pinned here, so a
+         Boot bump moves the browser client with it. -->
+    <dependency>
+      <groupId>org.seleniumhq.selenium</groupId>
+      <artifactId>selenium-java</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Gatling, for the validator load scenario ENGINEERING_STANDARDS §3 asks for. Pinned here
+         because nothing in Boot's dependency management knows about Gatling; 3.15.1 verified against
+         Maven Central maven-metadata.xml on 2026-07-26 as both <latest> and <release>, and matched to
+         gatling-maven-plugin 4.21.10 (the plugin's own README pairs the 4.21.x line with Gatling
+         3.15.x). Only the Java DSL is used — no Scala in this repository. -->
+    <dependency>
+      <groupId>io.gatling.highcharts</groupId>
+      <artifactId>gatling-charts-highcharts</artifactId>
+      <version>${gatling.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!-- Same Failsafe binding as `app`: *IT classes run in integration-test, failures reported in
+           verify. The names here end in IT for that reason rather than in E2E. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <executions>
+          <execution>
+            <goals>
+              <goal>integration-test</goal>
+              <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <profile>
+      <id>e2e</id>
+      <properties>
+        <skipTests>false</skipTests>
+      </properties>
+    </profile>
+
+    <!-- The load run, separate from -Pe2e on purpose: the browser flow is a correctness gate that
+         belongs on every branch, while a load scenario needs a RUNNING application at a known URL and
+         measures a machine as much as the code. Kept opt-in and never bound to `verify`, so nobody's
+         `./mvnw verify` silently starts hammering something.
+
+           docker compose up -d
+           ./mvnw -pl e2e gatling:test -Pload -Dload.base-url=http://localhost:8080
+    -->
+    <profile>
+      <id>load</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>io.gatling</groupId>
+            <artifactId>gatling-maven-plugin</artifactId>
+            <version>${gatling-maven-plugin.version}</version>
+            <configuration>
+              <simulationClass>com.stoicera.einvoice.e2e.load.ValidatorSimulation</simulationClass>
+              <jvmArgs>
+                <jvmArg>-Dload.base-url=${load.base-url}</jvmArg>
+              </jvmArgs>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+</project>
