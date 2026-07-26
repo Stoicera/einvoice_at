@@ -146,6 +146,42 @@ unabhängig Bekanntes geprüft (das Lead-in gegen die Kategorie, das Kategorie-F
 Steuersatzes, der Code gegen das EN-16931-Präfix `VATEX-`), damit kein fremder Kommentar mit Pipe
 für unseren gehalten wird.
 
+## Entscheidung 8 — Der Upgrade auf 2026.5 gehört nach M5, nicht in M5 (Nachtrag 2026-07-26)
+
+Entscheidung 2 pinnt 2025.11 und notiert, dass **2026.5 am 2026-08-17 verbindlich** wird. Damit steht
+ein Datum im Kalender, und die Frage „jetzt oder später" ist im M5-Verlauf aufgekommen. Antwort:
+**später, aber terminiert.**
+
+**Nicht jetzt.** Ein Regelsatz-Upgrade ist kein Konstanten-Tausch: es ändert, nach welchen Regeln jedes
+Dokument beurteilt wird. Der Korpus muss danach vollständig neu laufen, jede Abweichung einzeln
+erklärt werden, und die Peppol-Abnahme (der stärkste automatisierte Anspruch dieses Repositories, siehe
+`UblEndToEndGenerationTest`) muss danach wieder stimmen. Das mit einem halb fertigen M5 zu vermischen
+hieße, zwei Fehlerquellen in einen Commit zu legen und beide schlechter diagnostizieren zu können.
+
+**Nicht später als M6.** Konkret: **vor dem 2026-08-17**, und damit im Abschluss von M5 oder in M6 —
+je nachdem, was zuerst fertig wird. Nach diesem Datum würde die Plattform Dokumente gegen einen
+Regelsatz beurteilen, den der Empfänger nicht mehr anwendet, und ein „gültig" von uns wäre dann
+schlimmer als kein Urteil: es wäre ein falsches.
+
+**Die 78 deutschen Übersetzungen aus M5 sind dabei mitzuprüfen.** Sie sind gegen die 2025.11-Artefakte
+geschrieben; ändert 2026.5 einen Assertion-Text, ist die zugehörige Übersetzung inhaltlich zu
+kontrollieren, nicht nur zu übernehmen. Das ist der Preis dafür, dass wir übersetzen — und er ist
+gering, weil die Zuordnung über die Assertion-ID läuft und ein Eintrag ohne Treffer schlicht auf den
+deutschen Rahmen um englischen Text zurückfällt (`PeppolMessagesDe`).
+
+## Entscheidung 9 — `ConversionLosses` bleibt bei vier Fällen (Nachtrag 2026-07-26)
+
+Die M4-Nachprüfung hat als offene Frage hinterlassen, ob `ConversionLosses` „erschöpfend" sein sollte
+statt der vier Fälle `CONV-01..04`. Entscheidung: **es bleibt bei vier.**
+
+Die vier decken, was die Mapper *tatsächlich* fallen lassen oder verschieben — jeder Fall ist an einem
+echten Verlust in einem echten Dokument entstanden. Eine „erschöpfende" Aufzählung wäre eine Aufzählung
+von Hypothesen: Kategorien für Verluste, die niemand beobachtet hat, an denen sich niemand orientieren
+kann und die beim ersten echten fünften Verlust ohnehin nicht passen würden. Der Auslöser für einen
+fünften Fall ist deshalb einfach und beobachtungsgetrieben: **ein Verlust, der in keinen der vier
+passt, in einem Dokument, das jemand tatsächlich konvertiert hat.** Bis dahin ist die Liste vollständig
+in dem einzigen Sinn, der zählt.
+
 ## Konsequenzen
 
 **Gut.** Peppol-Konformität wird von der Autorität selbst bestätigt, in CI, ohne Portal-Upload —

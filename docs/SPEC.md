@@ -82,7 +82,7 @@ _M3 hostile-review fix wave (2026-07-25):_ The 2 MB cap now covers **every** req
 
 ## 5. Web UI (Thymeleaf + htmx)
 
-Pages: Landing/"Prüfer" (public upload → report, German-first, SEO meta), Report view (findings grouped by severity, "Fehler erklären" button per finding when AI enabled), Dashboard (login): invoice list, create-invoice form (htmx wizard), API-key management. Design: clean, Stoicera-adjacent (dark/gold accents), no framework bloat; Lighthouse ≥ 95 on public pages.
+Pages: Landing/"Prüfer" (public upload → report, German-first, SEO meta), Report view (findings grouped by severity, "Fehler erklären" button per finding when AI enabled), Dashboard (login): invoice list, create-invoice form (server-rendered multi-step wizard — corrected from "htmx wizard", see ADR-0009 Entscheidung 5), API-key management. Design: clean, Stoicera-adjacent (dark/gold accents), no framework bloat; Lighthouse ≥ 95 on public pages.
 
 _M5 sync (2026-07-26):_ **The landing page, the public validator and the report view are realized;
 the authenticated dashboard is not yet** — see `docs/worklog.md` for exactly what is open. Security is

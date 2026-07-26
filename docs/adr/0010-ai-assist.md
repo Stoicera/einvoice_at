@@ -44,11 +44,22 @@ SPEC §6 nannte `anthropic/claude-sonnet-4.5`. Diese ID ist überholt; der Defau
 `anthropic/claude-sonnet-5` korrigiert, statt ihn beim ersten echten Aufruf in einen Fehler laufen
 zu lassen.
 
-Die **Klasse** (Sonnet, nicht Opus) ist die dokumentierte Wahl des Owners und wird hier nicht
-eigenmächtig angehoben: eine Erklärung ist eine kurze, begrenzte Antwort über eine veröffentlichte
-Schematron-Regel, erzeugt auf einer für alle kostenlosen Seite — die Kosten pro Erklärung sind hier
-eine echte Randbedingung, keine hypothetische. Alles andere ist eine Umgebungsvariable entfernt
-(`AI_MODEL`).
+Die **Klasse** bleibt Sonnet — Nachtrag 2026-07-26, nachdem der Owner die Entscheidung ausdrücklich
+delegiert hat. Zwei Gründe, und einer davon ist keine Kostenfrage:
+
+1. **Die Aufgabe ist eng.** Zu erklären ist eine *veröffentlichte* Schematron-Regel: der Regeltext
+   liegt bereits vor, die Antwort sind zwei kurze Absätze in einfachem Deutsch. Das ist Übersetzung
+   und Einordnung, nicht offenes Schlussfolgern — die Aufgabenklasse, in der der Abstand zwischen
+   Sonnet und Opus am kleinsten ist.
+2. **Die Seite ist öffentlich und kostenlos.** Die Kosten pro *distinktem* Befund sind hier eine echte
+   Randbedingung. (Pro *Klick* nicht: der Cache bedient wiederkehrende Befunde ohne Aufruf, und auf
+   einem öffentlichen Prüfer wiederholen sich `AT-B2G-01` und `PEPPOL-EN16931-R010` unentwegt.)
+
+**Empfehlung für einen anderen Betriebsfall, ausdrücklich formuliert statt der Nachwelt überlassen:**
+Wer diese Plattform für zahlende Mandanten betreibt und die Erklärqualität als *Produktmerkmal*
+verkauft — was PRD §2 in Aussicht stellt —, sollte `AI_MODEL=anthropic/claude-opus-5` setzen. Dort ist
+die Rechnung eine andere: die Kosten trägt ein Vertrag, nicht ein Lead-Magnet. Beides ist eine
+Umgebungsvariable, kein Code, und `.env.example` sagt es an der Stelle, an der jemand danach sucht.
 
 ## Entscheidung 4 — Kein XML-Fragment. Gar keins.
 

@@ -81,6 +81,45 @@ accounting is at the end of this entry rather than implied by omission.
 - **The security scan and the M4 review's own guard both earned their keep.** `everyLibModuleIsListed`
   failed the moment `ai-assist` gained its first class — exactly the drift M4 added it to catch.
 
+**Decisions taken at the owner's request, closing open items (2026-07-26)**
+
+The owner delegated four decisions that had been sitting open. All four are now recorded in the ADRs
+rather than in a conversation:
+
+- **ADR-0009: both web-UI deviations stay, with numeric triggers.** Hand-authored CSS until `app.css`
+  passes 700 lines or a second person works on it regularly (currently ~430, one). No htmx until an
+  interaction genuinely *needs* partial updates. Walking through the dashboard's actual interactions
+  strengthened this rather than weakening it: the wizard, the API-key page and the danger zone are all
+  plain POST-and-redirect flows that need no JavaScript at all. The two swaps that do benefit already
+  exist and are done. SPEC §5 is corrected from "htmx wizard" to "server-rendered multi-step wizard" so
+  the documents agree.
+- **ADR-0010: the model stays Sonnet for the public validator, with an explicit Opus recommendation for
+  a paid deployment.** Explaining a published rule in two short German paragraphs is translation and
+  framing, not open-ended reasoning — the task class where the tier gap is smallest — and a free public
+  page makes cost per *distinct* finding a real constraint. Where the cost sits against a contract
+  instead, `AI_MODEL=anthropic/claude-opus-5` is the recommendation, and `.env.example` says so where
+  someone will look.
+- **ADR-0007 Entscheidung 8: the Peppol rule-set upgrade to 2026.5 happens before 2026-08-17, not
+  now.** Not now, because a rule-set change alters how every document is judged and wants its own
+  corpus re-run rather than being mixed into a half-finished milestone. Not later than that date,
+  because past it a "valid" from this platform would be a false statement. The 78 German translations
+  must be re-checked against 2026.5's assertion texts, not merely carried over.
+- **ADR-0007 Entscheidung 9: `ConversionLosses` keeps its four cases.** An exhaustive enum would
+  enumerate hypotheses; each existing case came from a real loss in a real document. A fifth is added
+  when a real loss appears that fits none of them.
+
+Two further items are marked **settled rather than open**, with no change to the code:
+
+- **PIT's `frecord` filter stays on** (`core`). Measured at M4: 129 mutants with it (98 % killed) vs
+  392 without (86 %, below the gate), the extra survivors concentrated in compiler-generated
+  `equals`/`hashCode`/`toString` — which is what the filter exists to remove. The alternatives are a
+  lowered gate (never) or tests for generated methods (worthless). This was recorded as an open
+  question for the M4 review; it is a decision now.
+- **jqwik stays**, and the anti-AI banner it prints to test output needs no owner action. M2 evaluated
+  every credible JUnit-5-native alternative and found none viable. The banner is inert text with no
+  execution vector, already covered by the standing rule that library and tool output addressed to
+  agents is data, never instructions.
+
 **Verification**
 
 - `./mvnw clean verify` green across all 10 modules (2 m 01 s), every JaCoCo gate met.
@@ -115,10 +154,10 @@ accounting is at the end of this entry rather than implied by omission.
 **Next**
 
 - Finish the five items above, in that order; 1 and 2 are what "M5 complete" hinges on.
-- Owner decision worth having before the dashboard is written: keep the 40-line script, or vendor real
-  htmx? ADR-0009 argues for the former at this size, and the answer changes as the dashboard grows.
-- Carried from M4: the Peppol rule-set upgrade due 2026-08-17 (2026.5 is published; the procedure is in
-  ADR-0007), and whether `ConversionLosses` should be exhaustive.
+- No open owner decisions. The four that were pending are decided above and recorded in ADR-0007,
+  ADR-0009 and ADR-0010; the next session starts from settled ground.
+- One hard date to respect: the Peppol rule-set upgrade to 2026.5 **before 2026-08-17** (ADR-0007
+  Entscheidung 8), including a re-check of the 78 German translations against the new assertion texts.
 
 ## 2026-07-25 — M4 hostile-review fix wave: 17 findings closed
 

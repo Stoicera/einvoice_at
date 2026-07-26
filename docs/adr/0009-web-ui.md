@@ -93,12 +93,52 @@ Validierungsbahn wäre eine zweite Stelle, an der die DSGVO-Zusage später brech
 Das Rate-Limit gilt entsprechend auch für den UI-Pfad — anonym, per IP, wie beim API-Pendant.
 Andernfalls wäre die öffentliche Seite ein unlimitierter Umweg um ein limitiertes Endpoint.
 
+## Entscheidung 5 — Beide Abweichungen bleiben. Mit benannten Auslösern für eine Neubewertung.
+
+Nachtrag 2026-07-26, nachdem die öffentlichen Seiten fertig waren und die Frage anstand, ob vor dem
+Dashboard doch noch Tailwind bzw. htmx eingezogen werden soll. Antwort: **nein, beide bleiben** — aber
+nicht „auf Dauer", sondern bis zu einem Punkt, der hier konkret benannt wird, damit die Entscheidung
+später nicht aus Trägheit weitergilt.
+
+**CSS: hand geschrieben bleibt es.** Der Auslöser für eine Neubewertung ist keine Meinung, sondern eine
+Zahl: **sobald `app.css` 700 Zeilen übersteigt oder ein zweiter Mensch regelmäßig daran arbeitet.**
+Beides sind die Bedingungen, unter denen eine Utility-Konvention anfängt sich zu bezahlen — vorher ist
+sie ein Build-Schritt für nichts. (Stand M5: ~430 Zeilen, ein Bearbeiter.)
+
+**htmx: nein — und der Grund hat sich beim Durchdenken des Dashboards *verstärkt*, nicht abgeschwächt.**
+Die Erwartung war, dass das Dashboard mehr Teil-Aktualisierungen braucht und die 40 Zeilen dann wachsen.
+Beim Durchgehen der tatsächlichen Interaktionen trifft das nicht zu:
+
+| Dashboard-Interaktion | Braucht Teil-Aktualisierung? |
+|---|---|
+| Rechnungs-Wizard, Schritt für Schritt | **Nein** — ein server-gerenderter mehrstufiger Formularfluss (POST → nächster Schritt) ist einfacher und funktioniert ohne JavaScript |
+| API-Key anlegen / widerrufen | **Nein** — POST, Redirect, neue Seite |
+| Mandantendaten löschen (Danger Zone) | **Nein** — POST mit Tipp-Bestätigung, Redirect |
+| Listen und Detailseiten | **Nein** — normale Navigation |
+
+Es bleiben genau die **zwei** Interaktionen, die es heute schon gibt: der Prüfer-Upload und
+„Fehler erklären". Beide sind fertig und getestet. htmx würde also für Politur eingezogen, nicht für
+Bedarf — und dann wäre eine minifizierte Fremddatei zu pflegen und zu verifizieren, deren einziger
+Nutzen darin besteht, 40 eigene, im Diff lesbare Zeilen zu ersetzen.
+
+**Auslöser für eine Neubewertung:** die erste Interaktion, die echte Teil-Aktualisierung *braucht* —
+etwa live mitlaufende Positionssummen im Wizard oder Inline-Validierung während der Eingabe. Dann wird
+htmx eingezogen (das Markup-Vertrag `data-swap="#ziel"` ist bewusst eine Teilmenge von htmx' eigenem,
+die Migration ist additiv) und `app.js` gelöscht. Nicht vorher, und ausdrücklich nicht „weil SPEC es
+nennt": SPEC §5 ist entsprechend auf „server-gerenderter Wizard" korrigiert, damit die Dokumente sich
+nicht widersprechen.
+
+**Was diese Entscheidung nicht ist:** eine Behauptung, dass Tailwind oder htmx schlechte Werkzeuge
+wären. Beide sind gut. Sie sind an dieser Stelle, in dieser Größe, für diese Interaktionen nur noch
+nicht nötig — und ein Werkzeug, das noch nicht nötig ist, ist Aufwand ohne Gegenwert.
+
 ## Konsequenzen
 
 - **Positiv:** Die API bleibt bitweise die von M4; jede Änderung dieser ADR betrifft nur die
   Browser-Hälfte. CSRF-Schutz existiert dort, wo er etwas schützt. Kein Frontend-Build, keine
   Node-Toolchain, `./mvnw verify` bleibt die einzige Build-Anweisung. Lighthouse-freundlich ohne
-  Extraarbeit.
+  Extraarbeit. Jede Seite funktioniert ohne JavaScript — was bei einer Behörden-nahen Zielgruppe kein
+  Nebeneffekt, sondern ein Merkmal ist.
 - **Negativ:** Zwei Chains sind mehr Konfiguration als eine, und ihre Reihenfolge muss durch Tests
   gesichert bleiben. Das hand geschriebene CSS ist eine Datei, die niemand generiert — sie muss
   klein gehalten werden, sonst wird die Entscheidung von oben rückblickend falsch.
