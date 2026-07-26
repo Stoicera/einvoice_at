@@ -112,18 +112,34 @@ leert den Cache.
 
 ## 4. Ihre Rechte, und der Stand ihrer Umsetzung
 
-- **Auskunft:** alle eigenen Daten sind über die API abrufbar (`GET /api/v1/invoices`,
-  `GET /api/v1/reports`) bzw. im Dashboard.
-- **Löschung einzelner Datensätze:** API-Schlüssel sind widerrufbar.
-- **Vollständige Löschung des Mandanten:** **noch nicht implementiert.** Geplant als
-  `DELETE /api/v1/tenant` mit einer „Danger Zone" im Dashboard; siehe `docs/worklog.md` (M5) für den
-  offenen Punkt. Bis dahin ist die Löschung eine manuelle Betreiber-Aufgabe.
-- **Aufbewahrungsfristen / automatische Löschung:** **noch nicht implementiert.** Prüfberichte und
-  Audit-Einträge bleiben derzeit unbegrenzt liegen. Ebenfalls offen, ebenfalls im Worklog vermerkt.
+- **Auskunft (Art. 15):** alle eigenen Daten sind über die API abrufbar (`GET /api/v1/invoices`,
+  `GET /api/v1/reports`) bzw. im Dashboard. Die Seite **Konto** nennt zusätzlich die Anzahl der
+  gespeicherten Datensätze je Kategorie — bevor sie das Löschen anbietet.
+- **Löschung einzelner Datensätze:** API-Schlüssel sind widerrufbar (die Zeile bleibt, mit
+  Widerrufs-Zeitstempel, zur Nachvollziehbarkeit).
+- **Vollständige Löschung des Mandanten (Art. 17):** **implementiert.** Im Dashboard unter
+  **Konto → „Konto und alle Daten löschen"** (Bestätigung durch Eintippen des Wortes `LÖSCHEN`), über
+  die API als `DELETE /api/v1/tenant`. Gelöscht werden in einer Transaktion: Rechnungen, Prüfberichte,
+  API-Schlüssel (auch widerrufene), **sämtliche Protokoll-Einträge** und die Mandanten-Zeile selbst mit
+  Keycloak-Subject und Anzeigename. Es bleibt genau eine Log-Zeile mit der Mandanten-UUID — einem von
+  dieser Plattform erzeugten Surrogat, keinem Personenbezug — und den gelöschten Zeilenzahlen.
+  Idempotent; ein verwendeter API-Schlüssel wird durch den Aufruf selbst ungültig. Kein Backup, aus
+  dem sich das zurückholen ließe.
+- **Aufbewahrungsfristen / automatische Löschung (Art. 5 Abs. 1 lit. e):** **implementiert.** Ein
+  nächtlicher Job löscht Prüfberichte nach `RETENTION_REPORT_DAYS` (Standard 365) und Protokoll-Einträge
+  nach `RETENTION_AUDIT_DAYS` (Standard 730). `0` oder negativ heißt „unbegrenzt aufbewahren" — das ist
+  der Ausschalter.
 
-Diese beiden Lücken werden hier ausdrücklich genannt, statt sie in einer Formulierung wie
-„Löschkonzept vorhanden" zu verstecken. Solange sie offen sind, ist dieses Dokument keine ausreichende
-Grundlage für einen produktiven Einsatz mit echten Kundendaten.
+**Rechnungen werden vom Aufbewahrungs-Job niemals gelöscht, und das ist Absicht.** § 132 BAO
+verpflichtet Sie, Rechnungen **sieben Jahre** aufzubewahren. Eine Plattform, die sie nach einem Jahr
+automatisch wegräumt, schützt nicht Ihre Privatsphäre, sondern zerstört Aufzeichnungen, zu deren
+Aufbewahrung Sie verpflichtet sind — ungefragt und in Ihrem Namen. Rechnungen verschwinden deshalb nur
+auf ausdrückliches Verlangen (Art. 17, oben). Löschung auf Verlangen und Ablauf einer Frist sind zwei
+verschiedene Vorgänge mit verschiedenen Regeln, und nur der erste darf diese Tabelle anfassen.
+
+Beide Lücken, die dieses Dokument von M3 bis M5 ausdrücklich als offen benannt hat — statt sie hinter
+einer Formulierung wie „Löschkonzept vorhanden" zu verstecken —, sind damit geschlossen. Der Satz, dass
+diese Plattform keine ausreichende Grundlage für echte Kundendaten sei, steht hier nicht mehr.
 
 ## 5. Selbst hosten ist die eigentliche Antwort
 

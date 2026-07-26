@@ -1,5 +1,168 @@
 # Worklog — einvoice-at
 
+## 2026-07-26 — M5 (part 2): dashboard, GDPR erasure, retention, explain API, browser E2E — M5 complete
+
+**Status: M5 is complete.** All five items the part-1 entry listed as open are done, plus three defects
+that part 1 had shipped without noticing — one of which stopped the whole application from booting.
+
+**The first thing this session did was the thing part 1 said to do first, and it found a showstopper**
+
+Part 1 closed with "Not verified in a browser or in compose. A compose smoke run and a look at the
+rendered pages are the first thing the next session should do." That was the right instruction and it
+paid immediately: **the compose stack could not start at all.**
+
+`docker-compose.yml` set `SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI` alongside the
+four explicit endpoint URLs. Spring Boot treats a provider `issuer-uri` as a request to perform OIDC
+**discovery at startup**, so the app fetched `<issuer>/.well-known/openid-configuration` while building
+`clientRegistrationRepository`. The issuer had to be the browser-facing `localhost:8081`, and inside
+the container that is the container's own loopback: connection refused, bean creation failed, and the
+application crash-looped. Not "the login is broken" — **everything**, public validator included. The
+block's own comment described the correct solution ("the four URLs are given explicitly so discovery
+cannot be needed") and the line underneath defeated it.
+
+Fixing it surfaced a second, quieter bug in the same area. `start-dev` derives every URL from the
+request's `Host` header, **including the `iss` claim it stamps into tokens**, so the realm called itself
+`localhost:8081` to the browser and `keycloak:8080` to the app. A browser login's id_token is minted
+over the back channel and would have carried `keycloak:8080`, while `OAUTH2_ISSUER_URI` expects
+`localhost:8081`. Measured rather than assumed: before pinning, the two discovery documents reported two
+different issuers; after `KC_HOSTNAME` + `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true`, the same issuer on both
+channels with the token endpoint still app-facing.
+
+**What shipped**
+
+- **The authenticated dashboard.** Overview with per-tenant counts; invoice list and detail (verdict,
+  report history, canonical JSON, three downloads); report list and detail rendering the *same*
+  fragment as the public validator; the four-step server-rendered create-invoice wizard; the API-key
+  page; and a **Konto** page. German route segments throughout, matching `/validator/pruefen`.
+- **GDPR Art. 17 + Art. 5(1)(e)** — `TenantErasureService` (dashboard danger zone + `DELETE
+  /api/v1/tenant`) and `RetentionService` (nightly purge). ADR-0011, which ADR-0009 had already
+  forward-referenced by name.
+- **`POST /api/v1/reports/{id}/explain`** — the last endpoint SPEC §4 carried as "remains M5".
+- **The `e2e` module** — Selenium/Chrome for Upload → Report → Erklären, and the Gatling validator
+  scenario. New `e2e` CI job.
+- **Three defects part 1 shipped:** the compose boot failure above; a `/favicon.ico` 404 on every page
+  load; and `ContentDisposition.attachment().filename(...).toString()` on the **builder**, which put
+  `org.springframework.http.ContentDisposition$BuilderImpl@9336bc5` in the header of every download.
+
+**Decisions**
+
+- **The dashboard's downloads are `/app` routes, not links into `/api/v1`.** The three formats are
+  already exposed by the API and linking there is the obvious move; it would not work, and the failure
+  would have been a login redirect inside a download tab rather than anything a reviewer would notice.
+  `/api/**` is the stateless chain and never reads the session cookie. The service is the shared part;
+  the transport is not, and cannot be. A test asserts each download is served *to a session*.
+- **The wizard's last step calls the same `InvoiceService.create` as the API.** Same duplicate
+  detection, same generated-and-validated report, same audit event. A wizard-specific creation path
+  would have been a second place for invoice creation to drift — the same argument the public upload
+  already settled for validation.
+- **The draft lives in the session, not in hidden fields.** Step 3 collects a *list*, and re-serialising
+  a growing list through hidden inputs on every step is more markup and more ways to lose a line. The
+  session already exists for the login and for CSRF, so this adds no mechanism. A test asserts a second
+  session cannot see the draft.
+- **The wizard validates presence only; `core` owns the rules.** IBAN checksum, VAT-category
+  consistency, totals — all caught at creation and rendered as a message. Re-implementing them in the
+  controller would give the platform a second, drifting definition of a valid invoice. The one
+  exception is "at least one line", checked when leaving step 3, because discovering it two steps later
+  would point the user at the wrong page.
+- **The retention job never deletes an invoice, and that is the point of ADR-0011.** Expiring invoices
+  alongside reports is the symmetrical implementation and would be actively harmful: § 132 BAO obliges
+  an Austrian business to keep invoices for **seven years**. The load-bearing test is therefore a
+  negative one — a ten-year-old invoice survives a purge. Erasure on request *does* delete them,
+  because the person asked.
+- **Erasure deletes the audit trail too.** Keeping it is defensible in the abstract (Art. 5(2)
+  accountability), and impossible in practice: `audit_event.tenant_id` is a foreign key to the row
+  holding the Keycloak subject and display name, so "keep the audit trail" means "keep the tenant row"
+  means not honouring the request. What survives is one log line with the tenant **UUID** — a surrogate
+  this platform minted — and the row counts.
+- **`0` is the retention off switch, not a second `enabled` flag.** Two mechanisms can disagree; one
+  cannot. Default **on** with generous windows, because a retention scheme that must be switched on is
+  off on every installation nobody configured, and those are why Art. 5 exists.
+- **A typed `LÖSCHEN` in the browser, no confirmation parameter on the API.** A dialog needs JavaScript
+  and is dismissible by a stray Enter; a typed word is not produced by a misclick. An API caller
+  issuing `DELETE /tenant` with that tenant's own credential has already stated intent unambiguously,
+  and `?confirm=yes` is ceremony every client hard-codes on its first run. What protects there is that
+  the credential *scopes* the deletion: no tenant id in the request, so it cannot be aimed at anyone.
+- **The explain endpoint answers 503 in two distinguishable ways.** Flag off →
+  `ai-explanations-disabled`; provider produced nothing for anything requested →
+  `ai-explanation-unavailable`. A 200 whose every `aiExplanation` is null is indistinguishable from
+  "nothing to explain", so a total outage would look like success and the caller would retry nothing.
+  Partial success stays 200, because that body is honest.
+- **The capability is checked before the arguments.** With AI off, even an unknown report id answers
+  503 rather than 404. Written expecting 404 and changed after watching it fail: a precondition is
+  checked before its arguments, a disabled deployment does no database work for a route it cannot
+  serve, and the answer does not vary with whether the id exists.
+- **`spring-security-test` + MockMvc for the dashboard, a real browser for the public flow.** The
+  dashboard sits on the browser chain, which authenticates a cookie session — it deliberately accepts
+  none of the bearer tokens the other 20 ITs use. Driving Keycloak's login form over HttpClient to
+  reach a page assertion would be testing Keycloak; `oauth2Login()` injects the authentication the real
+  flow would have produced. Boot 4.1's module split moved `@AutoConfigureMockMvc` to
+  `org.springframework.boot.webmvc.test.autoconfigure` in its own artifact, which is why there are two
+  new test dependencies rather than one.
+- **`spring-boot-maven-plugin` now writes the executable jar under the `exec` classifier.** Without it
+  `repackage` replaces `app.jar` with the fat jar, whose classes live under `BOOT-INF/classes` — so the
+  `e2e` module resolved `app` and could not see a single class in it, while classes from the *test*-jar
+  resolved fine. The error points at the source file, not at the packaging. The Dockerfile copies
+  `app-exec.jar` now.
+- **`WebExceptionHandler`, scoped to `..app.web..` with highest precedence.** `ApiExceptionHandler` is
+  an unrestricted `@RestControllerAdvice`, so it applied to the Thymeleaf controllers too: a mistyped
+  invoice id gave a correct 404 whose body was `application/problem+json` — raw JSON in a browser, in
+  English, from a German UI. Only the not-found family is handled; a genuine 500 still falls through to
+  the catch-all that logs it in full.
+- **The `e2e` module's tests compile always and run only under a profile.** Same shape as the existing
+  `mutation` and `security` profiles. The consequence is stated in three places rather than implied: a
+  green plain `./mvnw verify` does **not** mean the browser flow works.
+
+**Two bugs the tests caught before the code shipped, worth recording**
+
+- **`targetsFor` selected findings by value and mapped back with `List.indexOf`.** A rule fires once per
+  offending line, so identical findings are normal — three of them would have returned position 0 three
+  times, explaining the first repeatedly and the others never. Found by inspection, then pinned; the
+  unit test was verified by reintroducing the bug and watching it fail.
+- **The Gatling assertions caught a configuration gap, not a performance problem.** The first run showed
+  36 of 50 requests rate-limited despite `RATE_LIMIT_VALIDATE_CAPACITY` being raised. Cause:
+  **seven env vars documented in `.env.example` were never passed through in `docker-compose.yml`** —
+  the whole `RATE_LIMIT_*` family, `MAX_REQUEST_BODY_SIZE`, `API_KEYS_MAX_ACTIVE_PER_TENANT`. Setting
+  them in `.env` did nothing, silently, since M3. A CI step now asserts the two lists agree.
+
+**Verification**
+
+- `./mvnw clean verify` green across all 11 modules. **1017 tests**, up from 898.
+  Per module: `core` 220, `formats-api` 7, `formats-ebinterface` 14, `formats-ubl` 31, `mapping` 201,
+  `validation` 125, `rendering` 36, `ai-assist` 107, `app` 90 unit + 186 integration (27 IT classes).
+- `app` coverage **94.5 % line / 81.0 % branch** against the unchanged 90/78 gate. The gate **failed**
+  mid-session at 74.8 % branch; closed by unit-testing `InvoiceDraft` and `FindingView` and adding four
+  wizard cases — never by touching the threshold (CLAUDE.md).
+- `./mvnw -pl e2e verify -Pe2e` green: 3 browser tests, 15 s. `gatling:test -Pload` green against the
+  compose stack: 50/50 requests, p95 18 ms, max 637 ms (first-request Schematron warm-up).
+- **Verified in a real browser this time**, which is what part 1 asked for: landing page and validator
+  screenshotted, an upload driven through Chrome with the fragment swap observed, and the console
+  checked — which is how the favicon 404 was found.
+- Compose stack verified booting from a rebuilt image, `/` 200, `/app` → 302 → Keycloak with PKCE.
+- Every command in the new `e2e` CI job was executed locally and passes. The job itself first runs on
+  push; nothing about it is asserted here beyond that.
+
+**Honest gaps**
+
+- **No automated test completes a real authorization-code login.** The dashboard ITs inject the
+  authentication a finished flow would have produced; `OAuth2ClientWiringIT` proves the client is wired
+  without discovery and that `/app` redirects into the authorization endpoint; the full round trip was
+  verified by hand against the compose Keycloak. What is missing is a browser driving Keycloak's login
+  form. It needs the browser and the app to agree on a Keycloak URL whose `iss` matches what the app
+  validates — the same dual-URL problem the compose fix above solves — and the shape is known: both
+  containers on one network, `KC_HOSTNAME` pinned to the browser-facing alias, explicit endpoints. Not
+  built, because MILESTONES names the *public* flow for E2E and this would be scope beyond it.
+- **Lighthouse ≥ 95 is not measured.** MILESTONES schedules it at M6; the pages are built for it.
+- The retention job runs in every instance. Several instances against one database all purge — the
+  deletes are idempotent so this is correct but wasteful. Instance election belongs to M6.
+
+**Next**
+
+- **M5 is complete; the next step is the M5 hostile review on this branch before merge**, the
+  per-milestone pattern (audit → prioritised findings → fix all, test-first). This entry's "honest
+  gaps" and the three part-1 defects are the obvious places to point it first.
+- One hard date unchanged: the Peppol rule-set upgrade to 2026.5 **before 2026-08-17** (ADR-0007
+  Entscheidung 8), including re-checking the 78 German translations against 2026.5's assertion texts.
+
 ## 2026-07-26 — M5 (part 1): ai-assist, public web validator, German Peppol messages
 
 **Status: M5 is NOT complete.** What shipped is the public browser surface and the AI feature, both

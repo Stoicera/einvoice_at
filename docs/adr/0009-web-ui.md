@@ -132,6 +132,55 @@ nicht widersprechen.
 wären. Beide sind gut. Sie sind an dieser Stelle, in dieser Größe, für diese Interaktionen nur noch
 nicht nötig — und ein Werkzeug, das noch nicht nötig ist, ist Aufwand ohne Gegenwert.
 
+## Entscheidung 6 — Der Browser-Login wird ohne OIDC-Discovery verdrahtet, und Keycloaks Issuer wird festgenagelt
+
+_Nachgetragen 2026-07-26 (M5 Teil 2), nachdem der erste Compose-Rauchtest ergab, dass die Anwendung
+überhaupt nicht startet._
+
+Ein Browser-Login in Docker hat zwei Adressen für denselben Identity Provider: der **Browser** muss auf
+eine URL geschickt werden, die er erreicht (`localhost:8081`), während die **Anwendung** den Code über
+das Compose-Netz einlöst (`keycloak:8080`). Das ist bekannt. Nicht bekannt genug ist, was passiert,
+wenn man zusätzlich `spring.security.oauth2.client.provider.<id>.issuer-uri` setzt:
+
+> Spring Boot behandelt einen Provider-`issuer-uri` als **Auftrag zur Discovery beim Start**
+> (`ClientRegistrations.fromIssuerLocation`) und ruft `<issuer>/.well-known/openid-configuration` ab —
+> unabhängig davon, dass die vier Endpunkte daneben explizit angegeben sind.
+
+M5 Teil 1 hatte genau das getan, mit dem browserseitigen `localhost:8081` als Issuer. Im Container ist
+das der eigene Loopback: Connection refused, `clientRegistrationRepository` scheitert, **die gesamte
+Anwendung startet nicht** — nicht „der Login geht nicht", sondern alles, öffentlicher Prüfer
+inklusive. Der Kommentar in `docker-compose.yml` beschrieb dabei die richtige Lösung („die vier URLs
+werden explizit angegeben") und die `issuer-uri`-Zeile darunter hob sie auf.
+
+**Entschieden:** kein Provider-`issuer-uri`. Die vier Endpunkte werden explizit gesetzt — Authorization
+browserseitig, Token/JWKS/Userinfo app-seitig — und Keycloak bekommt `KC_HOSTNAME` auf die
+browserseitige URL, mit `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true`.
+
+Das `KC_HOSTNAME` ist der Teil, der leicht übersehen wird und einen zweiten, stilleren Fehler behebt:
+`start-dev` leitet **jede** URL aus dem `Host`-Header der Anfrage ab, **einschließlich des `iss`-Claims
+in den Tokens**. Dieselbe Realm nannte sich dem Browser also `localhost:8081` und der Anwendung
+`keycloak:8080` — womit das id_token eines Browser-Logins (über den Back-Channel geholt)
+`keycloak:8080` getragen hätte, während `OAUTH2_ISSUER_URI` `localhost:8081` erwartet. Nachgemessen,
+nicht vermutet: vor dem Pin meldeten die beiden Discovery-Dokumente zwei verschiedene Issuer, danach
+denselben, bei weiterhin app-seitigem Token-Endpunkt.
+
+**Preis, offen benannt:** Ohne Provider-`issuer-uri` vergleicht Spring Security den `iss` des
+id_tokens nicht gegen einen konfigurierten Wert (`OidcIdTokenValidator` prüft nur, wenn er einen hat).
+Der Vertrauensanker bleibt die Signaturprüfung gegen Keycloaks JWKS über einen app-seitigen Back-Channel
+— ein Angreifer kann kein Token einschmuggeln, ohne diesen Kanal zu kontrollieren. Es gibt keine
+Boot-Eigenschaft für „Issuer setzen, aber nicht auflösen"; wer die Prüfung will, muss eine
+`ClientRegistrationRepository`-Bean selbst beisteuern, und Deployment-Verdrahtung gehört nicht in
+Produktionscode.
+
+**Festgenagelt:** `OAuth2ClientWiringIT` konfiguriert einen Client mit explizit gesetzten, bewusst
+**unerreichbaren** Endpunkten (`*.invalid`, RFC 2606) und behauptet zweierlei — der Kontext startet
+(was er nicht könnte, wenn Discovery liefe) und `/app` leitet in den Authorization-Endpunkt um. Der
+Testlauf mit wieder eingesetzter `issuer-uri`-Zeile reproduziert die Compose-Kette Fehler für Fehler.
+Zusätzlich prüft ein CI-Schritt, dass jede in `.env.example` dokumentierte Variable in
+`docker-compose.yml` auch durchgereicht wird — sieben taten das nicht, darunter die komplette
+`RATE_LIMIT_*`-Familie, und das war nicht zu sehen, weil eine nicht durchgereichte Variable einfach
+nichts tut.
+
 ## Konsequenzen
 
 - **Positiv:** Die API bleibt bitweise die von M4; jede Änderung dieser ADR betrifft nur die

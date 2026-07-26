@@ -7,19 +7,24 @@
 
 A self-hostable Java 25 / Spring Boot platform built by [Stoicera Software Group](https://stoicera.com) as a production-grade reference system. Austria's federal government only accepts structured e-invoices (ebInterface or Peppol BIS) via e-rechnung.gv.at — and rejected invoices come back with Schematron output that non-technical users cannot read. This platform closes that gap.
 
-> **Status: Milestone M5 (in progress) — public web validator + AI explanations.** On top of M4's
-> two formats, conversion and PDF, the platform now has a **browser surface**: a German,
+> **Status: Milestone M5 complete — web UI, public validator, AI explanations, GDPR erasure.** On top
+> of M4's two formats, conversion and PDF, the platform has a full **browser surface**: a German,
 > SEO-oriented [public validator](#web-ui) that stores nothing, a report view grouping findings by
-> severity, and an optional **AI explanation** per finding (off by default, degrades to a notice when
-> the provider is down). The Peppol findings that Austrian filers actually hit now carry **real
-> German messages** rather than a German frame around English. **Still open in M5:** the
-> authenticated dashboard (invoice wizard, API-key UI), the GDPR tenant-delete endpoint and retention
-> job, the Selenium E2E suite and the Gatling scenario — see
-> [docs/worklog.md](docs/worklog.md). Milestone plan: [docs/MILESTONES.md](docs/MILESTONES.md).
+> severity, an optional **AI explanation** per finding (off by default, degrades to a notice when the
+> provider is down), and an **authenticated dashboard** — invoice list and detail with all three
+> document downloads, report history, a four-step create-invoice wizard, API-key management, and a
+> **Konto** page that states what is stored before offering to erase it. The Peppol findings Austrian
+> filers actually hit carry **real German messages** rather than a German frame around English.
+> **GDPR Art. 17 and Art. 5(1)(e) are implemented** — full tenant erasure plus a retention job that
+> never touches invoices, because § 132 BAO obliges the business to keep them for seven years
+> ([ADR-0011](docs/adr/0011-retention-and-erasure.md)). The Upload → Report → Erklären flow is
+> asserted in a real browser, and the public validator has a Gatling load scenario. Deferred to M6 by
+> the milestone plan: Lighthouse ≥ 95 measurement, OpenTelemetry, `/actuator/info`. Milestone plan:
+> [docs/MILESTONES.md](docs/MILESTONES.md); session-by-session detail: [docs/worklog.md](docs/worklog.md).
 
 ## Deutsche Kurzfassung
 
-**einvoice-at** ist eine selbst hostbare Plattform für die österreichische E-Rechnung: Sie **erzeugt** ebInterface 6.1 und Peppol BIS Billing 3.0 (UBL) aus strukturierten Rechnungsdaten, **validiert** hochgeladene XML-Rechnungen gegen XSD, Schematron und österreichische Geschäftsregeln — mit einem menschenlesbaren, deutschen Prüfbericht — und **konvertiert** zwischen beiden Formaten mit dokumentierten Mapping-Grenzen. Ein abschaltbarer KI-Assistent erklärt jeden Befund auf Wunsch in einfacher Sprache; personenbezogene Daten werden vorher maskiert und das geprüfte Dokument verlässt die Plattform nie ([docs/privacy.md](docs/privacy.md)). Aktueller Stand: Milestone M5 in Arbeit — öffentliche Prüfer-Seite und KI-Erklärungen sind fertig, das Dashboard noch nicht.
+**einvoice-at** ist eine selbst hostbare Plattform für die österreichische E-Rechnung: Sie **erzeugt** ebInterface 6.1 und Peppol BIS Billing 3.0 (UBL) aus strukturierten Rechnungsdaten, **validiert** hochgeladene XML-Rechnungen gegen XSD, Schematron und österreichische Geschäftsregeln — mit einem menschenlesbaren, deutschen Prüfbericht — und **konvertiert** zwischen beiden Formaten mit dokumentierten Mapping-Grenzen. Ein abschaltbarer KI-Assistent erklärt jeden Befund auf Wunsch in einfacher Sprache; personenbezogene Daten werden vorher maskiert und das geprüfte Dokument verlässt die Plattform nie ([docs/privacy.md](docs/privacy.md)). Angemeldete Nutzer:innen verwalten ihre Rechnungen, Prüfberichte und API-Schlüssel im Dashboard, erstellen Rechnungen über einen vierstufigen Assistenten und können ihr Konto samt aller Daten jederzeit vollständig löschen (Art. 17 DSGVO). Rechnungen werden dabei **nie** automatisch gelöscht — § 132 BAO verpflichtet Sie zu sieben Jahren Aufbewahrung ([ADR-0011](docs/adr/0011-retention-and-erasure.md)). Aktueller Stand: **Milestone M5 abgeschlossen.**
 
 ## Architecture
 
@@ -35,10 +40,12 @@ einvoice-at
 ├── validation            ebInterface: XSD + own AT-B2G Schematron + business rules; UBL: the official OpenPeppol rule set
 ├── rendering             invoice → German PDF print view (Apache PDFBox)
 ├── ai-assist             LlmClient port + OpenRouter adapter, PII scrubbing, feature-flagged, degradable
-└── app                   Spring Boot app: REST API, public web UI, security, persistence, audit
+├── app                   Spring Boot app: REST API, web UI + dashboard, security, persistence, audit
+└── e2e                   browser E2E (Selenium/Chrome) + the Gatling load scenario — see Testing
 ```
 
-Every module is built and tested as of M5.
+Every module is built and tested as of M5. `e2e` is compiled by every build but its tests run only
+under `-Pe2e` / `-Pload`, in a dedicated CI job.
 
 Stack: Java 25, Spring Boot 4.1, PostgreSQL 17 + Flyway, Thymeleaf (server-rendered, no CSS/JS build step — [ADR-0009](docs/adr/0009-web-ui.md)), Keycloak, Testcontainers. Rationale in [ADR-0001](docs/adr/0001-java-spring-boot-stack.md).
 
@@ -75,6 +82,8 @@ The `app` module serves the `/api/v1` REST API (M3). Interactive docs: **Swagger
 | `POST` | `/api/v1/convert?from=&to=` | JWT or API key | Convert between `ebinterface` and `ubl` (multipart `file`) → converted XML + loss report + validation of the result. |
 | `GET` | `/api/v1/reports` | JWT or API key | The tenant's validation reports, paginated. |
 | `GET` | `/api/v1/reports/{id}` | JWT or API key | One stored report, findings included. |
+| `POST` | `/api/v1/reports/{id}/explain` | JWT or API key | Attach AI explanations to the report's findings, errors first — bounded per call, `?findingIndex=N` for exactly one. Nothing is persisted. `503` when the feature is off, and a *different* `503` when the provider produced nothing. |
+| `DELETE` | `/api/v1/tenant` | JWT or API key | **Erase this tenant and everything it owns** (GDPR Art. 17): invoices, reports, API keys, audit events, the tenant row. Irreversible, no backup; the credential used for the call is erased by it. |
 | `POST` | `/api/v1/api-keys` | JWT only | Mint an API key; the plaintext is returned exactly once. |
 | `GET` | `/api/v1/api-keys` | JWT only | The tenant's keys (active and revoked), without secrets. |
 | `DELETE` | `/api/v1/api-keys/{id}` | JWT only | Revoke a key (soft: `revokedAt` stamped, row retained). |
@@ -181,7 +190,19 @@ turns it into a real gate with no workflow change.
 
 ## Testing
 
-JUnit 5 + AssertJ + Mockito for unit tests, ArchUnit for module-boundary rules, Testcontainers for integration tests — built out milestone by milestone per [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md). **Selenium WebDriver E2E and the Gatling load scenario are not built yet**; both are M5 work still open (see [docs/worklog.md](docs/worklog.md)). The browser flows they would cover are meanwhile asserted at the HTTP level, driving the real forms with real CSRF tokens — less than a browser proves, and said so rather than implied.
+JUnit 5 + AssertJ + Mockito for unit tests, ArchUnit for module-boundary rules, Testcontainers for integration tests, **Selenium** for the browser flow and **Gatling** for the load scenario — built out milestone by milestone per [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md).
+
+**1017 tests** in a clean `./mvnw verify`, plus 3 browser E2E tests under `-Pe2e`.
+
+**The `e2e` module, and what a green build does and does not mean.** Selenium and Gatling live in their own module because neither belongs on `app`'s test classpath, and because a Chrome image and a load profile do not belong in every developer's inner loop. Its tests are always *compiled* — a module whose tests are never built is a module that quietly stops compiling — but they only *run* under `-Pe2e` (browser) and `-Pload` (Gatling), in a dedicated CI job alongside the existing mutation and security jobs. Stated plainly rather than implied: **a green plain `./mvnw verify` does not mean the browser flow works; the `e2e` job is what means that.**
+
+```bash
+./mvnw -pl e2e verify -Pe2e                 # Upload → Report → Erklären in real Chrome
+docker compose up -d                        # the load scenario needs a running application
+./mvnw -pl e2e gatling:test -Pload          # public validator under concurrent upload
+```
+
+The browser suite covers what no HTTP assertion can: that the report fragment is really swapped into the page by the first-party script, that the explanation lands in the right per-finding container, that the landing page logs **no** severe console entry (which is how a missing favicon was caught), and that the validator still works with **JavaScript disabled** — ADR-0009's claim, asserted rather than asserted-in-prose. The Gatling scenario refuses to report a percentile measured through the rate limiter: it asserts no request was rejected, so a run against a default-configured instance fails instead of publishing a fast, meaningless number.
 
 **Domain modules.** Every module carries a JaCoCo gate, and six of them a [PIT](https://pitest.org) mutation gate on top, so the coverage numbers have teeth rather than just line reach. Figures below are read off the JaCoCo CSV of a full `./mvnw verify`, not estimated:
 
@@ -200,7 +221,7 @@ JUnit 5 + AssertJ + Mockito for unit tests, ArchUnit for module-boundary rules, 
 
 **Round trips and golden files.** The two mapper pairs are exercised by jqwik round-trip properties over one shared input space, which is how the formats' asymmetries were established rather than assumed. `UblEndToEndGenerationTest` is the milestone's strongest automated claim: the sample invoice, generated through the real chain, is judged **Peppol-clean by the official OpenPeppol rule set** — an external verdict, not a self-assessment, since those rules are OpenPeppol's and this project only runs them.
 
-**`app` module.** 93.4 % line / 78.7 % branch (JaCoCo gate 90/78, measured across unit *and* integration runs merged — most of this module's behaviour is only observable end to end). 53 unit tests and 104 integration tests across 18 IT classes, the latter against real PostgreSQL and real Keycloak via Testcontainers:
+**`app` module.** 94.5 % line / 81.0 % branch (JaCoCo gate 90/78, measured across unit *and* integration runs merged — most of this module's behaviour is only observable end to end). 90 unit tests and 186 integration tests across 27 IT classes, the latter against real PostgreSQL and real Keycloak via Testcontainers:
 
 - **Auth matrix** (`AuthMatrixIT`) — both directions of every mechanism: anonymous, unknown key, revoked key, valid key, valid JWT, a bearer header that is not a JWT, an `alg=none` token, a genuine Keycloak token with a rewritten payload, and a request presenting two competing credentials.
 - **Token validation** (`JwtDecoderTest`) — a throwaway JWKS over loopback and self-minted tokens, so wrong issuer, expired `exp`, a foreign signing key, and a foreign key impersonating the real `kid` can each be varied one at a time.
@@ -208,6 +229,9 @@ JUnit 5 + AssertJ + Mockito for unit tests, ArchUnit for module-boundary rules, 
 - **Transactional guarantees** (`ApiKeyServiceTransactionIT`) — a failing audit write rolls the key write back with it.
 - **The browser surface** (`PublicWebIT`) — the forms are driven the way a browser drives them: fetch the page, harvest the session cookie and the `_csrf` token Thymeleaf injected, post both back. A token-less post is asserted to be **refused**, so the CSRF enforcement is proven rather than worked around. Also asserts the two filter chains still own their own paths, and that an anonymous upload leaves the `report` row count unchanged.
 - **The AI flow, both ways** (`AiExplanationIT`) — upload → report → erklären against a real stub provider on a loopback port, with the request body read back to prove no IBAN, e-mail, VAT id or sampling parameter left the JVM; plus the outage path, the cache, and the cost/token meters. Its sibling assertions in `PublicWebIT` cover the flag-off half: no button, no client, nothing lost.
+- **The dashboard** (`DashboardIT`, `ApiKeyPageIT`, `InvoiceWizardIT`) — every page asserted for tenant isolation per route, not once globally; the three document downloads asserted to be served **to a session** (an API link would 401, which is why they are `/app` routes); the freshly minted API key asserted to be shown once and **not** on reload; the wizard driven step by step through one session, with the draft asserted invisible to a second one.
+- **GDPR erasure and retention** (`TenantDeletionIT`, `RetentionServiceIT`, `TenantErasureApiIT`) — erasure asserted table by table, including the audit trail and the tenant row, with the counterpart assertion that another tenant is untouched; the API key used for the call asserted to stop authenticating. The retention suite's load-bearing test is a *negative* one: a **ten-year-old invoice survives a purge**, because § 132 BAO obliges the business to keep it and a platform that swept it up would be actively harmful.
+- **The browser-login wiring** (`OAuth2ClientWiringIT`) — an OAuth2 client configured with explicit, deliberately **unreachable** endpoints. The context starting at all is the assertion: it could not, if Spring Boot attempted OIDC discovery. That is not hypothetical — a provider `issuer-uri` in `docker-compose.yml` made the whole application fail to boot, public validator included, and nothing in the suite noticed because every other context configures no OAuth2 client ([ADR-0009](docs/adr/0009-web-ui.md) Entscheidung 6).
 - **The rest** — Flyway migration and index assertions, repository round-trips through JSONB/`char`/`numeric` columns, rate limiting, request-body caps, security headers, the OpenAPI document and its off-switch, and the ArchUnit cross-module rules.
 
 PIT is deliberately *not* applied to `app`: mutating a module whose tests each boot a Spring context and two containers costs minutes per mutant for little signal, and its genuinely algorithmic parts are covered by fast unit tests.
@@ -226,6 +250,16 @@ two fragment swaps.
 | `GET /validator` | — | The public "Österreichischer E-Rechnungs-Prüfer" (PRD §2's lead magnet) |
 | `POST /validator/pruefen` | — | Upload → report fragment. Rate-limited, 2 MB cap, **nothing stored** |
 | `POST /validator/erklaeren` | — | One finding → AI explanation fragment (only when the flag is on) |
+| `GET /app` | Login | Dashboard overview: per-tenant counts and the most recent invoices and reports |
+| `GET /app/rechnungen` | Login | Invoice list, paginated |
+| `GET /app/rechnungen/{id}` | Login | One invoice: verdict, report history, canonical JSON, three downloads |
+| `GET /app/rechnungen/{id}/{ebinterface,ubl,pdf}` | Login | The three documents, regenerated per request, served **to the session** |
+| `GET /app/rechnungen/neu` | Login | Create-invoice wizard, four server-rendered steps |
+| `GET /app/berichte` | Login | Stored report list — and it says which reports are *not* here, and why |
+| `GET /app/berichte/{id}` | Login | Report detail, same fragment the public validator renders |
+| `POST /app/berichte/{id}/erklaeren` | Login | Explain one stored finding **by position**, not by posted text |
+| `GET /app/api-schluessel` | Login | Mint, list and revoke API keys; the plaintext is shown exactly once |
+| `GET /app/konto` | Login | What is stored about you, and the danger zone that erases it |
 
 **Two security filter chains, not one.** `/api/**` keeps M3/M4's policy byte for byte — stateless,
 CSRF disabled, bearer token or `X-Api-Key`. The browser surface gets its own chain with a session,
@@ -238,7 +272,22 @@ a 401, so `PublicWebIT` asserts the split rather than trusting it.
 `ReportService.validate(bytes, Optional.empty())` the anonymous REST endpoint calls, where the empty
 `Optional` means "write nothing". A UI-specific validation path would have been a second place for
 that promise to break; instead there is one, and an integration test asserts the `report` row count
-does not move after an anonymous upload.
+does not move after an anonymous upload. The wizard applies the same principle to creation: its last
+step serialises the draft to canonical JSON and calls the *same* `InvoiceService.create` that
+`POST /api/v1/invoices` calls.
+
+**The dashboard's downloads are `/app` routes, not links into `/api/v1` — and that is not an
+oversight.** Linking a button to `/api/v1/invoices/{id}/pdf` is the obvious move and would not work:
+`/api/**` is the stateless chain and never reads the browser's session cookie, so the click would land
+on a 401 in a new tab. The dashboard serves the same `InvoiceService` output behind the session chain
+instead. The service is the shared part; the transport is not, and cannot be.
+
+**The browser login is wired without OIDC discovery.** A provider `issuer-uri` makes Spring Boot fetch
+`.well-known/openid-configuration` at startup, and in Docker that URL is the browser-facing one — which
+inside the container is its own loopback. Setting it made the entire application fail to boot. The four
+endpoints are given explicitly instead, and Keycloak's `KC_HOSTNAME` is pinned so the `iss` claim is one
+value on both channels. Both halves are pinned by tests; the reasoning and the cost are in
+[ADR-0009](docs/adr/0009-web-ui.md) Entscheidung 6.
 
 ## AI explanations
 

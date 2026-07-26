@@ -78,6 +78,22 @@ is authenticated and audited (`CONVERSION_RUN`); only `/validate` stays public. 
 limits: [ADR-0007](adr/0007-ubl-peppol-and-conversion.md), [ADR-0008](adr/0008-pdf-rendering.md).
 `POST /reports/{id}/explain` remains M5.
 
+_M5 sync, part 2 (2026-07-26):_ `POST /reports/{id}/explain` **is live**, closing the last endpoint this
+section had been carrying as "remains M5". It takes a **stored** report id and reads the findings from
+the row — the caller cannot choose the text to be explained, unlike the public page's route, which has
+to post the finding to itself because an anonymous report was never stored. Errors first, bounded by
+`app.ai.max-findings-per-request` (default 10) per call; `?findingIndex=N` explains exactly one.
+Nothing is persisted: the stored report keeps the validator's own verdict. With the feature flag off it
+answers **503** `ai-explanations-disabled`, not 404 — the route is correct and the capability is absent,
+and an operator must be able to tell those apart. A total provider outage is **503**
+`ai-explanation-unavailable` rather than a 200 whose explanations are all null, which would be
+indistinguishable from "nothing to explain".
+
+`DELETE /tenant` is **added** (not previously in this section): erasure on request, GDPR Art. 17 —
+every invoice, report, API key and audit event of the calling tenant, plus the tenant row, in one
+transaction. Scoped by the credential, so it carries no tenant id and cannot be aimed at anyone else;
+the API key used for the call is erased by it. See [ADR-0011](adr/0011-retention-and-erasure.md).
+
 _M3 hostile-review fix wave (2026-07-25):_ The 2 MB cap now covers **every** request body, not only multipart uploads — no Boot or Tomcat property bounds an ordinary body, and `POST /invoices` buffers its own whole, so an application-layer filter ahead of Spring Security enforces it and answers the same 413 `content-too-large` the multipart cap does. Three further bounds/switches, all documented in `.env.example`: `OAUTH2_AUDIENCE` (optional `aud` validation, closing the limit ADR-0006 had recorded as open), `API_KEYS_MAX_ACTIVE_PER_TENANT` (default 25 active keys, revoked rows retained and uncounted), and `API_DOCS_ENABLED` (default on; `false` removes the OpenAPI document and Swagger UI).
 
 ## 5. Web UI (Thymeleaf + htmx)
@@ -92,6 +108,36 @@ had nothing to protect while the app was API-only) and `oauth2Login` against Key
 upload runs through the *same* `ReportService.validate(bytes, Optional.empty())` as the anonymous REST
 endpoint, so "an anonymous upload is never stored" has one implementation, and the same rate-limit
 bucket, so the page cannot be an unlimited detour around a limited endpoint.
+
+_M5 sync, part 2 (2026-07-26):_ **The authenticated dashboard is realized.** Overview with per-tenant
+counts, invoice list and detail, report list and detail (the same report fragment the public validator
+renders, so the German wording and severity grouping cannot drift between the two surfaces), the
+four-step server-rendered create-invoice wizard, the API-key page, and a **Konto** page carrying the
+GDPR danger zone. German route segments throughout (`/app/rechnungen`, `/app/berichte`,
+`/app/api-schluessel`, `/app/konto`), matching `/validator/pruefen`.
+
+Three details worth stating because each was a decision:
+
+- **The document downloads are `/app/...` routes, not links into `/api/v1`.** The three formats are
+  already exposed by the API, and linking a dashboard button there would *not work*: `/api/**` is the
+  stateless chain and never reads the browser's session cookie, so the click lands on a 401. The
+  dashboard serves them from the same `InvoiceService` methods behind the session chain.
+- **The wizard's last step calls the same `InvoiceService.create` as `POST /api/v1/invoices`** — same
+  duplicate detection, same generated-and-validated report, same audit event. The draft lives in the
+  HTTP session (per session, asserted) because step 3 collects a *list* of lines.
+- **A freshly minted API key travels as a flash attribute** through a POST-redirect-GET, so a reload of
+  the page cannot re-show the secret. Only its hash is stored, so the page has exactly one chance.
+
+`WebExceptionHandler` renders the browser surface's 404s as an HTML page: `ApiExceptionHandler` is an
+unrestricted `@RestControllerAdvice` and applies to Thymeleaf controllers too, so a mistyped invoice id
+used to answer a correct 404 whose body was `application/problem+json` — raw JSON in a browser, in
+English, from a German UI.
+
+**Browser E2E and load testing live in a new `e2e` module** (Selenium against Chrome in a container for
+Upload → Report → Erklären, plus a Gatling scenario for the public validator). Its tests are always
+compiled but only *run* under `-Pe2e` / `-Pload`, in their own CI job — the same shape the `mutation`
+and `security` profiles already use. The consequence is stated rather than implied: a green plain
+`./mvnw verify` does not mean the browser flow works; the `e2e` job is what means that.
 
 **Two deviations from §1, both deliberate and both recorded in [ADR-0009](adr/0009-web-ui.md):** no
 Tailwind standalone CLI (a ~100 MB platform-specific binary downloaded in every build, for a handful
