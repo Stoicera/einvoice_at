@@ -76,6 +76,35 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
     </dependency>
+    <!-- OAuth2 CLIENT (not resource server): the browser half of the platform logs in with the
+         authorization-code flow against Keycloak, which is a different role than validating a bearer
+         token someone else minted. Both live side by side in SecurityConfig's two filter chains —
+         see ADR-0009 for why two chains rather than one widened one. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-oauth2-client</artifactId>
+    </dependency>
+    <!-- Server-rendered HTML (SPEC §5). Thymeleaf only — no CSS or JS build step: the stylesheet is
+         hand authored and the ~50 lines of progressive enhancement are first-party. ADR-0009 records
+         why, including the deliberate deviation from SPEC §1's Tailwind standalone CLI. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-thymeleaf</artifactId>
+    </dependency>
+    <!-- Thymeleaf/Spring Security integration: sec:authorize and #authentication in templates, so a
+         template never has to be handed "is this user logged in" as a model attribute the controller
+         computed. Version Boot-managed. -->
+    <dependency>
+      <groupId>org.thymeleaf.extras</groupId>
+      <artifactId>thymeleaf-extras-springsecurity6</artifactId>
+    </dependency>
+    <!-- AI-assisted finding explanations, behind features.ai-explanations (SPEC §2/§6). Reactor-
+         versioned sibling; it is plain Java, so app owns every bean it becomes. -->
+    <dependency>
+      <groupId>com.stoicera.einvoice</groupId>
+      <artifactId>ai-assist</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <!-- Per-IP token-bucket rate limiting for the anonymous side of POST /api/v1/validate
          (RateLimitFilter, T8). Version parent-managed (see the root POM's bucket4j.version
          comment for the Maven Central verification). Dependency-free beyond the JDK. -->

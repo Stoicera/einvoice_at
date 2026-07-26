@@ -1,0 +1,112 @@
+<!--/*
+  The report view (SPEC §5): findings grouped by severity, German first.
+
+  Rendered two ways from one template — swapped into the validator page by app.js, and returned as a
+  whole response when there is no JavaScript. That is why it carries its own heading instead of
+  relying on the page around it.
+*/-->
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="de">
+  <body>
+    <div th:fragment="report" class="stack" style="margin-top: 1.5rem">
+      <p class="errors" th:if="${uploadError}" th:text="${uploadError}"></p>
+
+      <th:block th:unless="${uploadError}">
+        <div class="verdict" th:classappend="${valid} ? 'valid' : 'invalid'">
+          <span class="headline" th:if="${valid}">Diese Datei ist gültig.</span>
+          <span class="headline" th:unless="${valid}"
+            >Diese Datei ist nicht gültig.</span
+          >
+          <span class="pill ok" th:if="${valid}">gültig</span>
+          <span class="pill error" th:unless="${valid}"
+            th:text="|${#lists.size(errors)} Fehler|"
+          ></span>
+          <span class="pill warn" th:if="${!#lists.isEmpty(warnings)}"
+            th:text="|${#lists.size(warnings)} Warnungen|"
+          ></span>
+          <span class="muted right">
+            <span th:if="${filename}" th:text="${filename}"></span>
+            <span th:text="|· ${sourceFormat} · Profil ${profile}|"></span>
+          </span>
+        </div>
+
+        <p class="muted" th:if="${valid and #lists.isEmpty(findings)}">
+          Keine Befunde. Das Dokument erfüllt Schema und Regelwerk vollständig.
+        </p>
+
+        <!--/* Errors first: they are what stops an invoice from being accepted. */-->
+        <th:block th:if="${!#lists.isEmpty(errors)}">
+          <h2>Fehler — diese verhindern die Annahme</h2>
+          <th:block th:each="f : ${errors}">
+            <!--/* th:each and th:replace must NOT sit on the same element: th:replace has the higher
+                   precedence and would run before the iteration existed, so `f` would be unbound. */-->
+            <div th:replace="~{fragments/report :: finding(${f})}"></div>
+          </th:block>
+        </th:block>
+
+        <th:block th:if="${!#lists.isEmpty(warnings)}">
+          <h2>Warnungen</h2>
+          <th:block th:each="f : ${warnings}">
+            <!--/* th:each and th:replace must NOT sit on the same element: th:replace has the higher
+                   precedence and would run before the iteration existed, so `f` would be unbound. */-->
+            <div th:replace="~{fragments/report :: finding(${f})}"></div>
+          </th:block>
+        </th:block>
+
+        <th:block th:if="${!#lists.isEmpty(infos)}">
+          <h2>Hinweise</h2>
+          <th:block th:each="f : ${infos}">
+            <!--/* th:each and th:replace must NOT sit on the same element: th:replace has the higher
+                   precedence and would run before the iteration existed, so `f` would be unbound. */-->
+            <div th:replace="~{fragments/report :: finding(${f})}"></div>
+          </th:block>
+        </th:block>
+      </th:block>
+    </div>
+
+    <!--/* One finding. The German message is the primary text (project policy: every finding carries
+           one); the English mirror and the location are quiet secondary lines for a developer. */-->
+    <div th:fragment="finding(f)" class="finding" th:classappend="${f.severityClass()}">
+      <div class="head">
+        <span class="pill" th:classappend="${f.severityClass()}" th:text="${f.severityLabel()}"></span>
+        <span class="rule" th:text="${f.finding().ruleId()}"></span>
+      </div>
+      <p class="message-de" th:text="${f.finding().messageDe()}"></p>
+      <p class="message-en" th:text="${f.finding().messageEn()}"></p>
+      <p class="where" th:if="${f.finding().location()}">
+        Fundstelle: <span class="mono" th:text="${f.finding().location()}"></span>
+      </p>
+
+      <!--/* An explanation already attached server-side (the dashboard's explain-all route). */-->
+      <div th:if="${f.hasExplanation()}" class="explanation">
+        <span class="who">KI-Erklärung</span>
+        <p th:text="${f.finding().aiExplanation()}"></p>
+      </div>
+
+      <!--/*
+        "Fehler erklären" — only when the feature is configured at all, which is what makes it
+        "abschaltbar ohne Funktionsverlust": with the flag off there is no button, not a button that
+        fails. The finding travels in hidden fields because an anonymous report has no id to look up
+        (nothing was stored) — see PublicWebController's Javadoc.
+      */-->
+      <form
+        th:if="${aiEnabled and !f.hasExplanation()}"
+        th:action="@{/validator/erklaeren}"
+        method="post"
+        th:attr="data-swap='#explanation-' + ${f.index()}"
+        style="margin-top: 0.6rem"
+      >
+        <input type="hidden" name="ruleId" th:value="${f.finding().ruleId()}" />
+        <input type="hidden" name="severity" th:value="${f.finding().severity().name()}" />
+        <input type="hidden" name="location" th:value="${f.finding().location()}" />
+        <input type="hidden" name="messageDe" th:value="${f.finding().messageDe()}" />
+        <input type="hidden" name="messageEn" th:value="${f.finding().messageEn()}" />
+        <input type="hidden" name="sourceFormat" th:value="${sourceFormat}" />
+        <input type="hidden" name="profile" th:value="${profile}" />
+        <button class="secondary" type="submit">Fehler erklären</button>
+        <span class="spinner" data-spinner>Wird erklärt …</span>
+      </form>
+      <div th:attr="id='explanation-' + ${f.index()}"></div>
+    </div>
+  </body>
+</html>

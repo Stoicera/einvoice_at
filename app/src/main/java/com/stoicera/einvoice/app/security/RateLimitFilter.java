@@ -77,6 +77,21 @@ public class RateLimitFilter extends OncePerRequestFilter {
   private static final String VALIDATE_PATH = "/api/v1/validate";
   private static final String CONVERT_PATH = "/api/v1/convert";
 
+  /**
+   * The browser surface's upload (M5). Same work, same limit, and deliberately the SAME bucket name
+   * as {@link #VALIDATE_PATH}: the public page posts here and the API endpoint is posted to
+   * directly, so separate buckets would hand one anonymous caller two full allowances for the same
+   * CPU. Without this matcher the UI would simply be an unlimited detour around a limited endpoint.
+   */
+  private static final String UI_VALIDATE_PATH = "/validator/pruefen";
+
+  /**
+   * The browser surface's per-finding "Erklären" (M5). Anonymous-reachable, and each call may
+   * become a paid LLM request, so it is limited on the same anonymous-only policy — the money
+   * argument is the same shape as the CPU argument for the validator.
+   */
+  private static final String UI_EXPLAIN_PATH = "/validator/erklaeren";
+
   // Deliberately NOT request.getRequestURI().equals(VALIDATE_PATH): getRequestURI() returns the
   // raw, undecoded, un-normalized URI straight off the wire, while SecurityConfig's
   // requestMatchers(HttpMethod, "/api/v1/validate") — and the DispatcherServlet's own routing —
@@ -93,6 +108,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
   /** Same matcher machinery, same reason, for the conversion endpoint. */
   private static final RequestMatcher CONVERT_MATCHER =
       PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, CONVERT_PATH);
+
+  /** The two browser-surface routes, charged to the validate bucket (see the path constants). */
+  private static final RequestMatcher UI_VALIDATE_MATCHER =
+      PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, UI_VALIDATE_PATH);
+
+  private static final RequestMatcher UI_EXPLAIN_MATCHER =
+      PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, UI_EXPLAIN_PATH);
 
   // Filters run outside Spring MVC's dispatch, so ApiExceptionHandler's @RestControllerAdvice never
   // sees a rejection this filter makes — the problem body has to be written here, by hand. It goes
@@ -139,14 +161,21 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
   @Override
   protected boolean shouldNotFilter(HttpServletRequest request) {
-    return !VALIDATE_MATCHER.matches(request) && !CONVERT_MATCHER.matches(request);
+    return !isValidateShaped(request) && !CONVERT_MATCHER.matches(request);
+  }
+
+  /** The three routes that share the validate bucket: the API endpoint and the two UI routes. */
+  private static boolean isValidateShaped(HttpServletRequest request) {
+    return VALIDATE_MATCHER.matches(request)
+        || UI_VALIDATE_MATCHER.matches(request)
+        || UI_EXPLAIN_MATCHER.matches(request);
   }
 
   @Override
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
       throws ServletException, IOException {
-    Limit limit = VALIDATE_MATCHER.matches(request) ? validateLimit : convertLimit;
+    Limit limit = isValidateShaped(request) ? validateLimit : convertLimit;
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
     boolean authenticated = isAuthenticated(authentication);
 

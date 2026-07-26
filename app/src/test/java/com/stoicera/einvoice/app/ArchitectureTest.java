@@ -98,6 +98,7 @@ class ArchitectureTest {
     "com.stoicera.einvoice.formats.ebinterface..",
     "com.stoicera.einvoice.formats.ubl..",
     "com.stoicera.einvoice.rendering..",
+    "com.stoicera.einvoice.aiassist..",
   };
 
   /**
@@ -235,6 +236,46 @@ class ArchitectureTest {
                 + " ReportNotFoundException, ApiKeyNotFoundException, TooManyApiKeysException) and"
                 + " ApiExceptionHandler owns the status. Filters writing their own problem response"
                 + " are unaffected: they use org.springframework.http.HttpStatus, not this class")
+        .check(CLASSES);
+  }
+
+  /**
+   * SPEC §2's last key rule: "{@code ai-assist} is only called from {@code app} behind the feature
+   * flag {@code features.ai-explanations}".
+   *
+   * <p>The flag itself is configuration and cannot be asserted structurally — but the shape that
+   * makes it effective can be. {@code ..app.ai..} is the only package allowed to touch {@code
+   * ai-assist}, and it is the package whose beans exist only when the flag is on ({@code AiConfig}
+   * is {@code @ConditionalOnProperty}). A controller reaching for {@code FindingExplainer} directly
+   * would bypass {@code ExplanationService}'s "is the feature even there" check and turn a
+   * switched-off feature into a startup failure or a NoSuchBeanDefinitionException — which is
+   * exactly what "abschaltbar ohne Funktionsverlust" must not mean.
+   *
+   * <p>{@code ..app.web..} and {@code ..app.api..} therefore speak to {@code ExplanationService},
+   * never to the library. {@code ExplanationContext} is the one exception, and a narrow one: it is
+   * the argument type of the very call they make, so they must be able to construct it.
+   */
+  @Test
+  void aiAssistIsReachedOnlyThroughTheFlaggedWiring() {
+    noClasses()
+        .that()
+        // app's own classes only — a rule scoped to "everything outside ..app.ai.." would also
+        // forbid ai-assist from depending on itself, which is 71 violations and no information.
+        .resideInAPackage("com.stoicera.einvoice.app..")
+        .and()
+        .resideOutsideOfPackage("com.stoicera.einvoice.app.ai..")
+        .should()
+        .dependOnClassesThat(
+            JavaClass.Predicates.resideInAnyPackage("com.stoicera.einvoice.aiassist..")
+                .and(
+                    DescribedPredicate.not(
+                        JavaClass.Predicates.belongToAnyOf(
+                            com.stoicera.einvoice.aiassist.ExplanationContext.class))))
+        .because(
+            "SPEC §2: ai-assist is only called from app behind the feature flag, which in practice"
+                + " means through ..app.ai.. — AiConfig is @ConditionalOnProperty and"
+                + " ExplanationService is what answers 'is the feature even configured'."
+                + " ExplanationContext is exempt: it is the argument type of that very call")
         .check(CLASSES);
   }
 

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="de">
+  <head
+    th:replace="~{fragments/layout :: head(
+      'E-Rechnung prüfen — ebInterface 6.1 und Peppol BIS 3.0 validieren',
+      'Kostenlos österreichische E-Rechnungen prüfen: ebInterface 6.1 und Peppol BIS Billing 3.0 (UBL) gegen XSD, Schematron und die Regeln des Bundes — mit deutschem Prüfbericht. Der Upload wird nicht gespeichert.')}"
+  ></head>
+  <body>
+    <div th:replace="~{fragments/layout :: masthead}"></div>
+
+    <main class="shell">
+      <h1>Österreichischer E-Rechnungs-Prüfer</h1>
+      <p class="lede">
+        Laden Sie eine <strong>ebInterface-6.1-</strong> oder
+        <strong>Peppol-BIS-Billing-3.0-</strong>Rechnung hoch. Das Format wird automatisch erkannt.
+        Sie bekommen einen deutschen Prüfbericht — Regel, Fundstelle und Klartext je Befund.
+      </p>
+
+      <!--/*
+        The DSGVO notice MILESTONES names by name. It is placed above the upload, not in the footer:
+        a promise about an upload has to be readable before the upload happens. The claim is true by
+        construction — an anonymous validation goes through ReportService with an empty tenant, which
+        writes no row (ADR-0006), and the same code path serves the anonymous REST endpoint.
+      */-->
+      <div class="notice">
+        <strong>Datenschutz:</strong> Der Upload wird nicht gespeichert. Ihre Datei wird im
+        Arbeitsspeicher geprüft und danach verworfen — kein Prüfbericht, kein Protokolleintrag, keine
+        Datei auf einem Datenträger. Angemeldete Nutzer:innen können ihre Berichte bewusst im
+        Dashboard speichern.
+      </div>
+
+      <form
+        class="stack"
+        th:action="@{/validator/pruefen}"
+        method="post"
+        enctype="multipart/form-data"
+        data-swap="#report"
+        style="margin-top: 1.5rem"
+      >
+        <div class="dropzone">
+          <label for="file">XML-Datei (max. 2 MB)</label>
+          <input id="file" type="file" name="file" accept=".xml,text/xml,application/xml" required />
+        </div>
+        <div class="row">
+          <button type="submit">Rechnung prüfen</button>
+          <span class="spinner" data-spinner>Wird geprüft …</span>
+        </div>
+      </form>
+
+      <!--/* The script swaps the report fragment in here; without JavaScript the form posts
+             normally and the fragment is rendered as the whole response. */-->
+      <div id="report"></div>
+
+      <h2>Was geprüft wird</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>ebInterface 6.1</h3>
+          <p class="muted">
+            XSD-Schema, dann eigene AT-B2G-Schematron-Regeln (Auftragsreferenz, Biller-E-Mail,
+            Lieferantennummer, Zahlungsmethode) und Geschäftsregeln wie die IBAN-Prüfsumme.
+            AUSTRIAPRO veröffentlicht kein Schematron — diese Regeln stammen aus diesem Projekt und
+            sind im Repository nachlesbar.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Peppol BIS Billing 3.0</h3>
+          <p class="muted">
+            Das <strong>offizielle OpenPeppol-Regelwerk</strong>, unverändert ausgeführt, an einer
+            im Code festgelegten Version. Befunde tragen die Regel-IDs des Regelwerks selbst
+            (z. B. <code>PEPPOL-EN16931-R010</code>), damit Sie sie direkt nachschlagen können.
+          </p>
+        </div>
+      </div>
+
+      <h2>Häufige Fragen</h2>
+      <div class="stack">
+        <div class="card">
+          <h3>Warum lehnt der Bund meine Rechnung ab?</h3>
+          <p class="muted">
+            Meist fehlt eine Pflichtangabe, die nur für Bundesdienststellen gilt — allen voran die
+            <strong>Auftragsreferenz</strong> und die <strong>Lieferantennummer</strong>. Der
+            Prüfbericht nennt die verletzte Regel und die Fundstelle im Dokument.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Kann ich zwischen den Formaten konvertieren?</h3>
+          <p class="muted">
+            Ja — ebInterface ↔ UBL in beide Richtungen, mit einem Bericht darüber, was das Zielformat
+            nicht tragen kann. Das läuft über die
+            <a th:href="@{/swagger-ui.html}">REST-API</a>.
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <div th:replace="~{fragments/layout :: colophon}"></div>
+  </body>
+</html>

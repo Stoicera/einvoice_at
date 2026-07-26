@@ -1,0 +1,32 @@
+<!--/*
+  One AI explanation, or the friendly notice that stands in for it.
+
+  This template is the visible half of the degradation contract (ADR-0010): FindingExplainer returns
+  an empty Optional for a provider outage, a timeout, a refusal or an unparseable answer, and all of
+  them land here as the same sentence. The report above it is unaffected and fully usable — which is
+  what "KI abschaltbar ohne Funktionsverlust" means in practice.
+*/-->
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="de">
+  <body>
+    <div th:fragment="explanation" class="explanation">
+      <th:block th:if="${explanation}">
+        <span class="who">KI-Erklärung</span>
+        <!--/* th:text escapes, so model output can never inject markup. white-space: pre-line in the
+               stylesheet keeps the two paragraphs the prompt asks for. */-->
+        <p th:text="${explanation}"></p>
+        <p class="muted" style="font-size: 0.8rem">
+          Automatisch erzeugt und nicht geprüft. Personenbezogene Daten wurden vor der Übermittlung
+          maskiert.
+        </p>
+      </th:block>
+      <th:block th:unless="${explanation}">
+        <span class="who">Erklärung nicht verfügbar</span>
+        <p class="muted">
+          Der KI-Dienst ist momentan nicht erreichbar. Der Prüfbericht oben ist davon nicht betroffen
+          — Regel-ID und Fundstelle sagen bereits, was zu korrigieren ist.
+        </p>
+      </th:block>
+    </div>
+  </body>
+</html>

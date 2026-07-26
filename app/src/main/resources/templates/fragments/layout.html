@@ -1,0 +1,59 @@
+<!--/*
+  Shared chrome. Deliberately plain Thymeleaf fragments rather than the layout dialect: three
+  fragments (head, masthead, colophon) included by each page is less machinery than a second
+  templating concept, and every page stays readable on its own.
+*/-->
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="de">
+  <head th:fragment="head(pageTitle, description)">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title th:text="|${pageTitle} · einvoice-at|">einvoice-at</title>
+    <!--/* SEO meta, German-first: PRD §8 wants this page found for "ebInterface validieren". */-->
+    <meta name="description" th:content="${description}" />
+    <meta property="og:title" th:content="${pageTitle}" />
+    <meta property="og:description" th:content="${description}" />
+    <meta property="og:locale" content="de_AT" />
+    <meta property="og:type" content="website" />
+    <link rel="stylesheet" th:href="@{/app.css}" />
+    <!--/* Deferred so it never blocks the first paint; the pages work without it. */-->
+    <script th:src="@{/app.js}" defer></script>
+  </head>
+
+  <body>
+    <header class="masthead" th:fragment="masthead">
+      <div class="shell">
+        <a class="wordmark" th:href="@{/}">einvoice<span>-at</span></a>
+        <nav>
+          <a th:href="@{/validator}">Prüfer</a>
+          <a th:href="@{/swagger-ui.html}">API</a>
+          <th:block sec:authorize="isAuthenticated()"
+                    xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+            <a th:href="@{/app}">Dashboard</a>
+            <form th:action="@{/logout}" method="post" style="display: inline">
+              <button class="link" type="submit">Abmelden</button>
+            </form>
+          </th:block>
+          <th:block sec:authorize="!isAuthenticated()"
+                    xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+            <a th:href="@{/app}">Anmelden</a>
+          </th:block>
+        </nav>
+      </div>
+    </header>
+
+    <footer class="colophon" th:fragment="colophon">
+      <div class="shell">
+        <p>
+          einvoice-at — E-Rechnungs-Plattform für Österreich (ebInterface 6.1, Peppol BIS Billing
+          3.0). Ein Open-Source-Projekt der
+          <a href="https://stoicera.com">Stoicera Software Group</a>, Apache-2.0.
+        </p>
+        <p class="muted">
+          Prüfung und Erklärung sind technische Hilfestellungen und keine Rechts- oder
+          Steuerberatung.
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -85,6 +85,28 @@ app:
       capacity: ${RATE_LIMIT_CONVERT_CAPACITY:20}
       refill-per-minute: ${RATE_LIMIT_CONVERT_REFILL_PER_MINUTE:20}
 
+  # AI-assisted finding explanations (SPEC §6, ADR-0010). Only read when the feature flag below is on;
+  # AiConfig contributes no beans at all otherwise, so an unset AI_API_KEY is not a problem until
+  # someone switches the feature on — at which point the context fails to start and says so, rather
+  # than booting a client that cannot work.
+  ai:
+    base-url: ${AI_BASE_URL:https://openrouter.ai/api/v1}
+    api-key: ${AI_API_KEY:}
+    model: ${AI_MODEL:anthropic/claude-sonnet-5}
+    timeout: ${AI_TIMEOUT:15s}
+    max-retries: ${AI_MAX_RETRIES:1}
+    max-output-tokens: ${AI_MAX_OUTPUT_TOKENS:700}
+
+# Feature flags. SPEC §2 names this one: "ai-assist is only called from app behind the feature flag
+# features.ai-explanations".
+#
+# DEFAULT OFF, deliberately. The feature costs money per click and sends text to a third party; that
+# is something an operator switches on knowingly, not something they discover in an invoice. With it
+# off the platform is complete: the validator, the reports and the API are unchanged, and the
+# "Erklären" buttons are simply not rendered (M5 Abnahme: "KI abschaltbar ohne Funktionsverlust").
+features:
+  ai-explanations: ${FEATURES_AI_EXPLANATIONS:false}
+
 # OpenAPI document and Swagger UI. Both are served anonymously (SecurityConfig permits them), which
 # is right for a portfolio/dev instance and a decision that deserves an off-switch rather than a
 # default nobody chose — springdoc itself warns on every boot when they are left on. One flag drives

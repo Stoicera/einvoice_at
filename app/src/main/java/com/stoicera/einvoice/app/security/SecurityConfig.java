@@ -3,14 +3,18 @@ package com.stoicera.einvoice.app.security;
 import com.stoicera.einvoice.app.persistence.ApiKeyRepository;
 import java.util.ArrayList;
 import java.util.List;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimNames;
@@ -26,42 +30,54 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.util.StringUtils;
 
 /**
- * The stateless security policy for the REST API.
+ * The platform's security policy, in <strong>two filter chains</strong>.
  *
- * <p>Two authentication mechanisms sit side by side: an OAuth2 resource server validating Keycloak
- * JWTs, and the {@link ApiKeyAuthFilter} resolving {@code X-Api-Key} headers ahead of the bearer
- * filter. A request presents one or the other — enforced, not assumed: presenting both is refused
- * with 400 by {@link ApiKeyAuthFilter}, since otherwise filter ordering alone would decide which
- * tenant the request ran as.
+ * <h2>Why two (ADR-0009)</h2>
  *
- * <p>Authorization is expressed in the rule set, not scattered through controllers:
+ * <p>Until M5 there was one, and it was right: {@code app} served only a stateless REST API. M5
+ * adds a browser surface, and the two have opposite requirements — an API client wants {@code 401}
+ * + {@code problem+json} where a browser wants a redirect to the login page; an API request must
+ * create no session where a form request needs one; CSRF protection is mandatory for a cookie
+ * session (ENGINEERING_STANDARDS §4) and meaningless for a bearer-token call. Expressing that in
+ * one chain would mean a condition per difference, and every such condition is a place where a
+ * later change hits the wrong half.
  *
  * <ul>
- *   <li>public: {@code POST /api/v1/validate} (the anonymous validator), the health probes, and the
- *       OpenAPI docs/UI (which can be switched off entirely with {@code API_DOCS_ENABLED=false});
- *   <li>{@code /api/v1/api-keys/**}: JWT logins only ({@code ROLE_USER}) — an API key ({@code
- *       ROLE_API_KEY}) must never mint or revoke API keys;
- *   <li>everything else: authenticated.
+ *   <li>{@link #apiSecurityFilterChain} — {@code @Order(1)}, matches {@code /api/**} plus the
+ *       health probes and OpenAPI paths. <strong>Byte-for-byte the M4 policy</strong>: stateless,
+ *       CSRF off, OAuth2 resource server or {@code X-Api-Key}.
+ *   <li>{@link #webSecurityFilterChain} — {@code @Order(2)}, the catch-all. Session, CSRF on,
+ *       {@code oauth2Login} against Keycloak.
  * </ul>
  *
- * <p>{@link RateLimitFilter} adds a per-IP token bucket in front of anonymous calls to the public
- * validator only (SPEC section 4) — see that class's Javadoc for the full rationale.
+ * <p><strong>The order is load-bearing.</strong> A new API path placed <em>outside</em> {@code
+ * /api/**} would fall through to the web chain and answer a missing credential with a login
+ * redirect instead of a 401. {@code SecurityChainRoutingIT} asserts the split rather than trusting
+ * the convention.
  */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
+  /** Everything the stateless API chain owns. Anything else belongs to the browser chain. */
+  private static final String[] API_PATHS = {
+    "/api/**", "/actuator/**", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"
+  };
+
+  /**
+   * The stateless REST API — unchanged from M4 except for being scoped to {@link #API_PATHS} by an
+   * explicit {@code securityMatcher} instead of being the only chain there is.
+   */
   @Bean
-  SecurityFilterChain securityFilterChain(
+  @Order(1)
+  SecurityFilterChain apiSecurityFilterChain(
       HttpSecurity http,
       ApiKeyRepository apiKeys,
       JwtDecoder jwtDecoder,
-      @Value("${app.rate-limit.validate.capacity}") long rateLimitCapacity,
-      @Value("${app.rate-limit.validate.refill-per-minute}") long rateLimitRefillPerMinute,
-      @Value("${app.rate-limit.convert.capacity}") long convertRateLimitCapacity,
-      @Value("${app.rate-limit.convert.refill-per-minute}") long convertRateLimitRefillPerMinute)
+      RateLimitFilter rateLimitFilter)
       throws Exception {
-    http.authorizeHttpRequests(
+    http.securityMatcher(API_PATHS)
+        .authorizeHttpRequests(
             authorize ->
                 authorize
                     .requestMatchers(HttpMethod.POST, "/api/v1/validate")
@@ -70,19 +86,11 @@ public class SecurityConfig {
                     .permitAll()
                     .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
                     .permitAll()
-                    // Boot's error dispatch forwards to /error; the AuthorizationFilter runs on
-                    // that
-                    // dispatch too, so /error must be permitted or a permitted path's 404 would be
-                    // rewritten to a 401 for an anonymous caller.
-                    .requestMatchers("/error")
-                    .permitAll()
                     // API-key management is OAuth2-only. JWT logins carry ROLE_USER; API-key
                     // authentications carry ROLE_API_KEY, so this denies keys in the security layer
                     // itself rather than trusting controller code to re-check.
                     .requestMatchers("/api/v1/api-keys/**")
                     .hasRole("USER")
-                    .requestMatchers("/api/**")
-                    .authenticated()
                     .anyRequest()
                     .authenticated())
         // X-Api-Key is resolved before the bearer-token filter.
@@ -92,13 +100,7 @@ public class SecurityConfig {
         // mechanism, including Spring Security's own anonymous-authentication filter, has run by
         // then) and only ever sees requests that already cleared authorization — see
         // RateLimitFilter's own Javadoc for the full placement rationale.
-        .addFilterAfter(
-            new RateLimitFilter(
-                rateLimitCapacity,
-                rateLimitRefillPerMinute,
-                convertRateLimitCapacity,
-                convertRateLimitRefillPerMinute),
-            AuthorizationFilter.class)
+        .addFilterAfter(rateLimitFilter, AuthorizationFilter.class)
         .oauth2ResourceServer(
             oauth2 ->
                 oauth2.jwt(
@@ -111,6 +113,92 @@ public class SecurityConfig {
             session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .csrf(csrf -> csrf.disable());
     return http.build();
+  }
+
+  /**
+   * The browser surface (SPEC §5): the public validator and the authenticated dashboard.
+   *
+   * <p>Three deliberate differences from the API chain, each a consequence of a cookie session
+   * existing at all:
+   *
+   * <ul>
+   *   <li><strong>CSRF protection is on</strong> — the requirement ENGINEERING_STANDARDS §4 states
+   *       and that the API chain legitimately does not need. Every state-changing form carries the
+   *       token; Thymeleaf adds it to {@code <form method="post">} automatically.
+   *   <li><strong>A session is created</strong> (the framework default), because the
+   *       authorization-code flow has nowhere else to keep the authenticated principal.
+   *   <li><strong>{@code oauth2Login}</strong> — a browser gets Keycloak's login page and comes
+   *       back with a code, rather than being told to go and find a bearer token.
+   * </ul>
+   *
+   * <p>The public routes are exactly the ones SPEC §4 names — {@code /}, {@code /validator} and its
+   * upload — plus the static assets they need. Everything under {@code /app/**} requires a login.
+   */
+  @Bean
+  @Order(Ordered.LOWEST_PRECEDENCE)
+  SecurityFilterChain webSecurityFilterChain(
+      HttpSecurity http,
+      RateLimitFilter rateLimitFilter,
+      ObjectProvider<ClientRegistrationRepository> clientRegistrations)
+      throws Exception {
+    http.authorizeHttpRequests(
+            authorize ->
+                authorize
+                    .requestMatchers("/", "/validator")
+                    .permitAll()
+                    .requestMatchers(HttpMethod.POST, "/validator/pruefen")
+                    .permitAll()
+                    // The public report view offers "Erklären" too; it explains a finding posted
+                    // back
+                    // to it, holds no server state, and is rate-limited like the upload itself.
+                    .requestMatchers(HttpMethod.POST, "/validator/erklaeren")
+                    .permitAll()
+                    .requestMatchers("/app.css", "/app.js", "/favicon.ico", "/robots.txt")
+                    .permitAll()
+                    // Boot's error dispatch forwards to /error; the AuthorizationFilter runs on
+                    // that
+                    // dispatch too, so /error must be permitted or a permitted path's 404 would be
+                    // rewritten to a 401 for an anonymous caller.
+                    .requestMatchers("/error")
+                    .permitAll()
+                    .anyRequest()
+                    .authenticated())
+        .logout(logout -> logout.logoutSuccessUrl("/").permitAll())
+        // Same instance as the API chain (a bean, not a `new`), so one caller cannot double their
+        // anonymous allowance by alternating between the UI upload and the API endpoint.
+        .addFilterAfter(rateLimitFilter, AuthorizationFilter.class);
+
+    // oauth2Login only when a client registration actually exists. Calling it unconditionally would
+    // fail context startup wherever no OAuth2 client is configured — which is every persistence and
+    // API integration test, none of which logs in through a browser. This is the same mistake the
+    // M3
+    // fix wave made once with the JWT validator list (built unconditionally, broke every context
+    // with no issuer) and the same fix: ask whether the collaborator is there.
+    //
+    // Without a registration the public pages still work and /app/** is simply refused, rather than
+    // the whole application failing to start.
+    if (clientRegistrations.getIfAvailable() != null) {
+      http.oauth2Login(login -> login.defaultSuccessUrl("/app", true));
+    }
+    return http.build();
+  }
+
+  /**
+   * One rate limiter shared by both chains. A bean rather than two {@code new} instances on
+   * purpose: separate instances would mean separate bucket maps, and an anonymous caller would get
+   * one full allowance per surface for the same work.
+   */
+  @Bean
+  RateLimitFilter rateLimitFilter(
+      @Value("${app.rate-limit.validate.capacity}") long rateLimitCapacity,
+      @Value("${app.rate-limit.validate.refill-per-minute}") long rateLimitRefillPerMinute,
+      @Value("${app.rate-limit.convert.capacity}") long convertRateLimitCapacity,
+      @Value("${app.rate-limit.convert.refill-per-minute}") long convertRateLimitRefillPerMinute) {
+    return new RateLimitFilter(
+        rateLimitCapacity,
+        rateLimitRefillPerMinute,
+        convertRateLimitCapacity,
+        convertRateLimitRefillPerMinute);
   }
 
   private JwtAuthenticationConverter jwtConverter() {
