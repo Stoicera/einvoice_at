@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="de">
+  <head
+    th:replace="~{fragments/layout :: head(
+      'E-Rechnung Österreich: ebInterface 6.1 und Peppol BIS 3.0 erzeugen, prüfen, konvertieren',
+      'Self-hostbare Plattform für die österreichische E-Rechnung: ebInterface 6.1 und Peppol BIS Billing 3.0 (UBL) erzeugen, validieren und konvertieren — mit deutschem Prüfbericht und REST-API.')}"
+  ></head>
+  <body>
+    <div th:replace="~{fragments/layout :: masthead}"></div>
+
+    <main class="shell">
+      <h1>E-Rechnung für Österreich: erzeugen, prüfen, verstehen.</h1>
+      <p class="lede">
+        Der Bund akzeptiert nur strukturierte E-Rechnungen — <strong>ebInterface 6.1</strong> oder
+        <strong>Peppol BIS Billing 3.0</strong>. Abgelehnte Rechnungen kommen mit
+        Schematron-Ausgaben zurück, die niemand ohne XML-Kenntnisse lesen kann. Genau diese Lücke
+        schließt diese Plattform.
+      </p>
+
+      <div class="row spaced-lg">
+        <a class="button" th:href="@{/validator}">Rechnung kostenlos prüfen</a>
+        <a class="button secondary" th:href="@{/swagger-ui.html}">REST-API ansehen</a>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <h3>Erzeugen</h3>
+          <p class="muted">
+            Aus strukturierten Rechnungsdaten valides ebInterface-6.1-XML und Peppol-BIS-3.0-UBL —
+            plus PDF-Druckansicht. Über die REST-API oder den Assistenten im Dashboard.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Prüfen</h3>
+          <p class="muted">
+            XSD, Schematron und österreichische Geschäftsregeln, mit deutschem Prüfbericht je Befund.
+            Für Peppol läuft das <strong>offizielle OpenPeppol-Regelwerk</strong> unverändert.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Konvertieren</h3>
+          <p class="muted">
+            ebInterface ↔ UBL in beide Richtungen, über das kanonische Rechnungsmodell — mit einem
+            Bericht darüber, was das Zielformat nicht tragen kann.
+          </p>
+        </div>
+      </div>
+
+      <h2>Datenschutz ist hier ein Merkmal, keine Fußnote</h2>
+      <div class="notice">
+        <strong>Der Upload auf der Prüfer-Seite wird nicht gespeichert.</strong> Die Datei wird im
+        Arbeitsspeicher geprüft und danach verworfen. Wer angemeldet ist, entscheidet selbst, welche
+        Berichte im Dashboard bleiben — und kann alle eigenen Daten dort jederzeit vollständig
+        löschen.
+      </div>
+
+      <h2 th:if="${aiEnabled}">Fehler in einfacher Sprache</h2>
+      <p class="muted" th:if="${aiEnabled}">
+        Zu jedem Befund gibt es auf Wunsch eine Erklärung in Alltagsdeutsch samt konkretem
+        Korrekturvorschlag. Vor der Übermittlung an den KI-Anbieter werden IBAN, UID, E-Mail-Adressen
+        und Nummern maskiert; das geprüfte Dokument selbst verlässt die Plattform nie. Die Funktion
+        ist abschaltbar — ohne dass die Prüfung etwas verliert.
+      </p>
+    </main>
+
+    <div th:replace="~{fragments/layout :: colophon}"></div>
+  </body>
+</html>

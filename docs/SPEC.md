@@ -17,7 +17,7 @@ Status: v1.0 · 2026-07-23 · Language of repo: English (domain terms stay Germa
 | e-invoice libs | **ph-ebinterface** (ebInterface XSD/model), **phive** + phive-rules (Schematron validation for ebInterface & Peppol), **ph-ubl** (UBL 2.1) — all MIT/Apache, actively maintained by Philip Helger; if a rule set is missing, fall back to official AUSTRIAPRO/OpenPeppol artefacts executed via ph-schematron | Don't reinvent validated standards artefacts; credit upstream in README |
 | Mapping | Dedicated `mapping` module: internal canonical model (EN 16931 core) ↔ ebInterface 6.1 ↔ UBL BIS 3.0. Hand-written and heavily tested (MapStruct evaluated but unrealized as of M2; all mapping turned out semantic) | The canonical model is the heart of the system |
 | PDF | OpenPDF or Apache PDFBox via a `rendering` module (HTML→PDF acceptable: openhtmltopdf) | Print view of invoice |
-| Web UI | **Thymeleaf + htmx + Tailwind (standalone CLI)** | Java-pure server-rendered UI: exactly what enterprise Java shops respect; no SPA build complexity |
+| Web UI | **Thymeleaf**, server-rendered; hand-authored CSS and ~20 lines of first-party JS instead of Tailwind CLI / htmx (M5 sync, [ADR-0009](adr/0009-web-ui.md)) | Java-pure server-rendered UI: exactly what enterprise Java shops respect; no SPA build complexity — and, as realized, no CSS or JS build step at all |
 | AuthN/Z | Spring Security (OAuth2 Resource Server) + **Keycloak** as IdP (docker compose); API keys for machine access (hashed at rest) | Answers the "do we need Keycloak?" question: Spring Security is the framework, Keycloak the IdP — document this in an ADR |
 | AI | `LlmClient` abstraction → **OpenRouter** default (OpenAI-compatible API), model configurable; feature-flagged, degrades gracefully | Explain validation errors in plain German |
 | Observability | OpenTelemetry (Micrometer bridge), Actuator health/readiness, JSON logs (Logback) | Standard |
@@ -78,11 +78,79 @@ is authenticated and audited (`CONVERSION_RUN`); only `/validate` stays public. 
 limits: [ADR-0007](adr/0007-ubl-peppol-and-conversion.md), [ADR-0008](adr/0008-pdf-rendering.md).
 `POST /reports/{id}/explain` remains M5.
 
+_M5 sync, part 2 (2026-07-26):_ `POST /reports/{id}/explain` **is live**, closing the last endpoint this
+section had been carrying as "remains M5". It takes a **stored** report id and reads the findings from
+the row — the caller cannot choose the text to be explained, unlike the public page's route, which has
+to post the finding to itself because an anonymous report was never stored. Errors first, bounded by
+`app.ai.max-findings-per-request` (default 10) per call; `?findingIndex=N` explains exactly one.
+Nothing is persisted: the stored report keeps the validator's own verdict. With the feature flag off it
+answers **503** `ai-explanations-disabled`, not 404 — the route is correct and the capability is absent,
+and an operator must be able to tell those apart. A total provider outage is **503**
+`ai-explanation-unavailable` rather than a 200 whose explanations are all null, which would be
+indistinguishable from "nothing to explain".
+
+`DELETE /tenant` is **added** (not previously in this section): erasure on request, GDPR Art. 17 —
+every invoice, report, API key and audit event of the calling tenant, plus the tenant row, in one
+transaction. Scoped by the credential, so it carries no tenant id and cannot be aimed at anyone else;
+the API key used for the call is erased by it. See [ADR-0011](adr/0011-retention-and-erasure.md).
+
 _M3 hostile-review fix wave (2026-07-25):_ The 2 MB cap now covers **every** request body, not only multipart uploads — no Boot or Tomcat property bounds an ordinary body, and `POST /invoices` buffers its own whole, so an application-layer filter ahead of Spring Security enforces it and answers the same 413 `content-too-large` the multipart cap does. Three further bounds/switches, all documented in `.env.example`: `OAUTH2_AUDIENCE` (optional `aud` validation, closing the limit ADR-0006 had recorded as open), `API_KEYS_MAX_ACTIVE_PER_TENANT` (default 25 active keys, revoked rows retained and uncounted), and `API_DOCS_ENABLED` (default on; `false` removes the OpenAPI document and Swagger UI).
 
-## 5. Web UI (Thymeleaf + htmx)
+## 5. Web UI (Thymeleaf, server-rendered)
 
-Pages: Landing/"Prüfer" (public upload → report, German-first, SEO meta), Report view (findings grouped by severity, "Fehler erklären" button per finding when AI enabled), Dashboard (login): invoice list, create-invoice form (htmx wizard), API-key management. Design: clean, Stoicera-adjacent (dark/gold accents), no framework bloat; Lighthouse ≥ 95 on public pages.
+Pages: Landing/"Prüfer" (public upload → report, German-first, SEO meta), Report view (findings grouped by severity, "Fehler erklären" button per finding when AI enabled), Dashboard (login): invoice list, create-invoice form (server-rendered multi-step wizard — corrected from "htmx wizard", see ADR-0009 Entscheidung 5), API-key management. Design: clean, Stoicera-adjacent (dark/gold accents), no framework bloat; Lighthouse ≥ 95 on public pages.
+
+_M5 hostile-review sync (2026-07-26):_ the section heading said "Thymeleaf + htmx" while
+[ADR-0009](adr/0009-web-ui.md) Entscheidung 5 had decided against htmx and the repository ships none.
+Corrected here, and in ADR-0009's own title and Entscheidung 2, which still described htmx as
+vendored in a directory that never existed (F11). Two counts in the same family were also wrong and
+are corrected wherever they appear: `app.js` is 66 lines (about twenty of logic), not 40, and
+`app.css` is 625, not the "~430" ADR-0009 measured itself against its own 700-line trigger (F12).
+
+_M5 sync (2026-07-26):_ **The landing page, the public validator and the report view are realized;
+the authenticated dashboard is not yet** — see `docs/worklog.md` for exactly what is open. Security is
+now **two filter chains**: `/api/**` keeps M3/M4's stateless policy unchanged, and the browser surface
+gets its own chain with a session, **CSRF enforcement** (the ENGINEERING_STANDARDS §4 requirement that
+had nothing to protect while the app was API-only) and `oauth2Login` against Keycloak. The public
+upload runs through the *same* `ReportService.validate(bytes, Optional.empty())` as the anonymous REST
+endpoint, so "an anonymous upload is never stored" has one implementation, and the same rate-limit
+bucket, so the page cannot be an unlimited detour around a limited endpoint.
+
+_M5 sync, part 2 (2026-07-26):_ **The authenticated dashboard is realized.** Overview with per-tenant
+counts, invoice list and detail, report list and detail (the same report fragment the public validator
+renders, so the German wording and severity grouping cannot drift between the two surfaces), the
+four-step server-rendered create-invoice wizard, the API-key page, and a **Konto** page carrying the
+GDPR danger zone. German route segments throughout (`/app/rechnungen`, `/app/berichte`,
+`/app/api-schluessel`, `/app/konto`), matching `/validator/pruefen`.
+
+Three details worth stating because each was a decision:
+
+- **The document downloads are `/app/...` routes, not links into `/api/v1`.** The three formats are
+  already exposed by the API, and linking a dashboard button there would *not work*: `/api/**` is the
+  stateless chain and never reads the browser's session cookie, so the click lands on a 401. The
+  dashboard serves them from the same `InvoiceService` methods behind the session chain.
+- **The wizard's last step calls the same `InvoiceService.create` as `POST /api/v1/invoices`** — same
+  duplicate detection, same generated-and-validated report, same audit event. The draft lives in the
+  HTTP session (per session, asserted) because step 3 collects a *list* of lines.
+- **A freshly minted API key travels as a flash attribute** through a POST-redirect-GET, so a reload of
+  the page cannot re-show the secret. Only its hash is stored, so the page has exactly one chance.
+
+`WebExceptionHandler` renders the browser surface's 404s as an HTML page: `ApiExceptionHandler` is an
+unrestricted `@RestControllerAdvice` and applies to Thymeleaf controllers too, so a mistyped invoice id
+used to answer a correct 404 whose body was `application/problem+json` — raw JSON in a browser, in
+English, from a German UI.
+
+**Browser E2E and load testing live in a new `e2e` module** (Selenium against Chrome in a container for
+Upload → Report → Erklären, plus a Gatling scenario for the public validator). Its tests are always
+compiled but only *run* under `-Pe2e` / `-Pload`, in their own CI job — the same shape the `mutation`
+and `security` profiles already use. The consequence is stated rather than implied: a green plain
+`./mvnw verify` does not mean the browser flow works; the `e2e` job is what means that.
+
+**Two deviations from §1, both deliberate and both recorded in [ADR-0009](adr/0009-web-ui.md):** no
+Tailwind standalone CLI (a ~100 MB platform-specific binary downloaded in every build, for a handful
+of pages) and no htmx (every page works with JavaScript disabled; the two fragment swaps this UI needs
+are ~20 lines of first-party script whose markup contract is a subset of htmx's own). Lighthouse ≥ 95
+is measured at M6, where MILESTONES schedules it.
 
 ## 6. AI assist (module `ai-assist`)
 
@@ -90,6 +158,25 @@ Pages: Landing/"Prüfer" (public upload → report, German-first, SEO meta), Rep
 - Service: `FindingExplainer` — input: ruleId, rule text, XML fragment (max ~40 lines around location, PII-scrubbed: names/IBANs masked), output: German explanation + concrete fix suggestion. Cache by (ruleId, fragmentHash).
 - Prompts under `ai-assist/src/main/resources/prompts/*.st`, versioned; token/cost counters exported as OTel metrics.
 - Degradation: provider down → report still fully usable, button shows friendly notice. Document data-flow + opt-in in `docs/privacy.md`.
+
+_M5 sync (2026-07-26):_ Realized, with three corrections to this section and one addition. Design and
+honest limits: [ADR-0010](adr/0010-ai-assist.md); data flow: [docs/privacy.md](privacy.md).
+
+1. **The model default is `anthropic/claude-sonnet-5`.** The id named above has a successor; corrected
+   rather than left to fail on the first real call. The tier is unchanged.
+2. **No sampling parameter is sent at all.** The current Anthropic models reject a non-default
+   `temperature`/`top_p`/`top_k` with HTTP 400, and OpenRouter forwards the body as given — so the
+   port deliberately has no such field, and a test asserts none reaches the wire. Tone comes from the
+   prompt template.
+3. **No XML fragment is sent — this is not built, and cannot be without breaking a stronger promise.**
+   The public validator retains no upload and stored invoices hold no XML, so at the moment a user
+   clicks "Erklären" there is no document to quote 40 lines of. PII scrubbing is undiminished by this:
+   a Schematron message quotes the offending document value verbatim, so IBAN/e-mail/UID/long-number
+   masking has real work to do on the finding text itself.
+4. **Added:** the usage/cost numbers leave the module through an `LlmUsageListener` port that `app`
+   bridges to Micrometer, so `ai-assist` stays Spring-free (SPEC §2) while meeting
+   ENGINEERING_STANDARDS §8's token/cost requirement. Cost is the provider's own reported figure, never
+   a local price table.
 
 ## 7. Validation pipeline (module `validation`)
 
@@ -102,6 +189,12 @@ _M4 sync (2026-07-25):_ **Peppol BIS 3.0's official Schematron rule sets arrived
 Postgres schemas: `tenant`, `invoice` (canonical JSONB + extracted columns), `report`, `audit_event`, `api_key` (hash only). Flyway migrations from V1. Retention job: anonymous validation artefacts never persisted; tenant data delete endpoint (GDPR).
 
 _M3 sync (2026-07-24):_ The five "schemas" above are realized as five tables in the single `public` schema (not separate SQL schemas), Flyway from `V1__baseline_schema.sql` — rationale in [ADR-0005](adr/0005-persistence-baseline.md). The "anonymous artefacts never persisted" promise is met and enforced today ([ADR-0006](adr/0006-auth-and-api-security.md)); the tenant-data-delete endpoint and the retention job are deferred to M5 (with the dashboard).
+
+_M5 sync (2026-07-26):_ The anonymous promise now holds for the **web UI too**, through the same code
+path rather than a second one, and `PublicWebIT` asserts the row count does not move. **The
+tenant-delete endpoint and the retention job are still open** — carried again rather than quietly
+dropped, and named as unimplemented in [docs/privacy.md](privacy.md) §4 rather than hidden behind a
+phrase like "Löschkonzept vorhanden".
 
 ## 9. Deployment
 

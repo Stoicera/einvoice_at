@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="de">
+  <head
+    th:replace="~{fragments/layout :: head(
+      'Dashboard',
+      'Ihre Rechnungen, Prüfberichte und API-Schlüssel bei einvoice-at.')}"
+  ></head>
+  <body>
+    <div th:replace="~{fragments/layout :: masthead}"></div>
+
+    <main class="shell">
+      <h1>Dashboard</h1>
+      <p class="lede" th:text="|Angemeldet als ${tenantName}.|"></p>
+
+      <div th:replace="~{fragments/layout :: dashnav('overview')}"></div>
+
+      <div class="grid">
+        <div class="stat">
+          <span class="value" th:text="${invoiceCount}">0</span>
+          <span class="label">Rechnungen</span>
+        </div>
+        <div class="stat">
+          <span class="value" th:text="${reportCount}">0</span>
+          <span class="label">Prüfberichte</span>
+        </div>
+        <div class="stat">
+          <span class="value" th:text="${activeKeyCount}">0</span>
+          <span class="label">Aktive API-Schlüssel</span>
+        </div>
+      </div>
+
+      <div class="row spaced">
+        <a class="button" th:href="@{/app/rechnungen/neu}">Rechnung erstellen</a>
+        <a class="button secondary" th:href="@{/validator}">Datei prüfen</a>
+      </div>
+
+      <h2>Letzte Rechnungen</h2>
+      <p class="muted" th:if="${#lists.isEmpty(invoices)}">
+        Noch keine Rechnungen. Legen Sie Ihre erste über den Assistenten an — oder über die
+        <a th:href="@{/swagger-ui.html}">REST-API</a>.
+      </p>
+      <!--/* th:unless must NOT sit on the same element as th:replace: th:replace has the higher
+             precedence and runs first, so the condition would never be consulted and the table
+             would render for an empty list too. Same trap as th:each + th:replace. */-->
+      <th:block th:unless="${#lists.isEmpty(invoices)}">
+        <div th:replace="~{fragments/lists :: invoiceTable(${invoices})}"></div>
+        <p><a th:href="@{/app/rechnungen}">Alle Rechnungen ansehen</a></p>
+      </th:block>
+
+      <h2>Letzte Prüfberichte</h2>
+      <p class="muted" th:if="${#lists.isEmpty(reports)}">
+        Noch keine Prüfberichte. Angemeldete Prüfungen werden hier gespeichert — anonyme über die
+        öffentliche <a th:href="@{/validator}">Prüfer-Seite</a> ausdrücklich nicht.
+      </p>
+      <th:block th:unless="${#lists.isEmpty(reports)}">
+        <div th:replace="~{fragments/lists :: reportTable(${reports})}"></div>
+        <p><a th:href="@{/app/berichte}">Alle Prüfberichte ansehen</a></p>
+      </th:block>
+    </main>
+
+    <div th:replace="~{fragments/layout :: colophon}"></div>
+  </body>
+</html>

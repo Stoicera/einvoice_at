@@ -34,7 +34,7 @@ jobs:
           retention-days: 14
 
   mutation:
-    name: Mutation tests (core, mapping, validation, formats-ebinterface, formats-ubl)
+    name: Mutation tests (core, mapping, validation, formats-ebinterface, formats-ubl, ai-assist)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -49,15 +49,16 @@ jobs:
       # comment and the exec-maven-plugin precedent in the root pom.xml). All five gated modules
       # carry the "mutation" profile (core, mapping, validation, formats-ebinterface, formats-ubl),
       # so the bare goal is safe against this explicit "-pl" list — every project it selects has its
-      # own pitest wiring. It is still run WITHOUT "-am": "-am" would drag in profile-less modules
+      # own pitest wiring. M5 adds ai-assist to that list: its scrubber and retry logic are exactly the
+      # small, branch-dense, security-relevant code where line coverage alone proves little. It is still run WITHOUT "-am": "-am" would drag in profile-less modules
       # (e.g. app, formats-api) and the bare goal would fail on them. The install step (with "-am")
       # first puts the whole dependency closure — including mapping, which validation needs at test
       # scope — in the local repo so the second reactor resolves every inter-module edge without
       # rebuilding it.
       - name: Install dependency closure (mutation-gated modules)
-        run: ./mvnw -B -ntp -pl core,mapping,validation,formats-ebinterface,formats-ubl -am install -DskipTests
+        run: ./mvnw -B -ntp -pl core,mapping,validation,formats-ebinterface,formats-ubl,ai-assist -am install -DskipTests
       - name: PIT mutation coverage (mutation-gated modules)
-        run: ./mvnw -B -ntp -pl core,mapping,validation,formats-ebinterface,formats-ubl -Pmutation test-compile org.pitest:pitest-maven:mutationCoverage
+        run: ./mvnw -B -ntp -pl core,mapping,validation,formats-ebinterface,formats-ubl,ai-assist -Pmutation test-compile org.pitest:pitest-maven:mutationCoverage
 
   security-scan:
     name: Security scan (OWASP Dependency-Check)
@@ -151,6 +152,127 @@ jobs:
         with:
           name: dependency-check-report
           path: target/dependency-check-report.*
+          retention-days: 14
+
+  # Browser end-to-end + the validator load scenario (ENGINEERING_STANDARDS §3, M5 Abnahme "E2E grün
+  # in CI"). Its own job, not part of `build`, because it pulls a Chrome image and stands up the whole
+  # compose stack — the same reasoning that keeps `mutation` and `security-scan` separate.
+  #
+  # Deliberate consequence, stated so nobody mistakes it: a green `build` job does NOT mean the browser
+  # flow works. This job is what means that.
+  e2e:
+    name: Browser E2E + load scenario
+    runs-on: ubuntu-latest
+    # The three variables docker-compose.yml declares with the `:?` form, i.e. the ones that make
+    # interpolation of the whole file fail when they are absent. They live at JOB level rather than
+    # on the step that starts the stack, because `docker compose down` interpolates the file too:
+    # with them set only on the "up" step, the "Stop the stack" step failed with
+    # "required variable POSTGRES_PASSWORD is missing a value" and took the job red AFTER every test
+    # and every Gatling assertion had passed. That is what this job's first real CI run found.
+    #
+    # Not secrets: this stack lives for one job on an ephemeral runner and is never reachable from
+    # outside it. Named to say so, so nobody promotes them to repository secrets by pattern-matching.
+    env:
+      POSTGRES_PASSWORD: ci-postgres-not-a-secret
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: ci-keycloak-not-a-secret
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      # Guards a class of bug that is silent by construction: a variable documented in .env.example
+      # that docker-compose.yml never passes to the container, so setting it in .env does nothing at
+      # all. Seven of them had accumulated by M5 — including the whole RATE_LIMIT_* family — and the
+      # Gatling run below is what exposed them, because raising the limit had no effect and the
+      # simulation refused to report a p95 measured through a rate limiter.
+      # Guards BOTH directions, because the milestone that fixed one of them left the other open
+      # (M5 hostile review, F7):
+      #
+      #   documented -> wired    a variable in .env.example that compose never passes through does
+      #                          nothing at all when set, silently. Seven had accumulated by M5,
+      #                          the whole RATE_LIMIT_* family among them, and the Gatling run is
+      #                          what exposed it — raising the limit had no effect.
+      #   read       -> documented   a variable application.yml reads that .env.example never names
+      #                          is a required setting nobody outside this repo can discover. Three
+      #                          were undocumented (OAUTH2_ISSUER_URI, OAUTH2_JWK_SET_URI,
+      #                          POSTGRES_HOST), and the one-directional check above could not see
+      #                          them. CLAUDE.md: ".env.example stays complete and current."
+      - name: Documented and actual configuration agree, in both directions
+        run: |
+          set -euo pipefail
+          grep -oE '^[A-Z][A-Z0-9_]+=' .env.example | tr -d '=' | sort > /tmp/documented.txt
+          grep -oE '\$\{[A-Z][A-Z0-9_]+' docker-compose.yml | tr -d '${' | sort -u > /tmp/wired.txt
+          grep -oE '\$\{[A-Z][A-Z0-9_]+' app/src/main/resources/application.yml \
+            | tr -d '${' | sort -u > /tmp/read.txt
+
+          status=0
+          unwired="$(comm -23 /tmp/documented.txt /tmp/wired.txt)"
+          if [ -n "$unwired" ]; then
+            echo "::error::.env.example documents variables that docker-compose.yml never passes through:"
+            echo "$unwired"
+            status=1
+          fi
+          undocumented="$(comm -13 /tmp/documented.txt /tmp/read.txt)"
+          if [ -n "$undocumented" ]; then
+            echo "::error::application.yml reads variables that .env.example never documents:"
+            echo "$undocumented"
+            status=1
+          fi
+          [ "$status" -eq 0 ] || exit 1
+          echo "$(wc -l < /tmp/documented.txt) documented variables, all wired into compose;"
+          echo "$(wc -l < /tmp/read.txt) variables read by the application, all documented."
+
+      # Installs app (and its test-jar, which the e2e module reuses for the Testcontainers wiring).
+      - name: Install modules the e2e tests depend on
+        run: ./mvnw -B -ntp -pl app -am install -DskipTests
+
+      - name: Browser E2E (Selenium, Chrome in a container)
+        run: ./mvnw -B -ntp -pl e2e verify -Pe2e
+
+      # The load scenario needs a RUNNING application, so the compose stack comes up first. The rate
+      # limit is raised for exactly this run: POST /api/v1/validate allows 10/min per IP by default
+      # and a load generator is one IP, so at the default the run would measure bucket4j. The
+      # simulation asserts no request was refused, which is what makes this override mandatory rather
+      # than a convenience.
+      - name: Start the stack for the load run
+        env:
+          # The compose credentials are at job level (see above). Only the deliberate limit override
+          # is scoped here, because it belongs to this one run and nothing else.
+          RATE_LIMIT_VALIDATE_CAPACITY: "100000"
+          RATE_LIMIT_VALIDATE_REFILL_PER_MINUTE: "100000"
+        run: |
+          set -euo pipefail
+          docker compose up -d --build app
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/actuator/health > /dev/null; then
+              echo "Application healthy after ${i} attempts."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::The application did not become healthy; dumping logs."
+          docker compose logs app
+          exit 1
+
+      - name: Gatling load scenario (public validator)
+        run: ./mvnw -B -ntp -pl e2e gatling:test -Pload -Dload.base-url=http://localhost:8080
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v
+
+      - name: Upload E2E and Gatling reports on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-reports
+          path: |
+            e2e/target/failsafe-reports/
+            e2e/target/gatling/
           retention-days: 14
 
   docker:

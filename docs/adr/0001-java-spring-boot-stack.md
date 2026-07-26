@@ -13,6 +13,9 @@ einvoice-at is a Stoicera Labs portfolio system targeting the Austrian enterpris
 - **Maven multi-module** with committed wrapper (3.9.16) — the enterprise default in Austria; module layout doubles as the architecture (ADR-0002).
 - **PostgreSQL 17 + Flyway** — boring, migration-first persistence (from M3).
 - **Thymeleaf + htmx** — server-rendered UI without SPA build complexity (from M5).
+  _Nachtrag M5:_ Thymeleaf ja, **htmx nein** — bei zwei Fragment-Swaps in der ganzen
+  Oberfläche wurde es geprüft und verworfen; siehe [ADR-0009](0009-web-ui.md)
+  Entscheidung 5, die diese Zeile insoweit ablöst.
 - **Keycloak as IdP**, Spring Security OAuth2 Resource Server (from M3).
 - **ph-ebinterface 8.1.0, ph-ubl 10.2.0, phive 12.1.0, phive-rules 4.4.1** for standards artefacts — actively maintained by Philip Helger; we do not hand-copy XSD/Schematron. Pinned in the parent POM; the set is mutually compatible (phive-rules 4.4.1 itself builds against exactly these ph-ebinterface/ph-ubl versions).
 

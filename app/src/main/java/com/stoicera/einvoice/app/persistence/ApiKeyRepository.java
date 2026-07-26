@@ -4,6 +4,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 /** Spring Data repository for {@link ApiKeyEntity}. */
 public interface ApiKeyRepository extends JpaRepository<ApiKeyEntity, UUID> {
@@ -31,4 +35,16 @@ public interface ApiKeyRepository extends JpaRepository<ApiKeyEntity, UUID> {
    * database rather than by loading the rows, so the cap costs one aggregate query.
    */
   long countByTenantIdAndRevokedAtIsNull(UUID tenantId);
+
+  /**
+   * Erases one tenant's keys, revoked ones included (GDPR Art. 17).
+   *
+   * <p>Note the deliberate asymmetry with {@code ApiKeyService.revoke}, which is a <em>soft</em>
+   * revoke that keeps the row for the audit trail: that trade-off exists because the tenant is
+   * still there to be accountable to. Erasing the tenant removes the reason to keep it.
+   */
+  @Modifying
+  @Transactional
+  @Query("delete from ApiKeyEntity k where k.tenantId = :tenantId")
+  long deleteByTenantId(@Param("tenantId") UUID tenantId);
 }

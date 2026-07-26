@@ -27,7 +27,7 @@ Repo-Skeleton: Maven-Multi-Module, Spotless/google-java-format, EditorConfig, Gi
 **Abnahme:** Konvertierung mit Verlust-Report; PDF sieht nach Rechnung aus, nicht nach Debug-Ausgabe.
 
 ## M5 — Web-UI + öffentlicher Validator + KI-Erklärungen (4–5 Tage)
-Thymeleaf+htmx: öffentliche Prüfer-Seite (DE, SEO-Meta, DSGVO-Hinweis "Upload wird nicht gespeichert"), Report-Ansicht, Dashboard (Login, Rechnungserstellung als Wizard, API-Keys). `ai-assist`: OpenRouter-Adapter, FindingExplainer, Feature-Flag, PII-Scrubbing, Kosten-Metriken. Selenium-E2E: Upload→Report→Erklären-Flow; Gatling-Szenario Validator.
+Thymeleaf (server-gerendert; htmx wurde geprüft und verworfen — ADR-0009 Entscheidung 5): öffentliche Prüfer-Seite (DE, SEO-Meta, DSGVO-Hinweis "Upload wird nicht gespeichert"), Report-Ansicht, Dashboard (Login, Rechnungserstellung als Wizard, API-Keys). `ai-assist`: OpenRouter-Adapter, FindingExplainer, Feature-Flag, PII-Scrubbing, Kosten-Metriken. Selenium-E2E: Upload→Report→Erklären-Flow; Gatling-Szenario Validator.
 **Abnahme:** E2E grün in CI (main); Validator-Demo-Video-tauglich; KI abschaltbar ohne Funktionsverlust.
 
 ## M6 — Betrieb + Politur (2–3 Tage)

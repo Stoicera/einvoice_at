@@ -1,0 +1,104 @@
+<!--/*
+  The two dashboard tables, each in one place.
+
+  The overview and the full list render the same rows; the overview simply passes fewer of them. Two
+  copies of this markup is how one of them ends up missing a column, or formatting a date differently
+  from its neighbour — which a reader notices immediately and cannot explain.
+*/-->
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="de">
+  <body>
+    <!--/* Invoices: number, date, recipient, amount, verdict. */-->
+    <div th:fragment="invoiceTable(invoices)" class="scroll-x">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Nummer</th>
+            <th scope="col">Datum</th>
+            <th scope="col">Empfänger</th>
+            <th scope="col" class="num">Betrag</th>
+            <th scope="col">Prüfung</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr th:each="invoice : ${invoices}">
+            <td>
+              <a
+                th:href="@{/app/rechnungen/{id}(id=${invoice.id()})}"
+                th:text="${invoice.invoiceNumber()}"
+              ></a>
+            </td>
+            <td th:text="${#temporals.format(invoice.issueDate(), 'dd.MM.yyyy')}"></td>
+            <td th:text="${invoice.buyerName()}"></td>
+            <td class="num" th:text="|${invoice.payableAmount()} ${invoice.currency()}|"></td>
+            <td>
+              <span class="pill ok" th:if="${invoice.valid()}">gültig</span>
+              <span class="pill error" th:unless="${invoice.valid()}">Befunde</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!--/* Reports: when, what format, which profile, verdict. */-->
+    <div th:fragment="reportTable(reports)" class="scroll-x">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Zeitpunkt</th>
+            <th scope="col">Format</th>
+            <th scope="col">Profil</th>
+            <th scope="col">Herkunft</th>
+            <th scope="col">Ergebnis</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr th:each="report : ${reports}">
+            <td>
+              <a
+                th:href="@{/app/berichte/{id}(id=${report.id()})}"
+                th:text="${#temporals.format(report.createdAt(), 'dd.MM.yyyy HH:mm')}"
+              ></a>
+            </td>
+            <td th:text="${report.sourceFormat()}"></td>
+            <td th:text="${report.profile()}"></td>
+            <!--/* invoiceId distinguishes a report that came from a stored invoice from an ad-hoc
+                   upload check — the same distinction the API exposes as a nullable field. */-->
+            <td>
+              <a
+                th:if="${report.invoiceId() != null}"
+                th:href="@{/app/rechnungen/{id}(id=${report.invoiceId()})}"
+                >Rechnung</a
+              >
+              <span class="muted" th:if="${report.invoiceId() == null}">Datei-Prüfung</span>
+            </td>
+            <td>
+              <span class="pill ok" th:if="${report.valid()}">gültig</span>
+              <span class="pill error" th:unless="${report.valid()}">nicht gültig</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!--/*
+      Pager. Rendered only when there is more than one page, and it links by page number rather than
+      by opaque cursor because the underlying listing is offset-paginated anyway (InvoicePage).
+    */-->
+    <nav th:fragment="pager(base, page, totalPages)" class="row" th:if="${totalPages > 1}">
+      <a
+        th:if="${page > 0}"
+        th:href="@{{base}(base=${base}, page=${page - 1})}"
+        class="button secondary"
+        >Zurück</a
+      >
+      <span class="muted" th:text="|Seite ${page + 1} von ${totalPages}|"></span>
+      <a
+        th:if="${page + 1 < totalPages}"
+        th:href="@{{base}(base=${base}, page=${page + 1})}"
+        class="button secondary"
+        >Weiter</a
+      >
+    </nav>
+  </body>
+</html>

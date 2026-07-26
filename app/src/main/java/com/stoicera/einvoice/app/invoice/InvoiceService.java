@@ -202,6 +202,44 @@ public class InvoiceService {
     return pdfRenderer.render(reread(tenantId, id));
   }
 
+  /**
+   * Returns one of the tenant's invoices as the same {@link InvoiceSummary} the listing uses, with
+   * the {@code valid} flag of its most recent report.
+   *
+   * <p>Exists so a caller that needs exactly one invoice's header data — the dashboard's detail
+   * page and its download filenames — does not have to fetch a page of a hundred and filter it,
+   * which is what the first version of that page did.
+   *
+   * @throws InvoiceNotFoundException no invoice with {@code id} exists for this tenant
+   */
+  @Transactional(readOnly = true)
+  public InvoiceSummary summary(UUID tenantId, UUID id) {
+    InvoiceEntity entity =
+        invoices
+            .findByIdAndTenantId(id, tenantId)
+            .orElseThrow(() -> new InvoiceNotFoundException(id));
+    return InvoiceSummary.of(entity, validityByInvoice(List.of(entity)).getOrDefault(id, false));
+  }
+
+  /**
+   * Returns the seller and buyer names of one of the tenant's invoices.
+   *
+   * <p>Read from the invoice row's own extracted columns rather than by parsing the canonical JSON:
+   * the caller ({@code ReportExplanationService}, to redact them before an LLM call) needs two
+   * strings, and re-reading the whole document to get them would mean deserializing every line and
+   * amount of an invoice in order to throw all of it away.
+   *
+   * @throws InvoiceNotFoundException no invoice with {@code id} exists for this tenant — including
+   *     the case where it exists for another one, which stays deliberately indistinguishable
+   */
+  @Transactional(readOnly = true)
+  public InvoiceParties parties(UUID tenantId, UUID id) {
+    return invoices
+        .findByIdAndTenantId(id, tenantId)
+        .map(entity -> new InvoiceParties(entity.getSellerName(), entity.getBuyerName()))
+        .orElseThrow(() -> new InvoiceNotFoundException(id));
+  }
+
   /** The stored canonical JSON, parsed back into the domain model. */
   private Invoice reread(UUID tenantId, UUID id) {
     String canonical = canonicalJson(tenantId, id);

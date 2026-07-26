@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="de">
+  <head
+    th:replace="~{fragments/layout :: head(
+      'Prüfberichte',
+      'Ihre gespeicherten Prüfberichte bei einvoice-at.')}"
+  ></head>
+  <body>
+    <div th:replace="~{fragments/layout :: masthead}"></div>
+
+    <main class="shell">
+      <h1>Prüfberichte</h1>
+      <div th:replace="~{fragments/layout :: dashnav('reports')}"></div>
+
+      <p class="muted" th:text="|${totalElements} Berichte insgesamt.|"></p>
+
+      <!--/*
+        Says out loud what is NOT here, because the public page promises exactly that: an anonymous
+        check on /validator leaves no row, so a user who expects to find one should read why here
+        rather than conclude the dashboard lost it.
+      */-->
+      <div class="notice">
+        Hier stehen die Prüfungen, die <strong>angemeldet</strong> gelaufen sind — über die REST-API
+        oder aus einer Rechnungserstellung. Anonyme Prüfungen auf der
+        <a th:href="@{/validator}">öffentlichen Prüfer-Seite</a> werden bewusst nicht gespeichert.
+      </div>
+
+      <p class="muted" th:if="${#lists.isEmpty(reports)}">Noch keine Prüfberichte.</p>
+
+      <th:block th:unless="${#lists.isEmpty(reports)}">
+        <div th:replace="~{fragments/lists :: reportTable(${reports})}"></div>
+        <div th:replace="~{fragments/lists :: pager('/app/berichte', ${page}, ${totalPages})}"></div>
+      </th:block>
+    </main>
+
+    <div th:replace="~{fragments/layout :: colophon}"></div>
+  </body>
+</html>

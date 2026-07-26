@@ -84,6 +84,68 @@ app:
     convert:
       capacity: ${RATE_LIMIT_CONVERT_CAPACITY:20}
       refill-per-minute: ${RATE_LIMIT_CONVERT_REFILL_PER_MINUTE:20}
+    # POST /api/v1/reports/{id}/explain and the dashboard's per-finding "Erklären" — the two routes
+    # where a request becomes a PAID third-party call. Limited per credential and applied to
+    # authenticated callers too, exactly like convert: both routes require authentication, so an
+    # authenticated exemption would leave a limit covering nobody. They share one bucket because
+    # they buy the same thing from the same provider, and it is a bucket of its own so that spending
+    # the explanation allowance never stops a tenant validating (which costs CPU, not money).
+    #
+    # The M5 hostile review (F4) found both unlimited: app.ai.max-findings-per-request bounds one
+    # request, and nothing bounded the rate. Lower than the others on purpose — this is the only
+    # limit here whose unit is euros. The public /validator/erklaeren keeps the anonymous-only
+    # validate policy instead; it is a different threat (abuse of a free endpoint).
+    explain:
+      capacity: ${RATE_LIMIT_EXPLAIN_CAPACITY:30}
+      refill-per-minute: ${RATE_LIMIT_EXPLAIN_REFILL_PER_MINUTE:30}
+
+  # Storage limitation (GDPR Art. 5(1)(e)) — RetentionService, scheduled by PrivacyConfig.
+  #
+  # ZERO OR NEGATIVE MEANS KEEP FOREVER. That is the off switch; there is deliberately no separate
+  # `enabled` flag, because two mechanisms can disagree and one cannot.
+  #
+  # INVOICES ARE NOT LISTED HERE ON PURPOSE and no window will ever expire them: an Austrian business
+  # must keep its invoices for seven years (§ 132 BAO). Deleting them automatically would destroy
+  # records the user is legally required to hold. Erasure on request (DELETE /api/v1/tenant) is a
+  # different operation and does delete them, because the person asked.
+  retention:
+    # A validation verdict is operational output — reproducible by re-validating, and unread after a
+    # year.
+    report-days: ${RETENTION_REPORT_DAYS:365}
+    # The security trail: useful for months, and the fastest-growing table in the schema.
+    audit-days: ${RETENTION_AUDIT_DAYS:730}
+    # Daily, at a quiet hour in the server's zone. A purge is a bulk delete over an indexed timestamp,
+    # so it is short even on a large table.
+    cron: ${RETENTION_CRON:0 15 3 * * *}
+
+  # AI-assisted finding explanations (SPEC §6, ADR-0010). Only read when the feature flag below is on;
+  # AiConfig contributes no beans at all otherwise, so an unset AI_API_KEY is not a problem until
+  # someone switches the feature on — at which point the context fails to start and says so, rather
+  # than booting a client that cannot work.
+  ai:
+    base-url: ${AI_BASE_URL:https://openrouter.ai/api/v1}
+    api-key: ${AI_API_KEY:}
+    model: ${AI_MODEL:anthropic/claude-sonnet-5}
+    timeout: ${AI_TIMEOUT:15s}
+    max-retries: ${AI_MAX_RETRIES:1}
+    max-output-tokens: ${AI_MAX_OUTPUT_TOKENS:700}
+    # How many findings ONE POST /api/v1/reports/{id}/explain may explain, errors first. Unlike the
+    # keys above this one is read whether or not the feature is on (ReportExplanationService exists
+    # either way, so it can answer 503 rather than 404). A Peppol report can carry dozens of findings
+    # and each distinct one is a paid provider call, so "explain everything" without a bound would
+    # turn a single request into an unbounded bill; findings past the cap keep a null explanation,
+    # which is already what that field's absence means. Pass ?findingIndex=N to explain exactly one.
+    max-findings-per-request: ${AI_MAX_FINDINGS_PER_REQUEST:10}
+
+# Feature flags. SPEC §2 names this one: "ai-assist is only called from app behind the feature flag
+# features.ai-explanations".
+#
+# DEFAULT OFF, deliberately. The feature costs money per click and sends text to a third party; that
+# is something an operator switches on knowingly, not something they discover in an invoice. With it
+# off the platform is complete: the validator, the reports and the API are unchanged, and the
+# "Erklären" buttons are simply not rendered (M5 Abnahme: "KI abschaltbar ohne Funktionsverlust").
+features:
+  ai-explanations: ${FEATURES_AI_EXPLANATIONS:false}
 
 # OpenAPI document and Swagger UI. Both are served anonymously (SecurityConfig permits them), which
 # is right for a portfolio/dev instance and a decision that deserves an off-switch rather than a
@@ -99,11 +161,17 @@ springdoc:
 server:
   port: 8080
 
+# Actuator surface. `metrics` is exposed alongside the probes because M5 ships cost metrics
+# (einvoice.ai.calls / .tokens / .cost.usd) and a metric an operator cannot read is not a metric —
+# the M5 hostile review (F5) found all three recorded into a registry with no endpoint in front of
+# it. All of /actuator/** except the health probes requires authentication (SecurityConfig), so this
+# publishes nothing anonymously; a Prometheus scrape endpoint belongs to M6, where observability is
+# the milestone's subject.
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics
   endpoint:
     health:
       probes:

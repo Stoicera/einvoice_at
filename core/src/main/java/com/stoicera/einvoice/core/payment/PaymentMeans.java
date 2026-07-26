@@ -1,7 +1,7 @@
 package com.stoicera.einvoice.core.payment;
 
 import com.stoicera.einvoice.core.InvariantViolationException;
-import com.stoicera.einvoice.core.internal.Texts;
+import com.stoicera.einvoice.core.text.Texts;
 import java.util.Locale;
 import java.util.regex.Pattern;
 

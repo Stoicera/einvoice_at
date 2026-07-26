@@ -1,4 +1,4 @@
-package com.stoicera.einvoice.core.internal;
+package com.stoicera.einvoice.core.text;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

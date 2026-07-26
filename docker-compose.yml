@@ -11,7 +11,8 @@ services:
       # Datasource resolves from POSTGRES_* (see application.yml). Inside the compose network the
       # database is reachable at host `postgres` on its internal port 5432; credentials come from
       # .env. No secrets are hard-coded here.
-      POSTGRES_HOST: postgres
+      # Overridable, but blank in .env means this default — see .env.example.
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-einvoice}
       POSTGRES_USER: ${POSTGRES_USER:-einvoice}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — copy .env.example to .env and set a generated value}
@@ -20,13 +21,75 @@ services:
       # signing keys over the compose network at `keycloak:8080`. SecurityConfig validates `iss`
       # against OAUTH2_ISSUER_URI and pulls JWKS from OAUTH2_JWK_SET_URI, so the two never have to be
       # the same host.
-      OAUTH2_ISSUER_URI: http://localhost:${KEYCLOAK_PORT:-8081}/realms/einvoice
-      OAUTH2_JWK_SET_URI: http://keycloak:8080/realms/einvoice/protocol/openid-connect/certs
+      OAUTH2_ISSUER_URI: ${OAUTH2_ISSUER_URI:-http://localhost:${KEYCLOAK_PORT:-8081}/realms/einvoice}
+      OAUTH2_JWK_SET_URI: ${OAUTH2_JWK_SET_URI:-http://keycloak:8080/realms/einvoice/protocol/openid-connect/certs}
       # Optional audience check, blank by default for the dev realm (see .env.example / ADR-0006).
       OAUTH2_AUDIENCE: ${OAUTH2_AUDIENCE:-}
       # OpenAPI document + Swagger UI. On for the local stack; a deployment that should not publish
       # its API description to anonymous callers sets this to false.
       API_DOCS_ENABLED: ${API_DOCS_ENABLED:-true}
+      # Bounds and limits. THESE WERE DOCUMENTED IN .env.example AND NOT PASSED THROUGH HERE, which
+      # meant setting any of them in .env did exactly nothing — silently, which is the worst way for a
+      # configuration knob to be broken. Found by the Gatling run: it raised
+      # RATE_LIMIT_VALIDATE_CAPACITY, got 36 rate-limited requests out of 50 anyway, and the
+      # simulation's "no request may be refused" assertion turned that into a failure instead of a
+      # meaningless p95. Every variable .env.example documents for the app now appears here; a CI
+      # check asserts the two lists agree.
+      RATE_LIMIT_VALIDATE_CAPACITY: ${RATE_LIMIT_VALIDATE_CAPACITY:-10}
+      RATE_LIMIT_VALIDATE_REFILL_PER_MINUTE: ${RATE_LIMIT_VALIDATE_REFILL_PER_MINUTE:-10}
+      RATE_LIMIT_CONVERT_CAPACITY: ${RATE_LIMIT_CONVERT_CAPACITY:-20}
+      RATE_LIMIT_CONVERT_REFILL_PER_MINUTE: ${RATE_LIMIT_CONVERT_REFILL_PER_MINUTE:-20}
+      RATE_LIMIT_EXPLAIN_CAPACITY: ${RATE_LIMIT_EXPLAIN_CAPACITY:-30}
+      RATE_LIMIT_EXPLAIN_REFILL_PER_MINUTE: ${RATE_LIMIT_EXPLAIN_REFILL_PER_MINUTE:-30}
+      MAX_REQUEST_BODY_SIZE: ${MAX_REQUEST_BODY_SIZE:-2MB}
+      API_KEYS_MAX_ACTIVE_PER_TENANT: ${API_KEYS_MAX_ACTIVE_PER_TENANT:-25}
+      # Retention windows (GDPR Art. 5(1)(e)). Zero or negative means keep forever; invoices are never
+      # expired by the job at all (§ 132 BAO). See RetentionService.
+      RETENTION_REPORT_DAYS: ${RETENTION_REPORT_DAYS:-365}
+      RETENTION_AUDIT_DAYS: ${RETENTION_AUDIT_DAYS:-730}
+      RETENTION_CRON: ${RETENTION_CRON:-0 15 3 * * *}
+      # Browser login for the M5 web UI (OAuth2 authorization-code flow). The same Docker split as
+      # the resource server above, and here it is unavoidable rather than merely convenient: the
+      # BROWSER must be sent to a URL it can reach (localhost:${KEYCLOAK_PORT}), while the app
+      # exchanges the code and fetches keys over the compose network (keycloak:8080). Discovery from
+      # a single issuer-uri cannot satisfy both, so the four URLs are given explicitly — the
+      # authorization URL browser-facing, the rest app-facing.
+      #
+      # DO NOT ADD `..._PROVIDER_KEYCLOAK_ISSUER_URI` HERE. It reads as the harmless completion of
+      # this block and it is not: Spring Boot treats a provider `issuer-uri` as a request to perform
+      # OIDC DISCOVERY at startup (ClientRegistrations.fromIssuerLocation), which overrides the point
+      # of listing the endpoints explicitly and fetches
+      # `<issuer>/.well-known/openid-configuration` from inside this container. The browser-facing
+      # value is `localhost:${KEYCLOAK_PORT}`, and inside the container that is the container's own
+      # loopback — connection refused, bean creation fails, and the WHOLE APPLICATION fails to start,
+      # public validator included. It was set here once and did exactly that; the compose stack could
+      # not boot. Pinned KC_HOSTNAME (see the keycloak service) is what keeps `iss` trustworthy
+      # without discovery.
+      #
+      # Leave SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_CLIENT_ID empty to run with no
+      # login at all: the public validator still works and /app/** is refused.
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_CLIENT_ID: ${OAUTH2_CLIENT_ID:-einvoice-web}
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_CLIENT_SECRET: ${OAUTH2_CLIENT_SECRET:-dev-einvoice-web-secret-not-for-production}
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_CLIENT_NAME: Keycloak
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_PROVIDER: keycloak
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_AUTHORIZATION_GRANT_TYPE: authorization_code
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_REDIRECT_URI: "{baseUrl}/login/oauth2/code/{registrationId}"
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_SCOPE: openid,profile,email
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_AUTHORIZATION_URI: http://localhost:${KEYCLOAK_PORT:-8081}/realms/einvoice/protocol/openid-connect/auth
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/einvoice/protocol/openid-connect/token
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/einvoice/protocol/openid-connect/certs
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_USER_INFO_URI: http://keycloak:8080/realms/einvoice/protocol/openid-connect/userinfo
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_USER_NAME_ATTRIBUTE: preferred_username
+      # AI-assisted finding explanations (SPEC §6, ADR-0010). Off unless .env says otherwise; with the
+      # flag on and no key the app refuses to start rather than pretending the feature works.
+      FEATURES_AI_EXPLANATIONS: ${FEATURES_AI_EXPLANATIONS:-false}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_BASE_URL: ${AI_BASE_URL:-https://openrouter.ai/api/v1}
+      AI_MODEL: ${AI_MODEL:-anthropic/claude-sonnet-5}
+      AI_TIMEOUT: ${AI_TIMEOUT:-15s}
+      AI_MAX_RETRIES: ${AI_MAX_RETRIES:-1}
+      AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-700}
+      AI_MAX_FINDINGS_PER_REQUEST: ${AI_MAX_FINDINGS_PER_REQUEST:-10}
     ports:
       - "${APP_PORT:-8080}:8080"
     restart: unless-stopped
@@ -60,6 +123,17 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required — copy .env.example to .env and set a generated value}
       # Expose the health endpoints on the management port (9000) for the healthcheck below.
       KC_HEALTH_ENABLED: "true"
+      # PIN THE ISSUER. Without this, `start-dev` derives every URL — including the `iss` claim it
+      # stamps into tokens — from the incoming request's Host header, so the same realm calls itself
+      # `http://localhost:8081/realms/einvoice` to the browser and `http://keycloak:8080/realms/einvoice`
+      # to the app over the compose network. The two channels then disagree about who the issuer is:
+      # a browser login's id_token is minted over the BACK channel and would carry `keycloak:8080`,
+      # while OAUTH2_ISSUER_URI below (and every API token fetched from the host) says `localhost:8081`.
+      # Pinning the frontend URL makes `iss` one value on both channels, which is what lets the app
+      # validate it at all. Backchannel stays dynamic so the app can still reach the token, JWKS and
+      # userinfo endpoints by their compose-network name.
+      KC_HOSTNAME: http://localhost:${KEYCLOAK_PORT:-8081}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
     volumes:
       # Keycloak's directory import requires the file to be named <realm>-realm.json, so the repo's
       # keycloak/dev-realm.json is mounted into the import directory as einvoice-realm.json.

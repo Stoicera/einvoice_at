@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.stoicera.einvoice.app.MultipartBodies;
 import com.stoicera.einvoice.app.persistence.ApiKeyEntity;
 import com.stoicera.einvoice.app.persistence.ApiKeyRepository;
 import com.stoicera.einvoice.app.persistence.TenantEntity;

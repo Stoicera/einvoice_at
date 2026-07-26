@@ -1,5 +1,8 @@
 package com.stoicera.einvoice.app.api;
 
+import com.stoicera.einvoice.app.ai.AiExplanationUnavailableException;
+import com.stoicera.einvoice.app.ai.AiExplanationsDisabledException;
+import com.stoicera.einvoice.app.ai.InvalidFindingIndexException;
 import com.stoicera.einvoice.app.convert.UnsupportedConversionException;
 import com.stoicera.einvoice.app.http.RequestBodySizeLimitFilter;
 import com.stoicera.einvoice.app.http.RequestBodyTooLargeException;
@@ -123,6 +126,50 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         "This tenant already holds the maximum of "
             + ex.getLimit()
             + " active API keys. Revoke one before creating another.");
+  }
+
+  /**
+   * The AI explanation feature is not configured on this deployment — {@code 503}, not {@code 404}:
+   * the route is correct and the capability is absent, and an operator must be able to tell those
+   * apart (M5 Abnahme "KI abschaltbar ohne Funktionsverlust", asserted by {@code
+   * ExplainApiDisabledIT}).
+   */
+  @ExceptionHandler(AiExplanationsDisabledException.class)
+  ProblemDetail handleAiDisabled(AiExplanationsDisabledException ex) {
+    return problem(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        "ai-explanations-disabled",
+        "AI explanations are disabled",
+        "This deployment has features.ai-explanations switched off. Every other endpoint is"
+            + " unaffected.");
+  }
+
+  /** Explanations were asked for and the provider produced none — see the exception's Javadoc. */
+  @ExceptionHandler(AiExplanationUnavailableException.class)
+  ProblemDetail handleAiUnavailable(AiExplanationUnavailableException ex) {
+    return problem(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        "ai-explanation-unavailable",
+        "AI explanation unavailable",
+        "The AI provider produced no explanation for this request. The report itself is unaffected"
+            + " and remains readable.");
+  }
+
+  /**
+   * {@code findingIndex} is not a position in that report. The bounds are echoed because both
+   * numbers are the caller's own request and the report they already hold.
+   */
+  @ExceptionHandler(InvalidFindingIndexException.class)
+  ProblemDetail handleInvalidFindingIndex(InvalidFindingIndexException ex) {
+    return problem(
+        HttpStatus.BAD_REQUEST,
+        "invalid-finding-index",
+        "Invalid finding index",
+        "findingIndex "
+            + ex.getIndex()
+            + " is out of range; this report has "
+            + ex.getFindingCount()
+            + " findings.");
   }
 
   /** The {@code (tenant, invoiceNumber)} uniqueness constraint was violated. */

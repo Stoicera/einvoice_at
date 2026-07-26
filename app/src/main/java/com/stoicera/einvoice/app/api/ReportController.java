@@ -1,5 +1,6 @@
 package com.stoicera.einvoice.app.api;
 
+import com.stoicera.einvoice.app.ai.ReportExplanationService;
 import com.stoicera.einvoice.app.persistence.TenantEntity;
 import com.stoicera.einvoice.app.report.ReportDetail;
 import com.stoicera.einvoice.app.report.ReportPage;
@@ -9,12 +10,14 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import java.util.OptionalInt;
 import java.util.UUID;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -39,10 +42,13 @@ public class ReportController {
 
   private final ReportService reports;
   private final CurrentTenant currentTenant;
+  private final ReportExplanationService explanations;
 
-  public ReportController(ReportService reports, CurrentTenant currentTenant) {
+  public ReportController(
+      ReportService reports, CurrentTenant currentTenant, ReportExplanationService explanations) {
     this.reports = reports;
     this.currentTenant = currentTenant;
+    this.explanations = explanations;
   }
 
   /** Lists the caller's tenant's reports, newest first. */
@@ -95,5 +101,68 @@ public class ReportController {
   public ReportDetail get(@PathVariable UUID id, Authentication authentication) {
     TenantEntity tenant = currentTenant.require(authentication);
     return reports.get(tenant.getId(), id);
+  }
+
+  /**
+   * Explains this report's findings with the AI assistant and returns the same {@link ReportDetail}
+   * shape with {@code aiExplanation} filled in.
+   *
+   * <p>{@code POST} rather than {@code GET} even though nothing is stored: the call spends money at
+   * a third-party provider, which is not something a caller should be able to trigger by prefetch,
+   * a crawler, or a browser's address bar completion.
+   */
+  @PostMapping(value = "/{id}/explain", produces = MediaType.APPLICATION_JSON_VALUE)
+  @Operation(
+      summary = "Explain a report's findings",
+      description =
+          "Attaches AI-generated German explanations to the report's findings, errors first."
+              + " Bounded by app.ai.max-findings-per-request per call; pass findingIndex to explain"
+              + " exactly one. Nothing is persisted — the stored report keeps the validator's own"
+              + " verdict. Requires features.ai-explanations to be enabled.")
+  @ApiResponse(
+      responseCode = "200",
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_JSON_VALUE,
+              schema = @Schema(implementation = ReportDetail.class)))
+  @ApiResponse(
+      responseCode = "400",
+      description = "findingIndex is not a position in this report's findings list.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
+  @ApiResponse(
+      responseCode = "401",
+      description = "Missing or invalid credentials.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
+  @ApiResponse(
+      responseCode = "404",
+      description = "No report with the given id exists for this tenant.",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
+  @ApiResponse(
+      responseCode = "503",
+      description =
+          "Either the feature is disabled on this deployment (ai-explanations-disabled) or the"
+              + " provider produced no explanation (ai-explanation-unavailable).",
+      content =
+          @Content(
+              mediaType = "application/problem+json",
+              schema = @Schema(implementation = ProblemDetail.class)))
+  public ReportDetail explain(
+      @PathVariable UUID id,
+      @RequestParam(required = false) Integer findingIndex,
+      Authentication authentication) {
+    TenantEntity tenant = currentTenant.require(authentication);
+    return explanations.explain(
+        tenant.getId(),
+        id,
+        findingIndex == null ? OptionalInt.empty() : OptionalInt.of(findingIndex));
   }
 }

@@ -1,10 +1,18 @@
-package com.stoicera.einvoice.core.internal;
+package com.stoicera.einvoice.core.text;
 
 /**
- * Internal — not API.
- *
- * <p>Shared helper for embedding untrusted, caller-supplied strings in exception messages without
+ * Shared helper for embedding untrusted, caller-supplied strings in exception messages without
  * turning those messages into a log-injection or unbounded-memory vector.
+ *
+ * <p><strong>This lived in {@code core.internal} until M5.</strong> It was marked "Internal — not
+ * API" while {@code core} was its only consumer, and the M1 hostile review left a note to promote
+ * it "once {@code app} starts consuming it directly" — because a second module reaching into
+ * another module's {@code internal} package is a pattern that spreads. The trigger actually fired
+ * one milestone earlier and at a different module than the note predicted: {@code mapping} has
+ * imported it since M2 ({@code InvoiceJsonReader}, {@code Currencies}), and M5's {@code ai-assist}
+ * makes three. Promoted here rather than re-marked internal a third time — the bounded-echo
+ * discipline is a rule every module that formats an untrusted value into a message needs, so it is
+ * API by use.
  */
 public final class Texts {
 

@@ -1,0 +1,22 @@
+<!--
+  The wordmark, reduced to what survives at 16 px: the gold "e" of "einvoice" on the near-black
+  ground, with the "-at" tick that makes it Austrian rather than generic. Palette values are the
+  literals of app.css's --ink / --gold; an SVG cannot read a stylesheet's custom properties, and
+  duplicating two hex codes is cheaper than shipping a generated icon set.
+
+  SVG rather than a binary .ico: it is text (reviewable in a diff), one file for every size, and it
+  removes the implicit /favicon.ico request the browser makes when no icon is declared — which was
+  a 404 on every single page load until this existed.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="einvoice-at">
+  <rect width="32" height="32" rx="6" fill="#0e0f11" />
+  <text
+    x="7"
+    y="23"
+    font-family="Helvetica, Arial, sans-serif"
+    font-size="20"
+    font-weight="700"
+    fill="#c9a227"
+  >e</text>
+  <rect x="20" y="19" width="6" height="2.5" rx="1.25" fill="#e8e6e1" />
+</svg>

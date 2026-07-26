@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="de">
+  <head
+    th:replace="~{fragments/layout :: head(
+      'Rechnung',
+      'Eine erzeugte E-Rechnung: Formate herunterladen und Prüfberichte ansehen.')}"
+  ></head>
+  <body>
+    <div th:replace="~{fragments/layout :: masthead}"></div>
+
+    <main class="shell">
+      <h1 th:text="|Rechnung ${invoice.invoiceNumber()}|">Rechnung</h1>
+      <div th:replace="~{fragments/layout :: dashnav('invoices')}"></div>
+
+      <div class="verdict" th:classappend="${invoice.valid()} ? 'valid' : 'invalid'">
+        <span class="headline" th:if="${invoice.valid()}">Diese Rechnung ist gültig.</span>
+        <span class="headline" th:unless="${invoice.valid()}"
+          >Diese Rechnung hat offene Befunde.</span
+        >
+        <span class="muted right"
+          th:text="|${invoice.payableAmount()} ${invoice.currency()} · ${#temporals.format(invoice.issueDate(), 'dd.MM.yyyy')}|"
+        ></span>
+      </div>
+
+      <div class="card">
+        <h3>Empfänger</h3>
+        <p th:text="${invoice.buyerName()}"></p>
+        <p class="muted" th:text="|Belegart ${invoice.typeCode()} (BT-3)|"></p>
+      </div>
+
+      <h2>Herunterladen</h2>
+      <!--/*
+        These are /app routes, not /api/v1 links, and that is not an oversight: /api/** is the
+        stateless chain and never reads this browser's session cookie (ADR-0009), so an API link
+        would answer 401 in a new tab. DashboardController serves the same InvoiceService output
+        behind the session.
+      */-->
+      <div class="row">
+        <a
+          class="button secondary"
+          th:href="@{/app/rechnungen/{id}/ebinterface(id=${invoiceId})}"
+          >ebInterface 6.1 (XML)</a
+        >
+        <a class="button secondary" th:href="@{/app/rechnungen/{id}/ubl(id=${invoiceId})}"
+          >Peppol BIS 3.0 (UBL)</a
+        >
+        <a class="button secondary" th:href="@{/app/rechnungen/{id}/pdf(id=${invoiceId})}"
+          >PDF-Druckansicht</a
+        >
+      </div>
+      <p class="muted">
+        Alle drei Formate werden bei jedem Abruf neu aus den gespeicherten kanonischen Daten
+        erzeugt — es liegt kein XML auf einem Datenträger (ADR-0005).
+      </p>
+
+      <h2>Prüfberichte</h2>
+      <p class="muted" th:if="${#lists.isEmpty(reports)}">
+        Zu dieser Rechnung liegt kein Prüfbericht vor.
+      </p>
+      <th:block th:unless="${#lists.isEmpty(reports)}">
+        <div th:replace="~{fragments/lists :: reportTable(${reports})}"></div>
+      </th:block>
+
+      <h2>Kanonische Daten</h2>
+      <p class="muted">
+        Das Dokument von Aufzeichnung: jedes Ausgabeformat wird hieraus erzeugt. Nützlich, wenn ein
+        erzeugtes Dokument nicht so aussieht wie erwartet.
+      </p>
+      <div class="scroll-x">
+        <pre class="mono" th:text="${canonical}"></pre>
+      </div>
+    </main>
+
+    <div th:replace="~{fragments/layout :: colophon}"></div>
+  </body>
+</html>

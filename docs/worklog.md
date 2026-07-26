@@ -1,5 +1,418 @@
 # Worklog — einvoice-at
 
+## 2026-07-26 — M5 hostile review: 17 findings, all closed
+
+The per-milestone quality gate, run on `feat/m5-web-ui-ai` before the merge rather than after it.
+Baseline re-measured rather than taken from the entry below: `./mvnw clean verify` green, 11 modules,
+1017 tests, every JaCoCo gate met. After the wave: **1048 tests**, all gates met, both mutation gates
+still met (`ai-assist` 90 %, `validation` 86 %), and `./mvnw -pl e2e verify -Pe2e` green in a real
+browser — which is what makes the Content-Security-Policy below a verified change rather than a
+hopeful one.
+
+Findings and their resolutions are in `.superpowers/m5-hostile-review-findings.md`, committed.
+
+**The three that would have blocked a merge**
+
+1. **An API key could erase the entire tenant.** `DELETE /api/v1/tenant` matched no explicit rule and
+   fell through to `.anyRequest().authenticated()`, so the platform's most destructive operation —
+   every invoice, report, key and audit event, irreversibly, no backup — was reachable by the
+   longest-lived and most widely copied credential class there is. Two lines above it, *listing* API
+   keys was already OAuth2-only, on the stated grounds that key management must be denied to keys "in
+   the security layer itself". A key could not read the key list but could destroy everything.
+   Invoices sharpen it: `RetentionService` refuses to expire them **because § 132 BAO obliges seven
+   years**, and the same sentence says a leaked integration key must not be able to delete them
+   either. Now `hasRole("USER")`. Proven before the fix — the test expected 403 and got 204.
+2. **`SecurityConfig` cited a test that did not exist.** It called the chain order "load-bearing" and
+   said `SecurityChainRoutingIT` asserted it; ADR-0009 repeated the claim in German. `grep` returned
+   exactly one hit: the sentence itself. Writing the class closed two properties nothing had covered —
+   that the API chain creates no session even on its error path, and the CSRF contrast between the
+   chains. This is the M4 pattern for the third milestone running: **the worst defects here are false
+   statements, not ugly code.**
+3. **A lowercase IBAN left the platform unmasked.** `PiiScrubber`'s IBAN and VAT-id patterns were
+   `[A-Z]`-only with no `CASE_INSENSITIVE` flag. They do not run against canonical values — they run
+   against a Schematron diagnostic that quotes the document verbatim, and nothing upper-cases what a
+   sender wrote. `at611904300234573201` scrubbed to `at[NUMMER]`: the digit run masked, the value
+   misclassified, and the country code left in place, against a `privacy.md` table promising the
+   masking unconditionally. The property test generated upper case only, which is exactly why four
+   properties passed over it; it now generates upper, lower and mixed.
+
+**What the rest were about**
+
+- **A paid endpoint with no rate.** `RateLimitFilter`'s Javadoc argued that an LLM call needs a limit
+  for the same reason CPU does, then limited only the *anonymous* route. The two authenticated explain
+  routes spend the operator's provider budget per click and were limited by nothing;
+  `AI_MAX_FINDINGS_PER_REQUEST` bounds one request, not a rate — the identical distinction the M4
+  review drew for `/convert`. They now share a per-credential bucket of their own.
+- **Cost metrics nobody could read, tagged with a string nobody owns.** `include: health,info` meant
+  no endpoint stood in front of `einvoice.ai.*`, and the `model` tag came straight out of the
+  provider's response body while `AI_BASE_URL` may point anywhere — an unbounded tag value is an
+  unbounded number of meters that are never collected.
+- **A retry that did not wait.** The loop re-issued a 429 in the same millisecond with `Retry-After`
+  unread. Now the provider's own value when it sent one, exponential otherwise, capped at 5 s because
+  `Retry-After` is a third party's number and the request thread is ours.
+- **The env guard checked one direction.** M5's own CI step asserts documented ⊆ wired-into-compose.
+  It could not see that three variables the application *reads* were documented nowhere. Same bug
+  class as the one it was written to catch, mirrored.
+- **No CSP on the surface that renders model output** and assigns markup into `innerHTML`, and
+  `SecurityHeadersIT` was never extended past `/api/**`. Getting to a policy with no `'unsafe-inline'`
+  meant replacing ten inline `style="…"` attributes with five stylesheet rules — an inline style
+  attribute is precisely what forces that allowance.
+- **Two tests that did not do what their names said, and a number that nothing checked.**
+  `boundsAnOverlongTranslation…` asserted a map lookup. `PeppolMessagesDe.SIZE_NOTE` was described in
+  its own Javadoc as "asserted by the stage test", was referenced nowhere outside its file, and said
+  78 when the catalogue held **80** — a number `docs/worklog.md` repeated five times, including in the
+  checklist for the mandatory 2026-08-17 Peppol 2026.5 upgrade. All five corrected; a test now makes
+  the sentence true.
+- **An ADR that contradicted itself.** ADR-0009's title and Entscheidung 2 still specified htmx and
+  described it as vendored in `static/vendor/` — a directory that never existed — while Entscheidung 5
+  sixty lines below decided against it. `SPEC.md`, `MILESTONES.md`, `CLAUDE.md` and `ADR-0001` all
+  still said htmx too. Two numbers in the same family were wrong, and one of them is a *trigger*:
+  `app.css` was measured against its own 700-line re-evaluation threshold as "~430 Zeilen" and is 625.
+
+**Bug introduced and fixed inside the wave, recorded rather than amended away:** the first pass at
+removing the inline styles left a duplicate `class` attribute on the validator's upload form.
+attoparser rejects that, so every public page 500'd. The tests written for the CSP finding caught it
+within the same run.
+
+**Deferred, with the governing document named** — Lighthouse ≥ 95, the retention job's instance
+election, `X-Forwarded-For` handling, and a real authorization-code login in an automated test. All
+four are M6 in MILESTONES, and none was pulled forward silently.
+
+**Merged:** PR [#8](https://github.com/Stoicera/einvoice_at/pull/8) — M5 and its review wave land on
+`main` as one piece, which is the point of running the gate before the merge rather than after it.
+
+**Next: M6** — OTel across the pipeline stages, an observability compose profile, Hetzner + Dokploy
+deployment with `docs/deployment.md`, a backup/restore drill, `SECURITY.md` (STRIDE-light), Lighthouse
+≥ 95 on the public pages, README final, and the `v0.1.0` release. The four items this review deferred
+all belong to it, and `docs/MILESTONES.md` M6 already names each.
+
+One piece of owner action is still outstanding from M4 and unchanged: **add the `NVD_API_KEY`
+repository secret.** Until it exists the OWASP Dependency-Check job skips the scan loudly — a warning
+annotation plus a job-summary line — rather than failing; adding the secret turns it into a real gate
+with no workflow edit.
+
+## 2026-07-26 — M5 (part 2): dashboard, GDPR erasure, retention, explain API, browser E2E — M5 complete
+
+**Status: M5 is complete.** All five items the part-1 entry listed as open are done, plus three defects
+that part 1 had shipped without noticing — one of which stopped the whole application from booting.
+
+**The first thing this session did was the thing part 1 said to do first, and it found a showstopper**
+
+Part 1 closed with "Not verified in a browser or in compose. A compose smoke run and a look at the
+rendered pages are the first thing the next session should do." That was the right instruction and it
+paid immediately: **the compose stack could not start at all.**
+
+`docker-compose.yml` set `SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI` alongside the
+four explicit endpoint URLs. Spring Boot treats a provider `issuer-uri` as a request to perform OIDC
+**discovery at startup**, so the app fetched `<issuer>/.well-known/openid-configuration` while building
+`clientRegistrationRepository`. The issuer had to be the browser-facing `localhost:8081`, and inside
+the container that is the container's own loopback: connection refused, bean creation failed, and the
+application crash-looped. Not "the login is broken" — **everything**, public validator included. The
+block's own comment described the correct solution ("the four URLs are given explicitly so discovery
+cannot be needed") and the line underneath defeated it.
+
+Fixing it surfaced a second, quieter bug in the same area. `start-dev` derives every URL from the
+request's `Host` header, **including the `iss` claim it stamps into tokens**, so the realm called itself
+`localhost:8081` to the browser and `keycloak:8080` to the app. A browser login's id_token is minted
+over the back channel and would have carried `keycloak:8080`, while `OAUTH2_ISSUER_URI` expects
+`localhost:8081`. Measured rather than assumed: before pinning, the two discovery documents reported two
+different issuers; after `KC_HOSTNAME` + `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true`, the same issuer on both
+channels with the token endpoint still app-facing.
+
+**What shipped**
+
+- **The authenticated dashboard.** Overview with per-tenant counts; invoice list and detail (verdict,
+  report history, canonical JSON, three downloads); report list and detail rendering the *same*
+  fragment as the public validator; the four-step server-rendered create-invoice wizard; the API-key
+  page; and a **Konto** page. German route segments throughout, matching `/validator/pruefen`.
+- **GDPR Art. 17 + Art. 5(1)(e)** — `TenantErasureService` (dashboard danger zone + `DELETE
+  /api/v1/tenant`) and `RetentionService` (nightly purge). ADR-0011, which ADR-0009 had already
+  forward-referenced by name.
+- **`POST /api/v1/reports/{id}/explain`** — the last endpoint SPEC §4 carried as "remains M5".
+- **The `e2e` module** — Selenium/Chrome for Upload → Report → Erklären, and the Gatling validator
+  scenario. New `e2e` CI job.
+- **Three defects part 1 shipped:** the compose boot failure above; a `/favicon.ico` 404 on every page
+  load; and `ContentDisposition.attachment().filename(...).toString()` on the **builder**, which put
+  `org.springframework.http.ContentDisposition$BuilderImpl@9336bc5` in the header of every download.
+
+**Decisions**
+
+- **The dashboard's downloads are `/app` routes, not links into `/api/v1`.** The three formats are
+  already exposed by the API and linking there is the obvious move; it would not work, and the failure
+  would have been a login redirect inside a download tab rather than anything a reviewer would notice.
+  `/api/**` is the stateless chain and never reads the session cookie. The service is the shared part;
+  the transport is not, and cannot be. A test asserts each download is served *to a session*.
+- **The wizard's last step calls the same `InvoiceService.create` as the API.** Same duplicate
+  detection, same generated-and-validated report, same audit event. A wizard-specific creation path
+  would have been a second place for invoice creation to drift — the same argument the public upload
+  already settled for validation.
+- **The draft lives in the session, not in hidden fields.** Step 3 collects a *list*, and re-serialising
+  a growing list through hidden inputs on every step is more markup and more ways to lose a line. The
+  session already exists for the login and for CSRF, so this adds no mechanism. A test asserts a second
+  session cannot see the draft.
+- **The wizard validates presence only; `core` owns the rules.** IBAN checksum, VAT-category
+  consistency, totals — all caught at creation and rendered as a message. Re-implementing them in the
+  controller would give the platform a second, drifting definition of a valid invoice. The one
+  exception is "at least one line", checked when leaving step 3, because discovering it two steps later
+  would point the user at the wrong page.
+- **The retention job never deletes an invoice, and that is the point of ADR-0011.** Expiring invoices
+  alongside reports is the symmetrical implementation and would be actively harmful: § 132 BAO obliges
+  an Austrian business to keep invoices for **seven years**. The load-bearing test is therefore a
+  negative one — a ten-year-old invoice survives a purge. Erasure on request *does* delete them,
+  because the person asked.
+- **Erasure deletes the audit trail too.** Keeping it is defensible in the abstract (Art. 5(2)
+  accountability), and impossible in practice: `audit_event.tenant_id` is a foreign key to the row
+  holding the Keycloak subject and display name, so "keep the audit trail" means "keep the tenant row"
+  means not honouring the request. What survives is one log line with the tenant **UUID** — a surrogate
+  this platform minted — and the row counts.
+- **`0` is the retention off switch, not a second `enabled` flag.** Two mechanisms can disagree; one
+  cannot. Default **on** with generous windows, because a retention scheme that must be switched on is
+  off on every installation nobody configured, and those are why Art. 5 exists.
+- **A typed `LÖSCHEN` in the browser, no confirmation parameter on the API.** A dialog needs JavaScript
+  and is dismissible by a stray Enter; a typed word is not produced by a misclick. An API caller
+  issuing `DELETE /tenant` with that tenant's own credential has already stated intent unambiguously,
+  and `?confirm=yes` is ceremony every client hard-codes on its first run. What protects there is that
+  the credential *scopes* the deletion: no tenant id in the request, so it cannot be aimed at anyone.
+- **The explain endpoint answers 503 in two distinguishable ways.** Flag off →
+  `ai-explanations-disabled`; provider produced nothing for anything requested →
+  `ai-explanation-unavailable`. A 200 whose every `aiExplanation` is null is indistinguishable from
+  "nothing to explain", so a total outage would look like success and the caller would retry nothing.
+  Partial success stays 200, because that body is honest.
+- **The capability is checked before the arguments.** With AI off, even an unknown report id answers
+  503 rather than 404. Written expecting 404 and changed after watching it fail: a precondition is
+  checked before its arguments, a disabled deployment does no database work for a route it cannot
+  serve, and the answer does not vary with whether the id exists.
+- **`spring-security-test` + MockMvc for the dashboard, a real browser for the public flow.** The
+  dashboard sits on the browser chain, which authenticates a cookie session — it deliberately accepts
+  none of the bearer tokens the other 20 ITs use. Driving Keycloak's login form over HttpClient to
+  reach a page assertion would be testing Keycloak; `oauth2Login()` injects the authentication the real
+  flow would have produced. Boot 4.1's module split moved `@AutoConfigureMockMvc` to
+  `org.springframework.boot.webmvc.test.autoconfigure` in its own artifact, which is why there are two
+  new test dependencies rather than one.
+- **`spring-boot-maven-plugin` now writes the executable jar under the `exec` classifier.** Without it
+  `repackage` replaces `app.jar` with the fat jar, whose classes live under `BOOT-INF/classes` — so the
+  `e2e` module resolved `app` and could not see a single class in it, while classes from the *test*-jar
+  resolved fine. The error points at the source file, not at the packaging. The Dockerfile copies
+  `app-exec.jar` now.
+- **`WebExceptionHandler`, scoped to `..app.web..` with highest precedence.** `ApiExceptionHandler` is
+  an unrestricted `@RestControllerAdvice`, so it applied to the Thymeleaf controllers too: a mistyped
+  invoice id gave a correct 404 whose body was `application/problem+json` — raw JSON in a browser, in
+  English, from a German UI. Only the not-found family is handled; a genuine 500 still falls through to
+  the catch-all that logs it in full.
+- **The `e2e` module's tests compile always and run only under a profile.** Same shape as the existing
+  `mutation` and `security` profiles. The consequence is stated in three places rather than implied: a
+  green plain `./mvnw verify` does **not** mean the browser flow works.
+
+**Two bugs the tests caught before the code shipped, worth recording**
+
+- **`targetsFor` selected findings by value and mapped back with `List.indexOf`.** A rule fires once per
+  offending line, so identical findings are normal — three of them would have returned position 0 three
+  times, explaining the first repeatedly and the others never. Found by inspection, then pinned; the
+  unit test was verified by reintroducing the bug and watching it fail.
+- **The Gatling assertions caught a configuration gap, not a performance problem.** The first run showed
+  36 of 50 requests rate-limited despite `RATE_LIMIT_VALIDATE_CAPACITY` being raised. Cause:
+  **seven env vars documented in `.env.example` were never passed through in `docker-compose.yml`** —
+  the whole `RATE_LIMIT_*` family, `MAX_REQUEST_BODY_SIZE`, `API_KEYS_MAX_ACTIVE_PER_TENANT`. Setting
+  them in `.env` did nothing, silently, since M3. A CI step now asserts the two lists agree.
+
+**Verification**
+
+- `./mvnw clean verify` green across all 11 modules. **1017 tests**, up from 898.
+  Per module: `core` 220, `formats-api` 7, `formats-ebinterface` 14, `formats-ubl` 31, `mapping` 201,
+  `validation` 125, `rendering` 36, `ai-assist` 107, `app` 90 unit + 186 integration (27 IT classes).
+- `app` coverage **94.5 % line / 81.0 % branch** against the unchanged 90/78 gate. The gate **failed**
+  mid-session at 74.8 % branch; closed by unit-testing `InvoiceDraft` and `FindingView` and adding four
+  wizard cases — never by touching the threshold (CLAUDE.md).
+- `./mvnw -pl e2e verify -Pe2e` green: 3 browser tests, 15 s. `gatling:test -Pload` green against the
+  compose stack: 50/50 requests, p95 18 ms, max 637 ms (first-request Schematron warm-up).
+- **Verified in a real browser this time**, which is what part 1 asked for: landing page and validator
+  screenshotted, an upload driven through Chrome with the fragment swap observed, and the console
+  checked — which is how the favicon 404 was found.
+- Compose stack verified booting from a rebuilt image, `/` 200, `/app` → 302 → Keycloak with PKCE.
+- Every command in the new `e2e` CI job was executed locally and passes. The job itself first runs on
+  push; nothing about it is asserted here beyond that.
+
+**Honest gaps**
+
+- **No automated test completes a real authorization-code login.** The dashboard ITs inject the
+  authentication a finished flow would have produced; `OAuth2ClientWiringIT` proves the client is wired
+  without discovery and that `/app` redirects into the authorization endpoint; the full round trip was
+  verified by hand against the compose Keycloak. What is missing is a browser driving Keycloak's login
+  form. It needs the browser and the app to agree on a Keycloak URL whose `iss` matches what the app
+  validates — the same dual-URL problem the compose fix above solves — and the shape is known: both
+  containers on one network, `KC_HOSTNAME` pinned to the browser-facing alias, explicit endpoints. Not
+  built, because MILESTONES names the *public* flow for E2E and this would be scope beyond it.
+- **Lighthouse ≥ 95 is not measured.** MILESTONES schedules it at M6; the pages are built for it.
+- The retention job runs in every instance. Several instances against one database all purge — the
+  deletes are idempotent so this is correct but wasteful. Instance election belongs to M6.
+
+**Next**
+
+- **M5 is complete; the next step is the M5 hostile review on this branch before merge**, the
+  per-milestone pattern (audit → prioritised findings → fix all, test-first). This entry's "honest
+  gaps" and the three part-1 defects are the obvious places to point it first.
+- One hard date unchanged: the Peppol rule-set upgrade to 2026.5 **before 2026-08-17** (ADR-0007
+  Entscheidung 8), including re-checking the 80 German translations against 2026.5's assertion texts.
+
+## 2026-07-26 — M5 (part 1): ai-assist, public web validator, German Peppol messages
+
+**Status: M5 is NOT complete.** What shipped is the public browser surface and the AI feature, both
+tested and green; the dashboard, the GDPR endpoints, Selenium and Gatling are open. The honest
+accounting is at the end of this entry rather than implied by omission.
+
+**What shipped**
+
+- **`ai-assist` filled in** — it had been a `package-info.java` stub since M0. `LlmClient` port (one
+  method: no streaming, tools or conversation state nobody calls), `OpenRouterLlmClient` on the JDK's
+  own `HttpClient`, `PiiScrubber`, versioned prompts under `src/main/resources/prompts/*.st`,
+  `FindingExplainer` with a bounded LRU cache, and `LlmUsageListener` so `app` can bridge cost/token
+  metrics to Micrometer without this module importing Spring or a metrics library. 107 tests, JaCoCo
+  97.3 / 97.8 (gate 90/85), PIT 86/95 = 91 % (gate 85), now in the CI mutation job.
+- **German Peppol messages** (`PeppolMessagesDe`, 80 assertions) — the gap M4 recorded honestly and
+  handed to M5 by name. Every `PEPPOL-EN16931-R*` rule plus the EN 16931 rules an Austrian filer
+  realistically trips, including the four VAT-category families for 20/13/10/0 %, Übergang der
+  Steuerschuld and Steuerbefreiung.
+- **The public browser surface** — landing page, `/validator` with the DSGVO notice MILESTONES names
+  by name, and a report view grouping findings by severity, German first. Two security filter chains
+  (ADR-0009). `app`: 53 unit + 104 integration tests (was 52 + 83), coverage 93.4 / 78.7 against the
+  unchanged 90/78 gate.
+- **AI explanations wired** behind `features.ai-explanations`, default off, with the "Erklären" button
+  per finding and a friendly notice when the provider is unreachable.
+- **Docs:** ADR-0009 (web UI), ADR-0010 (AI assist), `docs/privacy.md`, README (status, module map,
+  two new sections, testing), SPEC §1/§5/§6/§8 sync, glossary M5 section, `.env.example`,
+  compose, dev realm.
+
+**Decisions**
+
+- **The rule text was read off the artefacts, not recalled.** The 80 German messages are translations
+  of the assertion texts in `CEN-EN16931-UBL.xslt` and `PEPPOL-EN16931-UBL.xslt` as shipped by
+  phive-rules-peppol 4.4.1 (OpenPeppol 2025.11), extracted from the jar to translate against. A
+  translation written from memory would have been the same amount of typing and worth much less.
+  `messageEn` is never touched: this project executes those rules unmodified (ADR-0007), and that
+  principle extends to their wording.
+- **No `temperature`, `top_p` or `top_k` is sent — and this was nearly a bug.** The current Anthropic
+  models reject a non-default value for any of the three with HTTP 400 (removed with Opus 4.7 /
+  Sonnet 5), and OpenRouter forwards the body it is given. A well-meaning `temperature: 0.2` in the
+  adapter would therefore have failed *every* request against this platform's own default model, and
+  would have looked entirely reasonable in review. Two tests pin the absence — one on the adapter, one
+  on the bytes the wired application actually sends. SPEC §6's model id was stale for the same
+  underlying reason and is corrected to `anthropic/claude-sonnet-5`.
+- **Two filter chains, not one widened one.** An API client wants 401 + problem+json where a browser
+  wants a login redirect; an API request must create no session where a form needs one; CSRF matters
+  for a cookie session and is meaningless for a bearer call. One chain would have meant a condition per
+  difference. `/api/**` is byte-for-byte M4's policy; the browser chain is new. The order is
+  load-bearing and asserted, not assumed.
+- **`oauth2Login` is applied only when a `ClientRegistrationRepository` exists.** Calling it
+  unconditionally fails context startup wherever no OAuth2 client is configured — which is every
+  persistence and API integration test. This is the same mistake the M3 fix wave made once with the JWT
+  validator list, and the same fix: ask whether the collaborator is there.
+- **A browser login and an API token for one person are ONE tenant.** Both resolve through the
+  Keycloak `sub`. Keying them separately would have been easy and would have quietly partitioned each
+  user's data in two — invoices created through the API invisible in the dashboard.
+- **The public upload runs through the same service as the anonymous API**, with the same empty
+  `Optional` that means "write nothing". A UI-specific validation path would have been a second place
+  for the DSGVO promise to break; a test asserts the `report` row count does not move.
+- **No XML fragment is sent to the LLM, and it cannot be.** SPEC §6 described ~40 lines around the
+  location. The public validator retains no upload and stored invoices hold no XML, so at click time
+  there is no document to quote. Building it would mean keeping uploads — a worse trade than a less
+  specific explanation. This does not weaken the scrubber: a Schematron message quotes the offending
+  value verbatim, which is exactly what it masks.
+- **The cache key is the *scrubbed* text, with a consequence worth being deliberate about.** Two
+  documents violating `AT-B2G-02` with different IBANs both scrub to `IBAN [IBAN] ungültig` and share
+  one explanation. That is right, not a leak — the model saw neither IBAN, so its answer cannot depend
+  on which it was — and it is one fewer paid call. A test pins it so it is not later "fixed".
+  My first version of that test asserted the opposite and was wrong.
+- **No Tailwind and no htmx** (ADR-0009). Tailwind's standalone CLI is a ~100 MB platform-specific
+  binary downloaded in every build, for a handful of server-rendered pages; htmx is a fine library but
+  every page here works with JavaScript disabled and the two fragment swaps needed are 40 lines of
+  first-party script whose markup contract is a subset of htmx's own. Both are deviations from SPEC §1,
+  both recorded with what they cost, and both reversible in one file.
+- **CSRF is enforced on the browser chain and the tests drive it properly** — fetching the page,
+  harvesting the token, posting it back, and asserting a token-less post is refused. Excluding the
+  public routes from CSRF would have been three lines and would have made the token decoration.
+- **`Texts.safeEcho` promoted out of `core.internal`**, closing a carry item open since M1. The note
+  said "once `app` starts consuming it directly"; the trigger had actually fired at M2, at `mapping`.
+- **The security scan and the M4 review's own guard both earned their keep.** `everyLibModuleIsListed`
+  failed the moment `ai-assist` gained its first class — exactly the drift M4 added it to catch.
+
+**Decisions taken at the owner's request, closing open items (2026-07-26)**
+
+The owner delegated four decisions that had been sitting open. All four are now recorded in the ADRs
+rather than in a conversation:
+
+- **ADR-0009: both web-UI deviations stay, with numeric triggers.** Hand-authored CSS until `app.css`
+  passes 700 lines or a second person works on it regularly (currently ~430, one). No htmx until an
+  interaction genuinely *needs* partial updates. Walking through the dashboard's actual interactions
+  strengthened this rather than weakening it: the wizard, the API-key page and the danger zone are all
+  plain POST-and-redirect flows that need no JavaScript at all. The two swaps that do benefit already
+  exist and are done. SPEC §5 is corrected from "htmx wizard" to "server-rendered multi-step wizard" so
+  the documents agree.
+- **ADR-0010: the model stays Sonnet for the public validator, with an explicit Opus recommendation for
+  a paid deployment.** Explaining a published rule in two short German paragraphs is translation and
+  framing, not open-ended reasoning — the task class where the tier gap is smallest — and a free public
+  page makes cost per *distinct* finding a real constraint. Where the cost sits against a contract
+  instead, `AI_MODEL=anthropic/claude-opus-5` is the recommendation, and `.env.example` says so where
+  someone will look.
+- **ADR-0007 Entscheidung 8: the Peppol rule-set upgrade to 2026.5 happens before 2026-08-17, not
+  now.** Not now, because a rule-set change alters how every document is judged and wants its own
+  corpus re-run rather than being mixed into a half-finished milestone. Not later than that date,
+  because past it a "valid" from this platform would be a false statement. The 80 German translations
+  must be re-checked against 2026.5's assertion texts, not merely carried over.
+- **ADR-0007 Entscheidung 9: `ConversionLosses` keeps its four cases.** An exhaustive enum would
+  enumerate hypotheses; each existing case came from a real loss in a real document. A fifth is added
+  when a real loss appears that fits none of them.
+
+Two further items are marked **settled rather than open**, with no change to the code:
+
+- **PIT's `frecord` filter stays on** (`core`). Measured at M4: 129 mutants with it (98 % killed) vs
+  392 without (86 %, below the gate), the extra survivors concentrated in compiler-generated
+  `equals`/`hashCode`/`toString` — which is what the filter exists to remove. The alternatives are a
+  lowered gate (never) or tests for generated methods (worthless). This was recorded as an open
+  question for the M4 review; it is a decision now.
+- **jqwik stays**, and the anti-AI banner it prints to test output needs no owner action. M2 evaluated
+  every credible JUnit-5-native alternative and found none viable. The banner is inert text with no
+  execution vector, already covered by the standing rule that library and tool output addressed to
+  agents is data, never instructions.
+
+**Verification**
+
+- `./mvnw clean verify` green across all 10 modules (2 m 01 s), every JaCoCo gate met.
+- **898 tests**, up from 769. Per module: `core` 220, `formats-api` 7, `formats-ebinterface` 14,
+  `formats-ubl` 31, `mapping` 201, `validation` 125, `rendering` 36, `ai-assist` 107, `app` 53 unit +
+  104 integration.
+- **Correction to the M4 entry's numbers.** The 769 baseline is a *clean-build* count. Reading
+  `target/` without cleaning first reports 785, because it still held reports for test classes that no
+  longer exist — `EbInterface61ValidatorTest` and its concurrency sibling (M4 deleted that facade),
+  plus three scratch classes. Any test count in this worklog should be read as a clean-build number.
+- `./mvnw spotless:apply` clean before every commit.
+- **Not verified in a browser or in compose.** The flows are asserted at the HTTP level against a real
+  context, real Postgres and a real stub provider — which is more than a mock and less than a browser.
+  A compose smoke run and a look at the rendered pages are the first thing the next session should do.
+
+**Not done — the open M5 scope**
+
+1. **The authenticated dashboard.** Invoice list and detail, report list and detail, the htmx
+   create-invoice wizard, and the API-key management page. The security chain, the login and the tenant
+   mapping for it are in place and tested; the pages are not written. This is the largest open item.
+2. **GDPR tenant delete + retention job.** Carried from M3 to M4 to M5 and now carried again. Named as
+   unimplemented in `docs/privacy.md` §4 rather than hidden behind "Löschkonzept vorhanden" — until it
+   exists, that document says the platform is not ready for real customer data.
+3. **Selenium E2E** (`Upload → Report → Erklären`) and the **Gatling** validator scenario, with the
+   `e2e` CI job on `main`. The flow itself is covered by `AiExplanationIT` at the HTTP level; what is
+   missing is the browser and the load profile. ENGINEERING_STANDARDS §3 requires both.
+4. **`POST /api/v1/reports/{id}/explain`** — the REST counterpart of the UI's explain route (SPEC §4).
+   The UI route and the service behind it exist; the API endpoint does not.
+5. **Lighthouse ≥ 95** on the public pages — MILESTONES schedules the measurement at M6, so this is
+   not overdue, but the pages are built for it (tiny CSS, deferred script, no external requests).
+
+**Next**
+
+- Finish the five items above, in that order; 1 and 2 are what "M5 complete" hinges on.
+- No open owner decisions. The four that were pending are decided above and recorded in ADR-0007,
+  ADR-0009 and ADR-0010; the next session starts from settled ground.
+- One hard date to respect: the Peppol rule-set upgrade to 2026.5 **before 2026-08-17** (ADR-0007
+  Entscheidung 8), including a re-check of the 80 German translations against the new assertion texts.
+
 ## 2026-07-25 — M4 hostile-review fix wave: 17 findings closed
 
 **What**

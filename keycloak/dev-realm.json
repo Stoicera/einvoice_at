@@ -21,6 +21,37 @@
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "fullScopeAllowed": true
+    },
+    {
+      "clientId": "einvoice-web",
+      "name": "einvoice-at web UI (dev only)",
+      "description": "Authorization-code client for the M5 browser surface. Dev-only credentials; see docs/adr/0009-web-ui.md.",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "dev-einvoice-web-secret-not-for-production",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8080/login/oauth2/code/keycloak",
+        "http://localhost:8080/*"
+      ],
+      "webOrigins": [
+        "http://localhost:8080"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:8080/*"
+      },
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "roles",
+        "web-origins"
+      ],
+      "optionalClientScopes": []
     }
   ],
   "users": [

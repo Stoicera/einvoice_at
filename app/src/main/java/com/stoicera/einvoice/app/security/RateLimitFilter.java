@@ -27,17 +27,21 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Token-bucket rate limiting for the two endpoints that cost real CPU: {@code POST
- * /api/v1/validate} and {@code POST /api/v1/convert} (SPEC section 4).
+ * Token-bucket rate limiting for the endpoints that cost something real — CPU for {@code POST
+ * /api/v1/validate} and {@code POST /api/v1/convert} (SPEC §4), and <em>money</em> for the explain
+ * routes, whose every cache miss is a paid third-party call.
  *
- * <p><b>Two routes, two policies, and the difference is the point.</b> The public validator is
- * limited for <em>anonymous</em> callers only — the limit is there to keep an open endpoint from
+ * <p><b>Three buckets, three policies, and the differences are the point.</b> The public validator
+ * is limited for <em>anonymous</em> callers only — the limit is there to keep an open endpoint from
  * being abused, and a caller who has authenticated is not that threat. {@code /convert} is limited
  * for <em>everyone</em>, because it already requires authentication: exempting authenticated
  * callers there would leave a limit that applies to nobody at all. It was, until the M4 hostile
  * review found the most expensive operation in the platform — read, two mappings, a write, and a
  * full Peppol XSLT validation of the result — behind no limit of any kind (finding F9). A 2 MB
- * upload cap bounds one request; it says nothing about a rate.
+ * upload cap bounds one request; it says nothing about a rate. The <b>authenticated explain</b>
+ * routes follow {@code /convert}'s policy for {@code /convert}'s reason, and were unlimited until
+ * the M5 review made the same observation about them (finding F4) — with the sharper edge that
+ * their cost is denominated in euros rather than in CPU seconds.
  *
  * <p><b>Authenticated bypass.</b> Reuses {@link CurrentTenant#resolveIfAuthenticated}'s allow-list
  * idiom: the authentication kind is decided by an explicit {@code instanceof} check against {@link
@@ -77,6 +81,45 @@ public class RateLimitFilter extends OncePerRequestFilter {
   private static final String VALIDATE_PATH = "/api/v1/validate";
   private static final String CONVERT_PATH = "/api/v1/convert";
 
+  /**
+   * The browser surface's upload (M5). Same work, same limit, and deliberately the SAME bucket name
+   * as {@link #VALIDATE_PATH}: the public page posts here and the API endpoint is posted to
+   * directly, so separate buckets would hand one anonymous caller two full allowances for the same
+   * CPU. Without this matcher the UI would simply be an unlimited detour around a limited endpoint.
+   */
+  private static final String UI_VALIDATE_PATH = "/validator/pruefen";
+
+  /**
+   * The browser surface's per-finding "Erklären" (M5). Anonymous-reachable, and each call may
+   * become a paid LLM request, so it is limited on the same anonymous-only policy — the money
+   * argument is the same shape as the CPU argument for the validator.
+   */
+  private static final String UI_EXPLAIN_PATH = "/validator/erklaeren";
+
+  /**
+   * The two <strong>authenticated</strong> explain routes: {@code POST
+   * /api/v1/reports/{id}/explain} and the dashboard's per-finding button.
+   *
+   * <p>Added by the M5 hostile review (finding F4), which observed that the paragraph above argued
+   * the money case correctly and then applied it only to the anonymous route — leaving the two
+   * routes that spend the operator's provider budget for a <em>known</em> caller limited by
+   * nothing. {@code app.ai.max-findings-per-request} bounds a single request; it says nothing about
+   * a rate, the same distinction the M4 review drew for {@code /convert} ("a 2 MB upload cap bounds
+   * one request; it says nothing about a rate").
+   *
+   * <p><strong>One bucket for both, and not the validate bucket.</strong> Both buy the same thing —
+   * an explanation of a stored report from the same provider — so separate buckets would hand one
+   * tenant two allowances for one bill. Keeping them out of the validate bucket matters for the
+   * opposite reason: exhausting explanations must not stop a tenant validating, which costs the
+   * operator nothing but CPU.
+   *
+   * <p><strong>Authenticated callers are NOT exempt</strong>, exactly as for {@code /convert}: both
+   * routes already require authentication, so an exemption would leave a limit covering nobody.
+   */
+  private static final String API_EXPLAIN_PATH = "/api/v1/reports/{id}/explain";
+
+  private static final String UI_REPORT_EXPLAIN_PATH = "/app/berichte/{id}/erklaeren";
+
   // Deliberately NOT request.getRequestURI().equals(VALIDATE_PATH): getRequestURI() returns the
   // raw, undecoded, un-normalized URI straight off the wire, while SecurityConfig's
   // requestMatchers(HttpMethod, "/api/v1/validate") — and the DispatcherServlet's own routing —
@@ -94,6 +137,24 @@ public class RateLimitFilter extends OncePerRequestFilter {
   private static final RequestMatcher CONVERT_MATCHER =
       PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, CONVERT_PATH);
 
+  /** The two browser-surface routes, charged to the validate bucket (see the path constants). */
+  private static final RequestMatcher UI_VALIDATE_MATCHER =
+      PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, UI_VALIDATE_PATH);
+
+  private static final RequestMatcher UI_EXPLAIN_MATCHER =
+      PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, UI_EXPLAIN_PATH);
+
+  /**
+   * The authenticated explain routes. Patterns with a path variable rather than literals — a
+   * literal match would be bypassed by explaining a different report each time, which is precisely
+   * what a caller burning the provider budget would do.
+   */
+  private static final RequestMatcher API_EXPLAIN_MATCHER =
+      PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, API_EXPLAIN_PATH);
+
+  private static final RequestMatcher UI_REPORT_EXPLAIN_MATCHER =
+      PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, UI_REPORT_EXPLAIN_PATH);
+
   // Filters run outside Spring MVC's dispatch, so ApiExceptionHandler's @RestControllerAdvice never
   // sees a rejection this filter makes — the problem body has to be written here, by hand. It goes
   // through Problems so it is provably the same vocabulary the controllers speak, rather than a
@@ -107,6 +168,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
   private final Limit validateLimit;
   private final Limit convertLimit;
+  private final Limit explainLimit;
   private final TimeMeter timeMeter;
   private final ConcurrentHashMap<String, ClientBucket> buckets = new ConcurrentHashMap<>();
 
@@ -114,12 +176,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
       long validateCapacity,
       long validateRefillPerMinute,
       long convertCapacity,
-      long convertRefillPerMinute) {
+      long convertRefillPerMinute,
+      long explainCapacity,
+      long explainRefillPerMinute) {
     this(
         validateCapacity,
         validateRefillPerMinute,
         convertCapacity,
         convertRefillPerMinute,
+        explainCapacity,
+        explainRefillPerMinute,
         TimeMeter.SYSTEM_MILLISECONDS);
   }
 
@@ -129,24 +195,48 @@ public class RateLimitFilter extends OncePerRequestFilter {
       long validateRefillPerMinute,
       long convertCapacity,
       long convertRefillPerMinute,
+      long explainCapacity,
+      long explainRefillPerMinute,
       TimeMeter timeMeter) {
     this.validateLimit =
         new Limit("validate", VALIDATE_PATH, validateCapacity, validateRefillPerMinute, true);
     this.convertLimit =
         new Limit("convert", CONVERT_PATH, convertCapacity, convertRefillPerMinute, false);
+    this.explainLimit =
+        new Limit("explain", API_EXPLAIN_PATH, explainCapacity, explainRefillPerMinute, false);
     this.timeMeter = timeMeter;
   }
 
   @Override
   protected boolean shouldNotFilter(HttpServletRequest request) {
-    return !VALIDATE_MATCHER.matches(request) && !CONVERT_MATCHER.matches(request);
+    return !isValidateShaped(request)
+        && !CONVERT_MATCHER.matches(request)
+        && !isExplainShaped(request);
+  }
+
+  /** The three routes that share the validate bucket: the API endpoint and the two UI routes. */
+  private static boolean isValidateShaped(HttpServletRequest request) {
+    return VALIDATE_MATCHER.matches(request)
+        || UI_VALIDATE_MATCHER.matches(request)
+        || UI_EXPLAIN_MATCHER.matches(request);
+  }
+
+  /** The two authenticated explain routes, which share one bucket of their own. */
+  private static boolean isExplainShaped(HttpServletRequest request) {
+    return API_EXPLAIN_MATCHER.matches(request) || UI_REPORT_EXPLAIN_MATCHER.matches(request);
   }
 
   @Override
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
       throws ServletException, IOException {
-    Limit limit = VALIDATE_MATCHER.matches(request) ? validateLimit : convertLimit;
+    // Order matters only in that the validate family is checked first: /validator/erklaeren is
+    // anonymous and belongs to the validate bucket, while the two routes above are authenticated
+    // and belong to the explain bucket. The path sets are disjoint, so no request can match both.
+    Limit limit =
+        isValidateShaped(request)
+            ? validateLimit
+            : isExplainShaped(request) ? explainLimit : convertLimit;
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
     boolean authenticated = isAuthenticated(authentication);
 

@@ -1,0 +1,15 @@
+# einvoice-at — crawler policy.
+#
+# The public pages ARE the point: PRD §2 makes the validator a lead magnet and MILESTONES M5 asks
+# for German SEO meta, so the landing page and the validator are explicitly open to indexing.
+# Everything behind a login is not — those URLs answer a redirect to Keycloak for a crawler anyway,
+# and listing them here keeps them out of the index rather than relying on that.
+
+User-agent: *
+Allow: /$
+Allow: /validator
+Disallow: /app/
+Disallow: /api/
+Disallow: /actuator/
+Disallow: /swagger-ui/
+Disallow: /v3/api-docs

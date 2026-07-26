@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="de">
+  <head
+    th:replace="~{fragments/layout :: head(
+      'API-Schlüssel',
+      'API-Schlüssel für den programmatischen Zugriff auf einvoice-at anlegen und widerrufen.')}"
+  ></head>
+  <body>
+    <div th:replace="~{fragments/layout :: masthead}"></div>
+
+    <main class="shell">
+      <h1>API-Schlüssel</h1>
+      <div th:replace="~{fragments/layout :: dashnav('keys')}"></div>
+
+      <p class="lede">
+        Mit einem API-Schlüssel greifen Programme auf Ihre Daten zu — als Header
+        <code>X-Api-Key</code>. Ein Schlüssel kann alles, was Sie können, mit einer Ausnahme: er
+        kann keine Schlüssel verwalten.
+      </p>
+
+      <!--/*
+        The one moment the plaintext exists outside the caller's hands. It arrives as a flash
+        attribute (see ApiKeyPageController) so this block cannot reappear on a reload.
+      */-->
+      <div class="notice" th:if="${createdKey}">
+        <strong>Schlüssel angelegt</strong> — Sie sehen ihn
+        <strong>nur dieses eine Mal</strong>. Wir speichern nur seinen Hash; wenn Sie ihn verlieren,
+        widerrufen Sie ihn und legen einen neuen an.
+        <code class="secret" th:text="${createdKey}"></code>
+      </div>
+
+      <p class="errors" th:if="${formError}" th:text="${formError}"></p>
+
+      <h2>Neuen Schlüssel anlegen</h2>
+      <form th:action="@{/app/api-schluessel}" method="post" class="stack">
+        <div class="field">
+          <label for="name">Name (wofür wird er benutzt?)</label>
+          <input
+            id="name"
+            type="text"
+            name="name"
+            maxlength="100"
+            required
+            placeholder="z. B. Buchhaltungs-Import"
+          />
+        </div>
+        <div class="row">
+          <button type="submit">Schlüssel anlegen</button>
+        </div>
+      </form>
+
+      <h2>Ihre Schlüssel</h2>
+      <p class="muted" th:if="${#lists.isEmpty(keys)}">
+        Noch keine API-Schlüssel. Legen Sie oben einen an.
+      </p>
+
+      <div class="scroll-x" th:unless="${#lists.isEmpty(keys)}">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">Präfix</th>
+              <th scope="col">Angelegt</th>
+              <th scope="col">Status</th>
+              <th scope="col"><span class="muted">Aktion</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr th:each="key : ${keys}">
+              <td th:text="${key.getName()}"></td>
+              <!--/* The prefix, never the hash: it is the only part that may be shown, and it is
+                     what lets a user tell two keys apart. */-->
+              <td class="mono" th:text="${key.getPrefix()}"></td>
+              <td th:text="${#temporals.format(key.getCreatedAt(), 'dd.MM.yyyy HH:mm')}"></td>
+              <td>
+                <span class="pill ok" th:unless="${key.isRevoked()}">aktiv</span>
+                <span class="pill" th:if="${key.isRevoked()}">widerrufen</span>
+              </td>
+              <td>
+                <form
+                  th:unless="${key.isRevoked()}"
+                  th:action="@{/app/api-schluessel/{id}/widerrufen(id=${key.getId()})}"
+                  method="post"
+                >
+                  <button class="link" type="submit">Widerrufen</button>
+                </form>
+                <span class="muted" th:if="${key.isRevoked()}"
+                  th:text="${#temporals.format(key.getRevokedAt(), 'dd.MM.yyyy')}"
+                ></span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="muted">
+        Widerrufene Schlüssel bleiben als Zeile erhalten — für die Nachvollziehbarkeit — und zählen
+        nicht gegen Ihr Kontingent.
+      </p>
+    </main>
+
+    <div th:replace="~{fragments/layout :: colophon}"></div>
+  </body>
+</html>
