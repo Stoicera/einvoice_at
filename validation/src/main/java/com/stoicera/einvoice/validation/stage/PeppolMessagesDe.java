@@ -47,8 +47,16 @@ import java.util.Optional;
  */
 final class PeppolMessagesDe {
 
-  /** Documentation-only: the entry count named in the class Javadoc, asserted by the stage test. */
-  static final String SIZE_NOTE = "78 of them";
+  /**
+   * The entry count named in the class Javadoc, and <strong>asserted by {@code
+   * PeppolValidationStageTest.theDocumentedCatalogueSizeIsTheActualCatalogueSize}</strong> — which
+   * it was not, until the M5 hostile review (F10) found this constant referenced nowhere outside
+   * this file and saying 78 while the catalogue held 80. A number in prose that nothing checks
+   * drifts, and this one is quoted in {@code docs/worklog.md}, including in the checklist for the
+   * mandatory 2026-08-17 upgrade to Peppol 2026.5 — so the wrong count was the count a future
+   * maintainer would have re-verified the translations against.
+   */
+  static final String SIZE_NOTE = "80 of them";
 
   private PeppolMessagesDe() {}
 

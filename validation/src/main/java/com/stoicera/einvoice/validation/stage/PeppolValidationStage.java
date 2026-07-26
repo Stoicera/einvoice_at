@@ -158,14 +158,28 @@ public final class PeppolValidationStage implements ValidationStage {
     Severity severity =
         error.getErrorLevel().isGE(EErrorLevel.ERROR) ? Severity.ERROR : Severity.WARN;
     // The translation is looked up by the rule set's OWN assertion id, and bounded like every other
-    // foreign-text seam even though this text is ours — a catalogued entry that outgrew Finding's
-    // cap
-    // would otherwise throw out of validate() and break the never-throws contract.
+    // foreign-text seam even though this text is ours — see boundedGerman.
     String germanDetail =
-        PeppolMessagesDe.forRule(ruleId)
-            .map(translation -> BoundedText.cap(translation, BoundedText.MAX_MESSAGE_DETAIL))
-            .orElse(detail);
+        PeppolMessagesDe.forRule(ruleId).map(PeppolValidationStage::boundedGerman).orElse(detail);
     return Finding.of(severity, ruleId, location, GERMAN_LEAD_IN + germanDetail, detail);
+  }
+
+  /**
+   * Caps a catalogued German translation to the same bound every foreign-text seam uses.
+   *
+   * <p>These strings are this project's own, so the bound is not about untrusted input — it is
+   * about {@code validate()}'s never-throws contract. {@code Finding} rejects a message over 4096
+   * characters by throwing from its constructor, and this method runs inside {@code toFinding},
+   * which runs inside {@code validate}. A future entry that someone extended past the cap would
+   * therefore not produce a long message: it would produce a crashed validation, for every document
+   * that trips that rule.
+   *
+   * <p>A named method rather than a lambda so a test can call it with a string no real entry has,
+   * and assert the truncation rather than assert that a lookup returned something (M5 hostile
+   * review, F9 — the test that claimed to cover this did neither).
+   */
+  static String boundedGerman(String translation) {
+    return BoundedText.cap(translation, BoundedText.MAX_MESSAGE_DETAIL);
   }
 
   /**

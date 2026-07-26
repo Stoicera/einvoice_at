@@ -6,12 +6,15 @@ import com.stoicera.einvoice.app.persistence.TenantEntity;
 import com.stoicera.einvoice.app.report.ReportService;
 import com.stoicera.einvoice.app.report.ValidateResult;
 import com.stoicera.einvoice.app.security.CurrentTenant;
+import com.stoicera.einvoice.core.text.Texts;
 import com.stoicera.einvoice.core.validation.Finding;
 import com.stoicera.einvoice.core.validation.Severity;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -49,6 +52,8 @@ import org.springframework.web.multipart.MultipartFile;
  */
 @Controller
 public class PublicWebController {
+
+  private static final Logger log = LoggerFactory.getLogger(PublicWebController.class);
 
   private final ReportService reports;
   private final CurrentTenant currentTenant;
@@ -136,6 +141,16 @@ public class PublicWebController {
       } catch (RuntimeException e) {
         // A malformed submission (an unknown severity, an over-long field) is the caller's problem,
         // not a server error: answer with the same "keine Erklärung verfügbar" notice.
+        //
+        // Logged, though — the M5 hostile review (F14) pointed out that this catch also covers a
+        // genuine defect in Finding or ExplanationService, on a public endpoint, and swallowing it
+        // silently means nobody would ever find out. WARN and the rule id only, never the message
+        // text: that is submitted document content, and FindingExplainer applies the same rule to
+        // its own failures for the same reason.
+        log.warn(
+            "Public explanation request rejected for rule {}: {}",
+            Texts.safeEcho(ruleId),
+            e.getClass().getSimpleName());
         explanation = Optional.empty();
       }
     }

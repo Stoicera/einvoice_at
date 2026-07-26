@@ -161,7 +161,7 @@ channels with the token endpoint still app-facing.
   per-milestone pattern (audit → prioritised findings → fix all, test-first). This entry's "honest
   gaps" and the three part-1 defects are the obvious places to point it first.
 - One hard date unchanged: the Peppol rule-set upgrade to 2026.5 **before 2026-08-17** (ADR-0007
-  Entscheidung 8), including re-checking the 78 German translations against 2026.5's assertion texts.
+  Entscheidung 8), including re-checking the 80 German translations against 2026.5's assertion texts.
 
 ## 2026-07-26 — M5 (part 1): ai-assist, public web validator, German Peppol messages
 
@@ -177,7 +177,7 @@ accounting is at the end of this entry rather than implied by omission.
   `FindingExplainer` with a bounded LRU cache, and `LlmUsageListener` so `app` can bridge cost/token
   metrics to Micrometer without this module importing Spring or a metrics library. 107 tests, JaCoCo
   97.3 / 97.8 (gate 90/85), PIT 86/95 = 91 % (gate 85), now in the CI mutation job.
-- **German Peppol messages** (`PeppolMessagesDe`, 78 assertions) — the gap M4 recorded honestly and
+- **German Peppol messages** (`PeppolMessagesDe`, 80 assertions) — the gap M4 recorded honestly and
   handed to M5 by name. Every `PEPPOL-EN16931-R*` rule plus the EN 16931 rules an Austrian filer
   realistically trips, including the four VAT-category families for 20/13/10/0 %, Übergang der
   Steuerschuld and Steuerbefreiung.
@@ -193,7 +193,7 @@ accounting is at the end of this entry rather than implied by omission.
 
 **Decisions**
 
-- **The rule text was read off the artefacts, not recalled.** The 78 German messages are translations
+- **The rule text was read off the artefacts, not recalled.** The 80 German messages are translations
   of the assertion texts in `CEN-EN16931-UBL.xslt` and `PEPPOL-EN16931-UBL.xslt` as shipped by
   phive-rules-peppol 4.4.1 (OpenPeppol 2025.11), extracted from the jar to translate against. A
   translation written from memory would have been the same amount of typing and worth much less.
@@ -265,7 +265,7 @@ rather than in a conversation:
 - **ADR-0007 Entscheidung 8: the Peppol rule-set upgrade to 2026.5 happens before 2026-08-17, not
   now.** Not now, because a rule-set change alters how every document is judged and wants its own
   corpus re-run rather than being mixed into a half-finished milestone. Not later than that date,
-  because past it a "valid" from this platform would be a false statement. The 78 German translations
+  because past it a "valid" from this platform would be a false statement. The 80 German translations
   must be re-checked against 2026.5's assertion texts, not merely carried over.
 - **ADR-0007 Entscheidung 9: `ConversionLosses` keeps its four cases.** An exhaustive enum would
   enumerate hypotheses; each existing case came from a real loss in a real document. A fifth is added
@@ -320,7 +320,7 @@ Two further items are marked **settled rather than open**, with no change to the
 - No open owner decisions. The four that were pending are decided above and recorded in ADR-0007,
   ADR-0009 and ADR-0010; the next session starts from settled ground.
 - One hard date to respect: the Peppol rule-set upgrade to 2026.5 **before 2026-08-17** (ADR-0007
-  Entscheidung 8), including a re-check of the 78 German translations against the new assertion texts.
+  Entscheidung 8), including a re-check of the 80 German translations against the new assertion texts.
 
 ## 2026-07-25 — M4 hostile-review fix wave: 17 findings closed
 

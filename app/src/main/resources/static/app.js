@@ -1,12 +1,12 @@
 /*
- * Progressive enhancement — 40 lines, first-party, no dependency.
+ * Progressive enhancement — first-party, no dependency, about twenty lines of actual logic.
  *
- * WHY THIS AND NOT htmx. SPEC §1 and §5 name htmx, and htmx would be a fine choice: it is small,
- * well tested, and exactly aimed at this shape of interaction. It is not used here for the same
- * reason Tailwind's CLI is not (ADR-0009): this UI has precisely two interactions that benefit from
- * swapping a fragment instead of reloading — the validator upload and the per-finding "Erklären" —
- * and every page below works with JavaScript disabled entirely, because each of those endpoints
- * returns a fragment that is also a valid whole response.
+ * WHY THIS AND NOT htmx. htmx would be a fine choice: it is small, well tested, and exactly aimed at
+ * this shape of interaction. It is not used here for the same reason Tailwind's CLI is not
+ * (ADR-0009 Entscheidung 5): this UI has precisely two interactions that benefit from swapping a
+ * fragment instead of reloading — the validator upload and the per-finding "Erklären" — and every
+ * page below works with JavaScript disabled entirely, because each of those endpoints returns a
+ * fragment that is also a valid whole response.
  *
  * So the choice is between vendoring a library whose bytes have to be kept current and verified, and
  * owning the twenty lines that cover the two cases. The second is smaller, reviewable in a diff, and
@@ -21,6 +21,31 @@
  */
 (function () {
   "use strict";
+
+  /** A non-2xx response, carried out of the promise chain so the message can name the case. */
+  function HttpError(status) {
+    this.status = status;
+  }
+
+  /**
+   * What the user is told. German, specific where being specific helps them act, and generic
+   * otherwise — a status code on screen helps nobody who is not reading the source.
+   */
+  function messageFor(error) {
+    if (!(error instanceof HttpError)) {
+      return "Die Anfrage konnte nicht gesendet werden. Bitte laden Sie die Seite neu und versuchen Sie es erneut.";
+    }
+    if (error.status === 429) {
+      return "Zu viele Anfragen in kurzer Zeit. Bitte warten Sie einen Moment und versuchen Sie es erneut.";
+    }
+    if (error.status === 403) {
+      return "Die Sitzung ist abgelaufen. Bitte laden Sie die Seite neu.";
+    }
+    if (error.status === 413) {
+      return "Die Datei ist zu groß. Erlaubt sind bis zu 2 MB.";
+    }
+    return "Die Anfrage ist fehlgeschlagen. Bitte laden Sie die Seite neu und versuchen Sie es erneut.";
+  }
 
   document.addEventListener("submit", function (event) {
     var form = event.target;
@@ -47,16 +72,23 @@
       headers: { "X-Requested-With": "fetch" },
     })
       .then(function (response) {
+        // ONLY a 2xx body is markup this contract may inject. Without this check every error
+        // response was swapped into the page as HTML: a 429 rendered its problem+json as visible
+        // JSON inside the report card, and a 500 nested a whole error page in it. The likely
+        // failures were the unhandled ones, while the unlikely one below was handled carefully.
+        if (!response.ok) {
+          throw new HttpError(response.status);
+        }
         return response.text();
       })
       .then(function (html) {
         target.innerHTML = html;
       })
-      .catch(function () {
-        // A network failure must not leave the page looking like nothing happened. Plain text, no
-        // markup: this string is the only thing on the page not produced by a template.
-        target.textContent =
-          "Die Anfrage konnte nicht gesendet werden. Bitte laden Sie die Seite neu und versuchen Sie es erneut.";
+      .catch(function (error) {
+        // A failure must not leave the page looking like nothing happened. textContent, never
+        // innerHTML: these strings are the only thing on the page not produced by a template, and
+        // nothing that came off the wire is rendered as markup here.
+        target.textContent = messageFor(error);
       })
       .finally(function () {
         form.classList.remove("htmx-request");

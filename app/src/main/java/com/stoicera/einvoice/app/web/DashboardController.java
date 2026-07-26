@@ -140,24 +140,29 @@ public class DashboardController {
   public ResponseEntity<Resource> downloadEbInterface(
       @PathVariable UUID id, Authentication authentication) {
     TenantEntity tenant = currentTenant.require(authentication);
+    // summary() first, and its result reused for the filename: it is also the tenant-boundary
+    // check, so an id this tenant does not own 404s before any document is generated.
+    InvoiceSummary invoice = invoices.summary(tenant.getId(), id);
     return xml(
-        invoices.ebInterfaceXml(tenant.getId(), id), filename(tenant, id, "ebinterface", "xml"));
+        invoices.ebInterfaceXml(tenant.getId(), id), filename(invoice, "ebinterface", "xml"));
   }
 
   @GetMapping("/rechnungen/{id}/ubl")
   public ResponseEntity<Resource> downloadUbl(
       @PathVariable UUID id, Authentication authentication) {
     TenantEntity tenant = currentTenant.require(authentication);
-    return xml(invoices.ublXml(tenant.getId(), id), filename(tenant, id, "ubl", "xml"));
+    InvoiceSummary invoice = invoices.summary(tenant.getId(), id);
+    return xml(invoices.ublXml(tenant.getId(), id), filename(invoice, "ubl", "xml"));
   }
 
   @GetMapping("/rechnungen/{id}/pdf")
   public ResponseEntity<Resource> downloadPdf(
       @PathVariable UUID id, Authentication authentication) {
     TenantEntity tenant = currentTenant.require(authentication);
+    InvoiceSummary invoice = invoices.summary(tenant.getId(), id);
     byte[] pdf = invoices.pdf(tenant.getId(), id);
     return attachment(
-        new ByteArrayResource(pdf), MediaType.APPLICATION_PDF, filename(tenant, id, "", "pdf"));
+        new ByteArrayResource(pdf), MediaType.APPLICATION_PDF, filename(invoice, "", "pdf"));
   }
 
   // ------------------------------------------------------------------------- reports
@@ -274,10 +279,13 @@ public class DashboardController {
    * Content-Disposition} header and then in a filesystem path — the two places where a {@code "}, a
    * newline or a {@code ../} stops being a harmless string. Anything outside {@code [A-Za-z0-9._-]}
    * becomes {@code _}, which also removes any need to reason about header quoting separately.
+   *
+   * <p>Takes the summary the caller already loaded rather than the ids. It used to re-read the
+   * invoice, so every download cost a second query for a value the route had in hand (M5 hostile
+   * review, F16).
    */
-  private String filename(TenantEntity tenant, UUID id, String variant, String extension) {
-    String safe =
-        invoices.summary(tenant.getId(), id).invoiceNumber().replaceAll("[^A-Za-z0-9._-]", "_");
+  private static String filename(InvoiceSummary invoice, String variant, String extension) {
+    String safe = invoice.invoiceNumber().replaceAll("[^A-Za-z0-9._-]", "_");
     return variant.isBlank() ? safe + "." + extension : safe + "-" + variant + "." + extension;
   }
 }

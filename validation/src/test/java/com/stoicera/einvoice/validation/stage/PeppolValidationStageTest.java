@@ -156,12 +156,60 @@ class PeppolValidationStageTest {
             "PEPPOL-EN16931-R130");
   }
 
+  /**
+   * M5 hostile review, F9. A test with this name existed and asserted that {@code forRule("BR-02")}
+   * was present and {@code forRule("does-not-exist")} was empty — a lookup test wearing a bounding
+   * test's name, which is worse than no test, because the test list read as though the case were
+   * covered. This one constructs a translation no real entry has and asserts the truncation.
+   */
   @Test
   void boundsAnOverlongTranslationTheSameWayAsForeignText() {
-    // The translations are ours, but the cap is applied to them too rather than trusted: an entry
-    // someone extends past the cap must truncate, not throw out of validate().
+    String overlong = "Ü".repeat(BoundedText.MAX_MESSAGE_DETAIL + 500);
+
+    String bounded = PeppolValidationStage.boundedGerman(overlong);
+
+    assertThat(bounded).hasSize(BoundedText.MAX_MESSAGE_DETAIL).endsWith("…");
+    // The reason the cap exists at all: Finding throws above its own limit, and toFinding runs
+    // inside validate(), whose contract is that it never throws. The bounded value must be usable.
+    assertThat(
+            Finding.of(Severity.ERROR, "BR-02", null, "Peppol BIS Billing 3.0: " + bounded, "en"))
+        .isNotNull();
+  }
+
+  @Test
+  void leavesATranslationThatFitsExactlyAsItIs() {
+    // The other side of the boundary, so the cap cannot silently start truncating real entries.
+    String exact = "Ü".repeat(BoundedText.MAX_MESSAGE_DETAIL);
+
+    assertThat(PeppolValidationStage.boundedGerman(exact)).isEqualTo(exact);
+  }
+
+  @Test
+  void looksTheTranslationUpByTheRuleSetsOwnAssertionId() {
+    // What the old boundsAnOverlongTranslation… test actually asserted, under its real name.
     assertThat(PeppolMessagesDe.forRule("BR-02")).isPresent();
     assertThat(PeppolMessagesDe.forRule("does-not-exist")).isEmpty();
+  }
+
+  /**
+   * M5 hostile review, F10. {@code PeppolMessagesDe.SIZE_NOTE} is rendered into that class's
+   * Javadoc through {@code {@value}} and described there as "asserted by the stage test". It was
+   * asserted by nothing — the constant appeared nowhere outside its own file — and it was wrong: it
+   * said 78, the catalogue held 80. The number is also repeated in {@code docs/worklog.md},
+   * including in the checklist for the mandatory 2026-08-17 Peppol 2026.5 upgrade, so the count a
+   * future maintainer re-verifies against the new assertion texts was the wrong count.
+   *
+   * <p>This is what makes the sentence true. The assertion is deliberately on the exact number
+   * rather than a range: a documentation constant that drifts silently is the thing being fixed.
+   */
+  @Test
+  void theDocumentedCatalogueSizeIsTheActualCatalogueSize() {
+    assertThat(PeppolMessagesDe.SIZE_NOTE)
+        .withFailMessage(
+            "PeppolMessagesDe.SIZE_NOTE says \"%s\" but the catalogue holds %d entries. Update the"
+                + " constant — it is rendered into the class Javadoc and quoted in docs/worklog.md.",
+            PeppolMessagesDe.SIZE_NOTE, PeppolMessagesDe.all().size())
+        .isEqualTo(PeppolMessagesDe.all().size() + " of them");
   }
 
   @Test
