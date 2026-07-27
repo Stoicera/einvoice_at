@@ -5,7 +5,7 @@
 **Status: M6 is complete** except for the two things that need a machine or a button rather than a
 commit — the live Hetzner instance and the `v0.1.0` tag. Both are named below rather than implied.
 
-`./mvnw clean verify` green across all 11 modules, **1077 tests** (from 1048), every JaCoCo gate met,
+`./mvnw clean verify` green across all 11 modules, **1078 tests** (from 1048), every JaCoCo gate met,
 all six mutation gates met, `./mvnw -pl e2e verify -Pe2e` green with **5** browser tests (from 3).
 
 **OTel across the pipeline stages, which is what the milestone actually asked for**
@@ -118,8 +118,8 @@ http post /api/v1/invoices  (22.95 ms)
 
 **Verification**
 
-- `./mvnw clean verify`: 11 modules, 2 m 39 s, **1077 tests**. Per module: `core` 220, `formats-api`
-  7, `formats-ebinterface` 14, `formats-ubl` 31, `mapping` 201, `validation` 137, `rendering` 36,
+- `./mvnw clean verify`: 11 modules, 2 m 01 s, **1078 tests**. Per module: `core` 220, `formats-api`
+  7, `formats-ebinterface` 14, `formats-ubl` 31, `mapping` 201, `validation` 138, `rendering` 36,
   `ai-assist` 114, `app` 110 unit + 207 integration (33 IT classes).
 - Coverage measured, not estimated: `app` 95.0 % line / 81.4 % branch against the unchanged 90/78
   gate; `validation` 95.9 / 90.0.
