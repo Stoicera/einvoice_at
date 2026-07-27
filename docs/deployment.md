@@ -135,7 +135,7 @@ SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_USER_NAME_ATTRIBUTE=preferred_us
 ```bash
 # --- Runtime -------------------------------------------------------------------
 SPRING_PROFILES_ACTIVE=prod          # structured JSON logs, ECS field names
-SERVER_FORWARD_HEADERS_STRATEGY=framework   # REQUIRED behind Traefik — see below
+SERVER_FORWARD_HEADERS_STRATEGY=native      # REQUIRED behind Traefik, and NOT `framework` — see below
 API_DOCS_ENABLED=false               # consider: do not publish the full API description anonymously
 
 # --- Limits --------------------------------------------------------------------
@@ -159,7 +159,7 @@ AI_API_KEY=
 AI_MODEL=anthropic/claude-opus-5     # ADR-0010's recommendation where cost sits against a contract
 ```
 
-### `SERVER_FORWARD_HEADERS_STRATEGY=framework` is not optional here
+### `SERVER_FORWARD_HEADERS_STRATEGY=native` is not optional here — and it is not `framework`
 
 Traefik terminates TLS and proxies to the container, so without this every request arrives with
 Traefik's address. Two things break:
@@ -172,6 +172,48 @@ The setting is `none` by default precisely because turning it on **without** a p
 hazard: `X-Forwarded-For` is then caller-supplied text and anyone can mint themselves unlimited
 buckets. Both directions are covered by tests (`ForwardedHeadersTrustedIT`,
 `ForwardedHeadersUntrustedIT`).
+
+**Use `native`. Do not use `framework`, even though Boot accepts it.** This is the M6 hostile
+review's finding F1, and it is the difference between a rate limit and the appearance of one.
+
+A proxy **appends**. It takes whatever `X-Forwarded-For` arrived and adds the peer it actually
+observed, so a request a client sends as
+
+```
+X-Forwarded-For: 198.51.100.1
+```
+
+reaches the application as
+
+```
+X-Forwarded-For: 198.51.100.1, 203.0.113.77
+                 ^^^^^^^^^^^^  ^^^^^^^^^^^^
+                 written by    written by
+                 the caller    the proxy
+```
+
+Only the rightmost entry was observed by anything trustworthy. The two strategies read opposite ends
+of that chain:
+
+| Strategy | Implementation | Reads | Consequence |
+|---|---|---|---|
+| `framework` | Spring `ForwardedHeaderFilter` | The **leftmost** entry (`ForwardedHeaderUtils.parseForwardedFor` → `tokenizeToStringArray(header, ",")[0]`) | The caller picks their own bucket. One header line per request bypasses the limit, and the limiter still looks like it is working |
+| `native` | Tomcat `RemoteIpValve` | Walks **right to left**, discarding entries matching `server.tomcat.remoteip.internal-proxies`, stopping at the first that is not | Anything prepended by the caller is left behind |
+
+Boot's default `internal-proxies` regex already covers loopback and every RFC 1918 range, so a
+Traefik on a Docker bridge network (`172.16.0.0/12`) is matched without further configuration. Set
+`SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES` only if the proxy reaches the container from a public
+address, which the Dokploy topology does not.
+
+`native` does not read `X-Forwarded-Prefix`, which is the one thing `framework` offers on top. This
+application is served at the root of its own host, so there is no prefix to honour. If that ever
+changes, the answer is a prefix-aware valve — not `framework`.
+
+**Defence in depth on the proxy side.** `native` makes the application correct regardless of what
+Traefik does, which is the point of choosing it. Traefik's own default is also correct here — with
+`forwardedHeaders.trustedIPs` unset it *strips* client-supplied `X-Forwarded-*` before setting its
+own. Do not set `--entrypoints.web.forwardedHeaders.insecure=true`; it is a common answer to "I
+cannot see client IPs" and it makes the header trusted from anyone.
 
 ---
 

@@ -58,7 +58,7 @@ stored: every format output is regenerated from the canonical JSON on demand.
 | Stolen API key | Keys are stored as **hashes only**; the plaintext is shown once, at creation, through a flash attribute so a page reload cannot re-show it | `ApiKeys`, `ApiKeyService` |
 | API key used to manage API keys | Key management is OAuth2-only: a key can neither mint nor revoke keys, and cannot delete the tenant | `SecurityConfig` (`hasRole("USER")`) |
 | Two credentials in one request | A request presenting both an API key and a bearer token is refused with 400 rather than silently running as whichever filter went last (RFC 6750 §3.1) | `ApiKeyAuthFilter` |
-| Forged client IP to escape rate limiting | `X-Forwarded-For` is ignored unless the deployment explicitly declares a trusted proxy (`SERVER_FORWARD_HEADERS_STRATEGY`). Both directions are tested | `ForwardedHeadersUntrustedIT`, `ForwardedHeadersTrustedIT` |
+| Forged client IP to escape rate limiting | `X-Forwarded-For` is ignored unless the deployment explicitly declares a trusted proxy (`SERVER_FORWARD_HEADERS_STRATEGY=native`). When it does, the chain is read **right to left** past the internal proxies, so an entry the caller prepended is discarded rather than believed — the `framework` strategy reads the opposite, caller-controlled end and is documented as not-to-be-used. All three directions are tested | `ForwardedHeadersUntrustedIT`, `ForwardedHeadersTrustedIT` |
 | CSRF against a logged-in browser session | Enforced on the browser filter chain; the public routes are **not** excluded, and the tests drive the real token flow | `SecurityConfig`, `PublicWebIT` |
 
 ### T — Tampering
@@ -152,7 +152,9 @@ installation (see `docs/deployment.md`) must:
 
 1. Set every credential in `.env` to a generated value; none of the committed dev values.
 2. Terminate TLS in front of the application (Traefik via Dokploy) and set
-   `SERVER_FORWARD_HEADERS_STRATEGY=framework` so the rate limiter sees real client addresses.
+   `SERVER_FORWARD_HEADERS_STRATEGY=native` so the rate limiter sees real client addresses. **Not
+   `framework`** — it reads the leftmost `X-Forwarded-For` entry, which is the end the caller
+   controls; `docs/deployment.md` §4 has the chain diagram.
 3. Run Keycloak in production mode with its own database and a real hostname — not `start-dev`.
 4. Set `SPRING_PROFILES_ACTIVE=prod` for structured JSON logs.
 5. Consider `API_DOCS_ENABLED=false`.

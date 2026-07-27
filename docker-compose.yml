@@ -114,9 +114,13 @@ services:
       OTEL_METRICS_STEP: ${OTEL_METRICS_STEP:-15s}
       # Reverse-proxy awareness. `none` locally, because nothing sits in front of this container and
       # trusting X-Forwarded-For without a proxy lets any caller claim any IP — and therefore mint
-      # itself an unlimited number of rate-limit buckets. docs/deployment.md sets `framework` for the
+      # itself an unlimited number of rate-limit buckets. docs/deployment.md sets `native` for the
       # Traefik/Dokploy target, where the opposite failure applies: without it every anonymous
       # caller shares Traefik's address and the per-IP limit becomes one global bucket.
+      #
+      # `native` and NOT `framework`: a proxy appends to X-Forwarded-For, so the rightmost entry is
+      # the only trustworthy one, and Spring's ForwardedHeaderFilter (the `framework` strategy)
+      # reads the leftmost. See application.yml and docs/deployment.md §4 (M6 review, F1).
       SERVER_FORWARD_HEADERS_STRATEGY: ${SERVER_FORWARD_HEADERS_STRATEGY:-none}
     ports:
       - "${APP_PORT:-8080}:8080"

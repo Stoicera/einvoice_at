@@ -493,11 +493,15 @@ restore into a second database, and assert every table's row count, the Flyway h
 canonical JSON column's actual content. Row counts alone would pass on a restore that produced the
 right number of empty rows.
 
-**Behind a reverse proxy, set `SERVER_FORWARD_HEADERS_STRATEGY=framework`.** Without it every
-anonymous caller shares Traefik's address, so the per-IP rate limit on the public validator becomes
-one global bucket. With it and *no* proxy, `X-Forwarded-For` is caller-supplied text and anyone can
-mint unlimited buckets. There is no value that is right in both topologies, so the deployment states
-which one it is — and both directions are covered by tests.
+**Behind a reverse proxy, set `SERVER_FORWARD_HEADERS_STRATEGY=native`.** Without it every anonymous
+caller shares Traefik's address, so the per-IP rate limit on the public validator becomes one global
+bucket. With it and *no* proxy, `X-Forwarded-For` is caller-supplied text and anyone can mint
+unlimited buckets. There is no value that is right in both topologies, so the deployment states which
+one it is — and both directions are covered by tests. Boot's other option, `framework`, is
+deliberately **not** used: a proxy appends to `X-Forwarded-For`, so the rightmost entry is the only
+trustworthy one, and Spring's `ForwardedHeaderFilter` reads the leftmost. `native` (Tomcat's
+`RemoteIpValve`) walks the chain from the trustworthy end. [`docs/deployment.md` §4](docs/deployment.md)
+has the diagram; a third test asserts that a prepended address buys no extra allowance.
 
 ## Security
 

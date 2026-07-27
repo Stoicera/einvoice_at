@@ -63,15 +63,25 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * <p><b>Keying.</b> {@link HttpServletRequest#getRemoteAddr()} only, and <b>this filter still
  * parses no headers</b> — the M6 answer to the forwarded-header question turned out to be that this
  * class needs no change at all. {@code server.forward-headers-strategy} (default {@code none}, set
- * to {@code framework} by a deployment that genuinely sits behind Traefik — see {@code
- * docs/deployment.md}) puts Spring's own {@code ForwardedHeaderFilter} at the very front of the
- * chain, where it rewrites the request once from {@code X-Forwarded-For}/{@code -Proto}/{@code
- * -Host}. Everything downstream, this filter included, then reads {@code getRemoteAddr()} and gets
- * the client. Both directions are load-bearing and both are asserted: with the switch off a forged
- * header buys no extra bucket ({@code ForwardedHeadersUntrustedIT}), with it on each client behind
- * the proxy has its own ({@code ForwardedHeadersTrustedIT}) instead of the whole internet sharing
- * Traefik's address. One mechanism, at the edge, under one switch — rather than a second, private
- * notion of "who is the client" living in this class.
+ * to {@code native} by a deployment that genuinely sits behind Traefik — see {@code
+ * docs/deployment.md}) puts Tomcat's {@code RemoteIpValve} ahead of the whole servlet chain, where
+ * it rewrites the request once from {@code X-Forwarded-For}/{@code -Proto}/{@code -Host}/{@code
+ * -Port}. Everything downstream, this filter included, then reads {@code getRemoteAddr()} and gets
+ * the client. Three directions are load-bearing and all three are asserted: with the switch off a
+ * forged header buys no extra bucket ({@code ForwardedHeadersUntrustedIT}), with it on each client
+ * behind the proxy has its own instead of the whole internet sharing Traefik's address, and an
+ * address the caller <em>prepended</em> to the chain buys nothing either ({@code
+ * ForwardedHeadersTrustedIT}). One mechanism, at the edge, under one switch — rather than a second,
+ * private notion of "who is the client" living in this class.
+ *
+ * <p><b>Which end of the chain, and why the strategy is not {@code framework}.</b> Every hop
+ * appends, so {@code X-Forwarded-For} is part evidence and part assertion: the rightmost entry is
+ * the peer the proxy actually saw, everything left of it is text the caller wrote. Spring's {@code
+ * ForwardedHeaderFilter} — Boot's {@code framework} strategy — resolves the client from the
+ * <em>leftmost</em> entry, so under it a caller chooses their own bucket key and this limiter
+ * becomes decoration. {@code RemoteIpValve} walks from the right past the internal-proxy ranges
+ * instead. The M6 hostile review found this (F1) and the regression test named above is what keeps
+ * it found.
  *
  * <p><b>Storage.</b> An in-memory map keyed by remote address, one {@link Bucket} per client.
  * Honest about being single-instance: nothing here is shared across replicas, so a horizontally

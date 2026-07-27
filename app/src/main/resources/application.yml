@@ -162,18 +162,42 @@ server:
   port: 8080
   # WHO THE CLIENT IS, BEHIND A REVERSE PROXY. Default `none`, and that is the safe direction: with
   # this off, the request's remote address is whatever TCP peer connected, which behind Traefik is
-  # Traefik. Switch it to `framework` on a deployment that genuinely sits behind a trusted proxy
-  # (docs/deployment.md does exactly that for the Dokploy/Traefik target) and Spring's
-  # ForwardedHeaderFilter rewrites the request from X-Forwarded-For/-Proto/-Host.
+  # Traefik. Switch it to `native` on a deployment that genuinely sits behind a trusted proxy
+  # (docs/deployment.md does exactly that for the Dokploy/Traefik target) and Tomcat's RemoteIpValve
+  # rewrites the request from X-Forwarded-For/-Proto/-Host/-Port.
   #
   # THIS IS A SECURITY SETTING IN BOTH DIRECTIONS, which is why it is a knob and not a constant:
   #   * left off behind a proxy, every anonymous caller shares one apparent IP — so the per-IP rate
   #     limit on POST /api/v1/validate becomes a single global bucket, and one abusive client
-  #     rate-limits the entire internet. It also makes {@code https://} redirects come out as http.
+  #     rate-limits the entire internet. It also makes https:// redirects come out as http.
   #   * turned on WITHOUT a proxy, X-Forwarded-For is caller-supplied text, so anyone can claim any
   #     address and mint themselves an unlimited number of rate-limit buckets.
   # There is no value that is right in both topologies, so the deployment states which one it is.
   # RateLimitFilter's Javadoc records the same trade-off from the limiter's side.
+  #
+  # `native` AND NOT `framework`, which is a distinction the M6 hostile review had to make the hard
+  # way (finding F1). Both strategies rewrite the request; they disagree about which entry of the
+  # X-Forwarded-For chain is the client, and only part of that chain is trustworthy. A proxy APPENDS
+  # the peer it saw, so a request the client sent as
+  #     X-Forwarded-For: 198.51.100.1
+  # arrives as
+  #     X-Forwarded-For: 198.51.100.1, <the address the proxy actually observed>
+  # — rightmost written by the proxy, everything left of it written by the caller.
+  #
+  #   framework  Spring's ForwardedHeaderFilter takes the LEFTMOST entry
+  #              (ForwardedHeaderUtils.parseForwardedFor: tokenizeToStringArray(header, ",")[0]),
+  #              i.e. the attacker-controlled end. The per-IP limit then costs one header line to
+  #              bypass, and it does so silently — the limiter still looks like it is working.
+  #   native     Tomcat's RemoteIpValve walks the chain RIGHT TO LEFT, discarding entries matching
+  #              server.tomcat.remoteip.internal-proxies (Boot's default already covers loopback and
+  #              every RFC 1918 range, so a Traefik on a Docker bridge network needs no extra
+  #              configuration) and stopping at the first address that is not one. What the client
+  #              prepended is left behind.
+  #
+  # ForwardedHeadersTrustedIT pins both halves: one test that each real client gets its own bucket,
+  # one that a prepended address does not buy a new one. The second fails under `framework`.
+  # What `native` gives up is X-Forwarded-Prefix, which RemoteIpValve does not read — this
+  # application is served at the root of its own host, so there is no prefix to honour.
   forward-headers-strategy: ${SERVER_FORWARD_HEADERS_STRATEGY:none}
 
 # Actuator surface. `metrics` is exposed alongside the probes because M5 ships cost metrics
