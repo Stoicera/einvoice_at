@@ -7,20 +7,38 @@
 
 A self-hostable Java 25 / Spring Boot platform built by [Stoicera Software Group](https://stoicera.com) as a production-grade reference system. Austria's federal government only accepts structured e-invoices (ebInterface or Peppol BIS) via e-rechnung.gv.at — and rejected invoices come back with Schematron output that non-technical users cannot read. This platform closes that gap.
 
-> **Status: Milestone M5 complete — web UI, public validator, AI explanations, GDPR erasure.** On top
-> of M4's two formats, conversion and PDF, the platform has a full **browser surface**: a German,
-> SEO-oriented [public validator](#web-ui) that stores nothing, a report view grouping findings by
-> severity, an optional **AI explanation** per finding (off by default, degrades to a notice when the
-> provider is down), and an **authenticated dashboard** — invoice list and detail with all three
-> document downloads, report history, a four-step create-invoice wizard, API-key management, and a
-> **Konto** page that states what is stored before offering to erase it. The Peppol findings Austrian
-> filers actually hit carry **real German messages** rather than a German frame around English.
-> **GDPR Art. 17 and Art. 5(1)(e) are implemented** — full tenant erasure plus a retention job that
-> never touches invoices, because § 132 BAO obliges the business to keep them for seven years
-> ([ADR-0011](docs/adr/0011-retention-and-erasure.md)). The Upload → Report → Erklären flow is
-> asserted in a real browser, and the public validator has a Gatling load scenario. Deferred to M6 by
-> the milestone plan: Lighthouse ≥ 95 measurement, OpenTelemetry, `/actuator/info`. Milestone plan:
+> **Status: Milestone M6 complete — operations and polish.** On top of M5's browser surface, the
+> platform is now **observable, deployable and documented for it**. **OpenTelemetry traces run across
+> the pipeline stages** (ADR-0012): one trace of an invoice creation shows the JSON read, both
+> mappings, the XML write, all five validation stages and the transactional persist, nested under the
+> HTTP span — with traces and metrics both exported over OTLP and an `observability` compose profile
+> (Prometheus + Tempo + Grafana, provisioned) to look at them. `/actuator/info` names the commit and
+> the build time. There is a [deployment guide](docs/deployment.md) for Hetzner + Dokploy,
+> **backup/restore scripts whose drill runs on every build**, and a [SECURITY.md](SECURITY.md) with a
+> STRIDE-light threat model that names its own limits. Both public pages score **100 across all four
+> Lighthouse categories**, asserted in CI. The two gaps M5 recorded by name are closed: the retention
+> job now **elects a single purger** across instances, and a **real authorization-code login is driven
+> through Keycloak's own form in a browser**. Milestone plan:
 > [docs/MILESTONES.md](docs/MILESTONES.md); session-by-session detail: [docs/worklog.md](docs/worklog.md).
+
+## Screenshots
+
+Taken through a real browser against the running compose stack — the report is a genuine upload, the
+dashboard is behind a genuine Keycloak login, and the observability captures are real traffic.
+
+| | |
+|---|---|
+| [![Landing page](docs/screenshots/01-landing.png)](docs/screenshots/01-landing.png)<br>**Landing** — German-first, SEO meta, no framework | [![Public validator](docs/screenshots/02-validator.png)](docs/screenshots/02-validator.png)<br>**Public validator** — the upload is never stored |
+| [![Validation report](docs/screenshots/03-report.png)](docs/screenshots/03-report.png)<br>**Report** — findings grouped by severity, German first, rule id and location per finding | [![Dashboard](docs/screenshots/04-dashboard.png)](docs/screenshots/04-dashboard.png)<br>**Dashboard** — per-tenant overview behind an OIDC login |
+| [![Create-invoice wizard](docs/screenshots/05-wizard.png)](docs/screenshots/05-wizard.png)<br>**Wizard** — four server-rendered steps, no JavaScript required | [![Grafana pipeline dashboard](docs/screenshots/06-grafana-pipeline.png)](docs/screenshots/06-grafana-pipeline.png)<br>**Grafana** — stage and step latency, provisioned with the profile |
+
+[![Tempo trace of an invoice creation](docs/screenshots/07-tempo-trace.png)](docs/screenshots/07-tempo-trace.png)
+
+**One invoice creation, traced end to end.** This is what "OTel across the pipeline stages" means in
+practice: `read-canonical-json` → `map-ebinterface` → `write-ebinterface` → `parse` →
+`format-detection` → `xsd` → `schematron` → `business-rules` → `persist-invoice`, each timed, nested
+under the HTTP span. The validation stages live in a module that must not know Spring exists, and
+reach the tracer through a plain-Java port ([ADR-0012](docs/adr/0012-observability.md)).
 
 ## Deutsche Kurzfassung
 
@@ -64,6 +82,22 @@ curl http://localhost:8080/actuator/health
 ```
 
 Then open **<http://localhost:8080/validator>** and drop an ebInterface or UBL invoice on it.
+There are two ready to try in [`samples/`](samples/). Log in at **<http://localhost:8080/app>** with
+`testuser` / `testpass` (the dev realm's only user) to see the dashboard.
+
+Measured end to end on a cold machine — clone, `docker compose up -d --build`, first healthy
+response — this takes **under five minutes**, most of it the Maven build inside the image. A second
+start, with the image already built, is well under a minute.
+
+**Want the traces?** One more flag and three more containers:
+
+```bash
+OTEL_ENABLED=true docker compose --profile observability up -d
+# Grafana on http://localhost:3000 — datasources and the pipeline dashboard are provisioned
+```
+
+The profile decides which *services* start; it cannot set an environment variable on the app, which
+is why `OTEL_ENABLED` is given explicitly. See [Observability](#observability).
 
 ## REST API
 
@@ -407,9 +441,69 @@ Every rule id the pipeline can produce is centralised in `RuleIds` (module `vali
 
 Exit codes: `0` every validated file is valid, `1` at least one is invalid, `2` a usage or I/O error occurred — including no arguments, a nonexistent path, or a resolved file list that came back empty (e.g. a mistyped corpus path with no `*.xml` files), so a CI gate reading only the exit code can never mistake "found nothing" for "all valid".
 
+## Observability
+
+Both signals — traces **and** metrics — are exported over **OTLP**, and there is deliberately no
+`/actuator/prometheus`. One mechanism to configure, and no new surface needing a credential:
+everything under `/actuator` except the health probes is authenticated, so a scrape endpoint would
+have meant either a credential for Prometheus or a hole in that rule. Prometheus 3 ingests OTLP
+directly. Full rationale and its trade-offs: [ADR-0012](docs/adr/0012-observability.md).
+
+**Off by default, and that default is load-bearing.** Boot's own defaults for both exporters are
+"enabled, pointing at `localhost:4318`", so leaving them alone would have every installation that
+never asked for observability posting into a socket nobody is listening on. `OTEL_ENABLED` gates
+both. What is *not* gated is the instrumentation itself: with observability off, an observation is a
+few field writes and no span, so the code has one shape in every deployment and switching it on is a
+configuration change rather than a different object graph.
+
+| Signal | Where it comes from |
+|---|---|
+| `einvoice.validation.stage{stage=…}` | The `validation` module's stages — `parse`, `format-detection`, `xsd`, `schematron`, `business-rules`, `peppol` — reported through a plain-Java `ValidationObserver` port so that module never imports Spring |
+| `einvoice.pipeline{step=…}` | The steps `app` orchestrates: canonical-JSON read, both mappings, both writers, the PDF renderer, the transactional persist, the paid LLM call |
+| `einvoice.ai.calls` / `.tokens` / `.cost.usd` | The provider's own reported usage, never a local price table ([ADR-0010](docs/adr/0010-ai-assist.md)) |
+| `http.server.requests` | Boot's own |
+
+Tag values come from a fixed set — compile-time constants and an enum — because a tag fed from
+anywhere else is an unbounded number of time series. Latency panels need percentile histograms to
+exist at all: without them Micrometer publishes a single `+Inf` bucket and `histogram_quantile`
+answers `NaN` forever, which is exactly what the first version of the dashboard showed.
+
+Under `SPRING_PROFILES_ACTIVE=prod` the logs are ECS-shaped JSON carrying `traceId`/`spanId`, so a
+log line links to its trace with no further configuration.
+
 ## Deployment
 
-Target: single Hetzner VPS via Dokploy (Traefik/TLS). Deployment documentation lands with milestone M6 in `docs/deployment.md`.
+Target: a single Hetzner VPS via Dokploy, with Traefik terminating TLS. The full guide —
+provisioning, the environment a production deployment must think about, Keycloak in production mode,
+rolling back, and a post-deploy smoke test — is **[docs/deployment.md](docs/deployment.md)**.
+
+CI publishes an image to GHCR on every push to `main` (`ghcr.io/stoicera/einvoice_at:sha-<commit>`,
+which is the tag to pin) and triggers the Dokploy webhook. Both steps skip loudly when their secrets
+are absent, so a fork does not inherit a red pipeline for a deployment it does not have. A CI check
+proves the built image can identify itself, because the deployment guide tells an operator to pin the
+`sha-` tag and confirm it with `/actuator/info`.
+
+**Backups.** `scripts/backup.sh` takes a compressed custom-format dump, **verifies it is readable**
+with `pg_restore --list` before reporting success, and writes a SHA-256 sidecar. `scripts/restore.sh`
+checks that sidecar, prints the target database and refuses to run without an explicit confirmation.
+The round trip is not only documented: `BackupRestoreDrillIT` performs it on **every build** — dump,
+restore into a second database, and assert every table's row count, the Flyway history, and the
+canonical JSON column's actual content. Row counts alone would pass on a restore that produced the
+right number of empty rows.
+
+**Behind a reverse proxy, set `SERVER_FORWARD_HEADERS_STRATEGY=framework`.** Without it every
+anonymous caller shares Traefik's address, so the per-IP rate limit on the public validator becomes
+one global bucket. With it and *no* proxy, `X-Forwarded-For` is caller-supplied text and anyone can
+mint unlimited buckets. There is no value that is right in both topologies, so the deployment states
+which one it is — and both directions are covered by tests.
+
+## Security
+
+[SECURITY.md](SECURITY.md) carries the vulnerability-disclosure policy and a STRIDE-light threat
+model: one table per category, each row naming the control **and** the class or test that enforces
+it, so a reader can check the claim rather than take it. It also collects the known limits in one
+place — the rate limiter is per instance, an Art. 17 erasure takes the audit trail with it, and this
+platform is not a Peppol Access Point.
 
 ## Standards artefacts & credits
 

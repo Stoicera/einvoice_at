@@ -20,7 +20,7 @@ Status: v1.0 · 2026-07-23 · Language of repo: English (domain terms stay Germa
 | Web UI | **Thymeleaf**, server-rendered; hand-authored CSS and ~20 lines of first-party JS instead of Tailwind CLI / htmx (M5 sync, [ADR-0009](adr/0009-web-ui.md)) | Java-pure server-rendered UI: exactly what enterprise Java shops respect; no SPA build complexity — and, as realized, no CSS or JS build step at all |
 | AuthN/Z | Spring Security (OAuth2 Resource Server) + **Keycloak** as IdP (docker compose); API keys for machine access (hashed at rest) | Answers the "do we need Keycloak?" question: Spring Security is the framework, Keycloak the IdP — document this in an ADR |
 | AI | `LlmClient` abstraction → **OpenRouter** default (OpenAI-compatible API), model configurable; feature-flagged, degrades gracefully | Explain validation errors in plain German |
-| Observability | OpenTelemetry (Micrometer bridge), Actuator health/readiness, JSON logs (Logback) | Standard |
+| Observability | OpenTelemetry (Micrometer bridge) for traces **and** metrics, both over OTLP; Actuator health/readiness/info, JSON logs (Logback, ECS) — see §9a and [ADR-0012](adr/0012-observability.md) | Standard |
 | Testing | JUnit 5, AssertJ, Mockito, ArchUnit, Testcontainers (Postgres, Keycloak), **Selenium WebDriver** for E2E UI, Gatling (one scenario) | Selenium deliberately (JKU signal) |
 | CI/CD | GitHub Actions → GHCR → Dokploy webhook (Hetzner VPS) | Per Engineering Standards |
 
@@ -201,6 +201,52 @@ phrase like "Löschkonzept vorhanden".
 - `docker-compose.yml`: app, postgres, keycloak (with realm import `dev-realm.json`), mailpit, optional `observability` profile (grafana+prometheus+tempo).
 - Prod: single Hetzner VPS via Dokploy (Traefik TLS). `docs/deployment.md` covers provisioning, env vars, backup cron (`pg_dump`), restore drill.
 - Version endpoint `/actuator/info` exposes git sha + build time.
+
+_M6 sync (2026-07-27):_ **All three are realized**, with two corrections and one addition worth
+stating.
+
+1. **The observability profile exists and is what this section describes** — Prometheus, Tempo and
+   Grafana, datasources and a dashboard provisioned so it needs no clicking. It is *not* deployed:
+   its Grafana runs with anonymous admin access, which is right for a laptop and wrong for anything
+   reachable, and `docs/deployment.md` says so.
+2. **The profile does not switch observability on by itself**, and the compose file says so rather
+   than implying otherwise. A profile decides which *services* start; it cannot set an environment
+   variable on a service. The command is `OTEL_ENABLED=true docker compose --profile observability
+   up -d`. Both exporters default to **off**, because Boot's own defaults are "enabled, pointing at
+   localhost:4318" and would have every installation posting into a socket nobody listens on.
+3. **`/actuator/info` publishes the commit id and the build time, and deliberately nothing else** —
+   no branch, no committer name or e-mail address, no commit message, no environment. It is
+   authenticated, and "authenticated" is not a reason to publish the people who wrote the code.
+   `.git` is part of the Docker build context so the deployed artefact is not the one artefact
+   unable to identify itself.
+
+**Added:** `SERVER_FORWARD_HEADERS_STRATEGY` (default `none`). Behind Traefik it must be `framework`,
+or every anonymous caller shares the proxy's address and the per-IP rate limit becomes one global
+bucket; without a proxy it must stay `none`, or `X-Forwarded-For` is caller-supplied text and the
+limit is free to bypass. Design and honest limits:
+[ADR-0012](adr/0012-observability.md), [docs/deployment.md](deployment.md), [SECURITY.md](../SECURITY.md).
+
+## 9a. Observability (M6)
+
+Traces **and** metrics are exported over **OTLP**; there is deliberately no `/actuator/prometheus`.
+Both are one mechanism to configure, and a scrape endpoint would have needed either a credential for
+Prometheus or a hole in the rule that authenticates all of `/actuator/**` except the health probes.
+ENGINEERING_STANDARDS §5 names OTLP export as an acceptable shape; Prometheus 3 ingests it directly.
+
+MILESTONES M6 asks for traces **across the pipeline stages**, and the stages live in `validation`,
+which §2 keeps free of Spring. They reach Micrometer through `ValidationObserver` — a plain-Java
+port, the same shape `ai-assist` uses for its token and cost numbers. `app` implements it in one
+adapter. Two observation families result, each one name plus one low-cardinality tag drawn from a
+closed set (`einvoice.validation.stage{stage}`, `einvoice.pipeline{step}`).
+
+Log-to-trace correlation falls out of having both features on: micrometer-tracing writes
+`traceId`/`spanId` into the MDC and Boot's ECS format (profile `prod`) writes the MDC out as
+top-level fields.
+
+The one non-obvious requirement: **percentile histograms must be switched on** for any meter a
+latency panel is drawn from. A Micrometer timer publishes count, sum and max by default and no bucket
+boundaries at all, so `histogram_quantile` answers `NaN` for every quantile — which is what the first
+version of the Grafana dashboard displayed.
 
 ## 10. Risks & honest limits (document in README)
 
