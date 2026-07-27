@@ -59,6 +59,19 @@ class BackupRestoreDrillIT extends AbstractPostgresIT {
   private static final String DRILL_DATABASE = "einvoice_restore_drill";
   private static final String DUMP_PATH = "/tmp/einvoice-drill.dump";
 
+  /**
+   * The application tables whose rows a restore must reproduce, asserted one by one below.
+   *
+   * <p>Hard-coded on purpose — a drill that derived its own expectations from the database it is
+   * checking would assert nothing — and therefore guarded by {@link
+   * #coversEveryTableTheSchemaActuallyHas}, which fails the moment a migration adds a table this
+   * list does not name. Without that guard a new table is verified by nobody: the drill still
+   * passes on the five it knows, and the omission surfaces during a restore. {@code
+   * scripts/restore.sh} prints the same set and reads it from the database for the same reason.
+   *
+   * <p>{@code flyway_schema_history} is deliberately not here. It is Flyway's, not the domain's,
+   * and it gets its own assertion further down.
+   */
   private static final List<String> TABLES =
       List.of("tenant", "invoice", "report", "api_key", "audit_event");
 
@@ -115,6 +128,43 @@ class BackupRestoreDrillIT extends AbstractPostgresIT {
         single(
             DRILL_DATABASE, "select canonical::text from invoice where id = '" + invoiceId + "'");
     assertThat(restoredCanonical).contains("RE-BACKUP-DRILL").contains("Softwareentwicklung");
+  }
+
+  /**
+   * The drill checks <em>every</em> table, not the five that existed when it was written — the M6
+   * hostile review's finding F4.
+   *
+   * <p>{@link #TABLES} is what {@link #dumpAndRestoreRoundTripsEveryTable} asserts row counts for
+   * and what {@code scripts/restore.sh} reports after a restore. A migration that adds a sixth
+   * table would leave both silently narrower than the schema: the drill would still pass, having
+   * verified everything it was told about, and the gap would be discovered by a restore rather than
+   * by CI. That is the failure mode automating a drill exists to remove, so it must not be
+   * reintroduced by the drill's own constant.
+   *
+   * <p>Read from {@code information_schema} rather than from the migration files: what has to match
+   * is the schema Flyway actually produced, and a regex over SQL would be a second, differently
+   * wrong parser.
+   */
+  @Test
+  @DisplayName("the drill's table list is the schema's table list, so a new table cannot slip past")
+  void coversEveryTableTheSchemaActuallyHas() {
+    List<String> inTheDatabase =
+        jdbc.queryForList(
+            """
+            select table_name from information_schema.tables
+             where table_schema = 'public'
+               and table_type = 'BASE TABLE'
+               and table_name <> 'flyway_schema_history'
+             order by table_name
+            """,
+            String.class);
+
+    assertThat(inTheDatabase)
+        .as(
+            "a migration added or removed a table: update BackupRestoreDrillIT.TABLES (and check"
+                + " scripts/restore.sh still reports it) so the backup drill keeps covering the"
+                + " whole schema")
+        .containsExactlyInAnyOrderElementsOf(TABLES);
   }
 
   // ----------------------------------------------------------------------------------- helpers
