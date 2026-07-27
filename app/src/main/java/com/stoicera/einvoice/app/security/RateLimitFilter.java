@@ -60,12 +60,18 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * stops being {@code permitAll}, a request that no longer clears it is rejected before reaching
  * here rather than needlessly consuming a token first.
  *
- * <p><b>Keying.</b> {@link HttpServletRequest#getRemoteAddr()} only — deliberately no {@code
- * X-Forwarded-For} parsing. This is a single deployed instance with no trusted reverse proxy in
- * front of it yet, so honoring a client-supplied forwarded-for header would just hand every
- * anonymous caller a free ticket to spoof a different bucket. Once Traefik terminates in front of
- * the app (M6), the proxy's forwarded-header contract needs to be pinned down (trusted-proxy list,
- * which hop to trust) and this filter revisited — see ADR-0005.
+ * <p><b>Keying.</b> {@link HttpServletRequest#getRemoteAddr()} only, and <b>this filter still
+ * parses no headers</b> — the M6 answer to the forwarded-header question turned out to be that this
+ * class needs no change at all. {@code server.forward-headers-strategy} (default {@code none}, set
+ * to {@code framework} by a deployment that genuinely sits behind Traefik — see {@code
+ * docs/deployment.md}) puts Spring's own {@code ForwardedHeaderFilter} at the very front of the
+ * chain, where it rewrites the request once from {@code X-Forwarded-For}/{@code -Proto}/{@code
+ * -Host}. Everything downstream, this filter included, then reads {@code getRemoteAddr()} and gets
+ * the client. Both directions are load-bearing and both are asserted: with the switch off a forged
+ * header buys no extra bucket ({@code ForwardedHeadersUntrustedIT}), with it on each client behind
+ * the proxy has its own ({@code ForwardedHeadersTrustedIT}) instead of the whole internet sharing
+ * Traefik's address. One mechanism, at the edge, under one switch — rather than a second, private
+ * notion of "who is the client" living in this class.
  *
  * <p><b>Storage.</b> An in-memory map keyed by remote address, one {@link Bucket} per client.
  * Honest about being single-instance: nothing here is shared across replicas, so a horizontally
