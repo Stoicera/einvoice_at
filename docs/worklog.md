@@ -158,12 +158,13 @@ http post /api/v1/invoices  (22.95 ms)
    `DOKPLOY_DEPLOY_WEBHOOK` and the deploy step stops skipping.
 2. **Tag `v0.1.0` and publish the GitHub Release.** `CHANGELOG.md` is written and its "Known limits"
    section is the honest half.
-3. **Confirm the `NVD_API_KEY` secret.** The repository contradicts itself here and this entry will
-   not pick a side it cannot verify: the M5 worklog says the secret is still outstanding, while the
-   root POM records two version overrides made "after the NVD_API_KEY secret was configured
-   (2026-07-25) — i.e. the gate's first real verdict". Version overrides do not happen without a scan
-   that ran, so the POM is probably right and the M5 line stale — but only the owner can see the
-   secret. One glance settles it; whichever is wrong should then be corrected.
+3. ~~**Confirm the `NVD_API_KEY` secret.**~~ **Settled the same day.** The repository contradicted
+   itself — the M5 worklog called the secret outstanding while the root POM recorded two version
+   overrides made "after the NVD_API_KEY secret was configured (2026-07-25)". Version overrides do
+   not happen without a scan that ran, so this entry named the contradiction rather than guessing;
+   the owner confirmed on 2026-07-27 that **the secret is configured and the scan is a live gate**,
+   and has been since M4. `SECURITY.md`, the README and the M5 entry are corrected accordingly. The
+   skip-with-warning path stays, because it is what a fork without the secret needs.
 
 **Open — named, not hidden**
 
@@ -277,6 +278,14 @@ One piece of owner action is still outstanding from M4 and unchanged: **add the 
 repository secret.** Until it exists the OWASP Dependency-Check job skips the scan loudly — a warning
 annotation plus a job-summary line — rather than failing; adding the secret turns it into a real gate
 with no workflow edit.
+
+> **Correction, 2026-07-27 (M6):** this paragraph was **wrong when written**. The secret had already
+> been configured during the M4 wave — `.superpowers/m5-hostile-review-findings.md` says so, and the
+> root POM's two CVE version overrides are dated to "the scan's first real run (the one after
+> NVD_API_KEY was configured)", which cannot have happened without a scan that ran. Confirmed by the
+> owner on 2026-07-27. The scan has been a live gate since M4; this line said otherwise for a whole
+> milestone, in the document a reader trusts most. Left in place with the correction attached rather
+> than edited away, because that is what the rest of this worklog does with its own mistakes.
 
 ## 2026-07-26 — M5 (part 2): dashboard, GDPR erasure, retention, explain API, browser E2E — M5 complete
 

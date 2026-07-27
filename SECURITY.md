@@ -135,10 +135,15 @@ This is stated in `RateLimitFilter`'s own Javadoc and is not fixed in M6.
 - **Container images** in `docker-compose.yml` are pinned by tag **and** digest.
 - **GitHub Actions** are pinned by commit SHA.
 
-> **Currently open, and deliberately loud:** without the `NVD_API_KEY` repository secret the
-> dependency scan is *skipped* — with a warning annotation and a job-summary block — rather than
-> failing. A stage that is permanently red for an external reason teaches everyone to ignore red.
-> The moment the secret exists it becomes a real gate with no workflow change.
+> **The scan is a live gate.** The `NVD_API_KEY` repository secret is configured, so CI runs the
+> real scan and fails the build on CVSS ≥ 7 — the two version overrides in the root POM are that
+> gate's own verdicts, not precautionary bumps.
+>
+> A **fork or clone** without that secret gets the scan *skipped* instead — with a warning annotation
+> and a job-summary block — rather than a doomed run: the NVD rate-limits unauthenticated clients
+> hard enough that the sync stalls and fails with an unrelated-looking error, and a stage that is
+> permanently red for an external reason teaches everyone to ignore red. The job is never a no-op
+> either way; it still asserts the scan binds exactly once, at the root.
 
 ## Deployment expectations
 

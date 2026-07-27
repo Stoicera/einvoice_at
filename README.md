@@ -214,16 +214,17 @@ network I/O and would blow the build-time budget:
 ./mvnw -Psecurity verify        # needs NVD_API_KEY in the environment
 ```
 
-⚠️ **One-time owner setup:** the NVD rate-limits unauthenticated clients hard enough that a first
-sync stalls, leaves its local database half-written, and then fails with an unrelated-looking error.
-Request a free key at <https://nvd.nist.gov/developers/request-an-api-key> and add it as the
-repository secret `NVD_API_KEY`.
+**In this repository the scan is a live gate** — the `NVD_API_KEY` secret is configured, so CI runs
+it for real and fails the build on CVSS ≥ 7. The two version overrides in the root POM are that
+gate's own verdicts rather than precautionary bumps.
 
-Until that secret exists the CI job **skips the scan** rather than running a doomed one — with a
-warning annotation and a job summary saying so in as many words, because a stage that is
-permanently red for an external reason only teaches people to ignore red. The job is not a no-op
-in the meantime: it still asserts that the scan binds exactly once, at the root. Adding the secret
-turns it into a real gate with no workflow change.
+**Running it yourself, or in a fork:** the NVD rate-limits unauthenticated clients hard enough that a
+first sync stalls, leaves its local database half-written and then fails with an unrelated-looking
+error, so request a free key at <https://nvd.nist.gov/developers/request-an-api-key> and either
+export it or add it as the repository secret `NVD_API_KEY`. Without it the CI job **skips the scan**
+rather than running a doomed one — with a warning annotation and a job summary saying so in as many
+words, because a stage that is permanently red for an external reason only teaches people to ignore
+red. The job is not a no-op even then: it still asserts the scan binds exactly once, at the root.
 
 ## Testing
 
