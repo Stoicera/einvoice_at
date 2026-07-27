@@ -1,7 +1,10 @@
 package com.stoicera.einvoice.app.convert;
 
+import com.helger.ebinterface.v61.Ebi61InvoiceType;
 import com.stoicera.einvoice.app.audit.AuditAction;
 import com.stoicera.einvoice.app.audit.AuditService;
+import com.stoicera.einvoice.app.observability.PipelineObservations;
+import com.stoicera.einvoice.app.observability.PipelineStep;
 import com.stoicera.einvoice.core.invoice.Invoice;
 import com.stoicera.einvoice.core.validation.Finding;
 import com.stoicera.einvoice.core.validation.ValidationReport;
@@ -58,6 +61,7 @@ public class ConversionService {
   private final EbInterface61ToInvoiceMapper fromEbInterface;
   private final InvoiceToUblMapper toUbl;
   private final UblToInvoiceMapper fromUbl;
+  private final PipelineObservations observations;
 
   public ConversionService(
       AuditService audit,
@@ -68,7 +72,8 @@ public class ConversionService {
       InvoiceToEbInterface61Mapper toEbInterface,
       EbInterface61ToInvoiceMapper fromEbInterface,
       InvoiceToUblMapper toUbl,
-      UblToInvoiceMapper fromUbl) {
+      UblToInvoiceMapper fromUbl,
+      PipelineObservations observations) {
     this.audit = audit;
     this.validator = validator;
     this.ebiStrategy = ebiStrategy;
@@ -78,6 +83,7 @@ public class ConversionService {
     this.fromEbInterface = fromEbInterface;
     this.toUbl = toUbl;
     this.fromUbl = fromUbl;
+    this.observations = observations;
   }
 
   /**
@@ -145,26 +151,44 @@ public class ConversionService {
     return switch (from) {
       case EBINTERFACE -> {
         requireDetected(detected, from, DocumentFormat.EBINTERFACE_61);
-        yield fromEbInterface.map(requireParsed(ebiStrategy.read(source).document(), from));
+        yield observations.observe(
+            PipelineStep.READ_EBINTERFACE,
+            () -> fromEbInterface.map(requireParsed(ebiStrategy.read(source).document(), from)));
       }
       case UBL -> {
         if (detected == DocumentFormat.UBL_CREDIT_NOTE) {
-          yield fromUbl.map(requireParsed(ublCreditNoteStrategy.read(source).document(), from));
+          yield observations.observe(
+              PipelineStep.READ_UBL,
+              () ->
+                  fromUbl.map(requireParsed(ublCreditNoteStrategy.read(source).document(), from)));
         }
         requireDetected(detected, from, DocumentFormat.UBL_INVOICE);
-        yield fromUbl.map(requireParsed(ublInvoiceStrategy.read(source).document(), from));
+        yield observations.observe(
+            PipelineStep.READ_UBL,
+            () -> fromUbl.map(requireParsed(ublInvoiceStrategy.read(source).document(), from)));
       }
     };
   }
 
   private String write(Invoice invoice, ConversionFormat to) {
     return switch (to) {
-      case EBINTERFACE -> ebiStrategy.write(toEbInterface.map(invoice));
-      case UBL ->
-          switch (toUbl.map(invoice)) {
-            case UblDocument.CommercialInvoice(var document) -> ublInvoiceStrategy.write(document);
-            case UblDocument.CreditNote(var document) -> ublCreditNoteStrategy.write(document);
-          };
+      case EBINTERFACE -> {
+        Ebi61InvoiceType ebi =
+            observations.observe(PipelineStep.MAP_EBINTERFACE, () -> toEbInterface.map(invoice));
+        yield observations.observe(PipelineStep.WRITE_EBINTERFACE, () -> ebiStrategy.write(ebi));
+      }
+      case UBL -> {
+        UblDocument ubl = observations.observe(PipelineStep.MAP_UBL, () -> toUbl.map(invoice));
+        yield observations.observe(
+            PipelineStep.WRITE_UBL,
+            () ->
+                switch (ubl) {
+                  case UblDocument.CommercialInvoice(var document) ->
+                      ublInvoiceStrategy.write(document);
+                  case UblDocument.CreditNote(var document) ->
+                      ublCreditNoteStrategy.write(document);
+                });
+      }
     };
   }
 

@@ -1,0 +1,11 @@
+# Grafana dashboard provisioning for the local `observability` compose profile (M6, ADR-0012).
+apiVersion: 1
+
+providers:
+  - name: einvoice-at
+    type: file
+    folder: einvoice-at
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

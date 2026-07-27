@@ -1,0 +1,30 @@
+# Prometheus for the local `observability` compose profile (M6, ADR-0012).
+#
+# There is no `scrape_configs` block and that is the whole design. The application PUSHES its
+# metrics over OTLP (management.otlp.metrics.export.url), which Prometheus 3 accepts on
+# /api/v1/otlp/v1/metrics once --web.enable-otlp-receiver is set — see the compose service's
+# command. A scrape would have needed a credential, because everything under /actuator except the
+# health probes requires authentication (SecurityConfig), and this stack has no business holding
+# one.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Keep the OTLP resource attributes (service.name, service.version, …) as labels rather than
+# folding them into a single `target_info` metric, so a query can say
+# `einvoice_pipeline_seconds{job="einvoice-at"}` without a join.
+otlp:
+  promote_resource_attributes:
+    - service.name
+    - service.namespace
+    - service.instance.id
+    - service.version
+    - deployment.environment.name
+
+storage:
+  tsdb:
+    # OTLP delta temporality is not what Micrometer's OTLP registry sends by default (it sends
+    # cumulative, which is Prometheus' native model), so no conversion is configured here. Stated
+    # rather than omitted: if management.otlp.metrics.export.aggregation-temporality is ever changed
+    # to `delta`, this file needs `out_of_order_time_window` and the delta-to-cumulative setting.
+    out_of_order_time_window: 30m

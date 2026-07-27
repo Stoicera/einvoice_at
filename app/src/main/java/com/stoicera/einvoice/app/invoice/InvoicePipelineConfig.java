@@ -10,6 +10,7 @@ import com.stoicera.einvoice.mapping.ubl.InvoiceToUblMapper;
 import com.stoicera.einvoice.mapping.ubl.UblToInvoiceMapper;
 import com.stoicera.einvoice.rendering.InvoicePdfRenderer;
 import com.stoicera.einvoice.validation.InvoiceValidator;
+import com.stoicera.einvoice.validation.ValidationObserver;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -44,9 +45,14 @@ class InvoicePipelineConfig {
   // `ebInterface61Validator` after M4 gave it the UBL pipeline too — a stale name on a shared
   // singleton, which is how a reader ends up believing the public validator is ebInterface-only
   // (M4 hostile review, finding F14).
+  //
+  // The observer is injected rather than defaulted so that EVERY validation this application runs —
+  // the public validator, the API, the dashboard, invoice creation, conversion — is traced through
+  // one instance. A no-argument `new InvoiceValidator()` here would have left the pipeline stages
+  // invisible while the M6 documentation claimed otherwise (ADR-0012).
   @Bean
-  InvoiceValidator invoiceValidator() {
-    return new InvoiceValidator();
+  InvoiceValidator invoiceValidator(ValidationObserver observer) {
+    return new InvoiceValidator(observer);
   }
 
   @Bean

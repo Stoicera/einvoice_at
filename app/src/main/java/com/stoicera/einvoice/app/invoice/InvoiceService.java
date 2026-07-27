@@ -3,6 +3,8 @@ package com.stoicera.einvoice.app.invoice;
 import com.helger.ebinterface.v61.Ebi61InvoiceType;
 import com.stoicera.einvoice.app.audit.AuditAction;
 import com.stoicera.einvoice.app.audit.AuditService;
+import com.stoicera.einvoice.app.observability.PipelineObservations;
+import com.stoicera.einvoice.app.observability.PipelineStep;
 import com.stoicera.einvoice.app.persistence.InvoiceEntity;
 import com.stoicera.einvoice.app.persistence.InvoiceRepository;
 import com.stoicera.einvoice.app.persistence.ReportEntity;
@@ -62,6 +64,7 @@ public class InvoiceService {
   private final Ubl21InvoiceStrategy ublInvoiceStrategy;
   private final Ubl21CreditNoteStrategy ublCreditNoteStrategy;
   private final InvoicePdfRenderer pdfRenderer;
+  private final PipelineObservations observations;
 
   /**
    * Serializes the findings list into the report's JSONB column. A dedicated Jackson 3 mapper: the
@@ -82,7 +85,8 @@ public class InvoiceService {
       InvoiceToUblMapper ublMapper,
       Ubl21InvoiceStrategy ublInvoiceStrategy,
       Ubl21CreditNoteStrategy ublCreditNoteStrategy,
-      InvoicePdfRenderer pdfRenderer) {
+      InvoicePdfRenderer pdfRenderer,
+      PipelineObservations observations) {
     this.invoices = invoices;
     this.reports = reports;
     this.audit = audit;
@@ -94,6 +98,7 @@ public class InvoiceService {
     this.ublInvoiceStrategy = ublInvoiceStrategy;
     this.ublCreditNoteStrategy = ublCreditNoteStrategy;
     this.pdfRenderer = pdfRenderer;
+    this.observations = observations;
   }
 
   /**
@@ -116,7 +121,10 @@ public class InvoiceService {
   @Transactional
   public InvoiceCreated create(UUID tenantId, byte[] body) {
     String payloadSha256 = sha256Hex(body);
-    Invoice invoice = jsonReader.read(new ByteArrayInputStream(body));
+    Invoice invoice =
+        observations.observe(
+            PipelineStep.READ_CANONICAL_JSON,
+            () -> jsonReader.read(new ByteArrayInputStream(body)));
     String canonical = new String(body, StandardCharsets.UTF_8);
 
     ValidationReport report = validate(invoice);
@@ -132,24 +140,32 @@ public class InvoiceService {
             invoice.seller().name(),
             invoice.buyer().name(),
             canonical);
-    try {
-      // Flush now so the unique-index violation surfaces here as a catchable exception rather than
-      // escaping unhandled at transaction commit.
-      invoices.saveAndFlush(invoiceEntity);
-    } catch (DataIntegrityViolationException e) {
-      throw new DuplicateInvoiceException(invoice.invoiceNumber(), e);
-    }
 
-    reports.save(
-        new ReportEntity(
-            tenantId,
-            invoiceEntity.getId(),
-            report.sourceFormat(),
-            report.profile(),
-            report.isValid(),
-            findingsMapper.writeValueAsString(report.findings())));
+    // One observed step for all three writes, because they are one unit: the invoice row, its
+    // report row and the audit event commit together or not at all. Three spans would suggest
+    // three things that can fail independently, and the transaction says otherwise.
+    observations.observe(
+        PipelineStep.PERSIST_INVOICE,
+        () -> {
+          try {
+            // Flush now so the unique-index violation surfaces here as a catchable exception rather
+            // than escaping unhandled at transaction commit.
+            invoices.saveAndFlush(invoiceEntity);
+          } catch (DataIntegrityViolationException e) {
+            throw new DuplicateInvoiceException(invoice.invoiceNumber(), e);
+          }
 
-    audit.record(tenantId, AuditAction.INVOICE_CREATED, payloadSha256);
+          reports.save(
+              new ReportEntity(
+                  tenantId,
+                  invoiceEntity.getId(),
+                  report.sourceFormat(),
+                  report.profile(),
+                  report.isValid(),
+                  findingsMapper.writeValueAsString(report.findings())));
+
+          audit.record(tenantId, AuditAction.INVOICE_CREATED, payloadSha256);
+        });
 
     return new InvoiceCreated(invoiceEntity.getId(), report);
   }
@@ -174,7 +190,10 @@ public class InvoiceService {
    */
   @Transactional(readOnly = true)
   public String ebInterfaceXml(UUID tenantId, UUID id) {
-    return ebiStrategy.write(ebiMapper.map(reread(tenantId, id)));
+    Invoice invoice = reread(tenantId, id);
+    Ebi61InvoiceType ebi =
+        observations.observe(PipelineStep.MAP_EBINTERFACE, () -> ebiMapper.map(invoice));
+    return observations.observe(PipelineStep.WRITE_EBINTERFACE, () -> ebiStrategy.write(ebi));
   }
 
   /**
@@ -184,10 +203,16 @@ public class InvoiceService {
    */
   @Transactional(readOnly = true)
   public String ublXml(UUID tenantId, UUID id) {
-    return switch (ublMapper.map(reread(tenantId, id))) {
-      case UblDocument.CommercialInvoice(var document) -> ublInvoiceStrategy.write(document);
-      case UblDocument.CreditNote(var document) -> ublCreditNoteStrategy.write(document);
-    };
+    Invoice invoice = reread(tenantId, id);
+    UblDocument ubl = observations.observe(PipelineStep.MAP_UBL, () -> ublMapper.map(invoice));
+    return observations.observe(
+        PipelineStep.WRITE_UBL,
+        () ->
+            switch (ubl) {
+              case UblDocument.CommercialInvoice(var document) ->
+                  ublInvoiceStrategy.write(document);
+              case UblDocument.CreditNote(var document) -> ublCreditNoteStrategy.write(document);
+            });
   }
 
   /**
@@ -199,7 +224,8 @@ public class InvoiceService {
    */
   @Transactional(readOnly = true)
   public byte[] pdf(UUID tenantId, UUID id) {
-    return pdfRenderer.render(reread(tenantId, id));
+    Invoice invoice = reread(tenantId, id);
+    return observations.observe(PipelineStep.RENDER_PDF, () -> pdfRenderer.render(invoice));
   }
 
   /**
@@ -243,7 +269,10 @@ public class InvoiceService {
   /** The stored canonical JSON, parsed back into the domain model. */
   private Invoice reread(UUID tenantId, UUID id) {
     String canonical = canonicalJson(tenantId, id);
-    return jsonReader.read(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
+    return observations.observe(
+        PipelineStep.READ_CANONICAL_JSON,
+        () ->
+            jsonReader.read(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8))));
   }
 
   /**
@@ -275,8 +304,13 @@ public class InvoiceService {
   }
 
   private ValidationReport validate(Invoice invoice) {
-    Ebi61InvoiceType ebi = ebiMapper.map(invoice);
-    String xml = ebiStrategy.write(ebi);
+    Ebi61InvoiceType ebi =
+        observations.observe(PipelineStep.MAP_EBINTERFACE, () -> ebiMapper.map(invoice));
+    String xml = observations.observe(PipelineStep.WRITE_EBINTERFACE, () -> ebiStrategy.write(ebi));
+    // The validator opens its own stage observations underneath this one
+    // (MicrometerValidationObserver),
+    // so a create trace reads: pipeline.map-ebinterface → pipeline.write-ebinterface →
+    // validation.stage.parse → …xsd → …schematron → …business-rules → pipeline.persist-invoice.
     return validator.validate(xml.getBytes(StandardCharsets.UTF_8));
   }
 

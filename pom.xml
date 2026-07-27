@@ -101,6 +101,12 @@
          a threshold, not a filter. -->
     <dependency-check.failBuildOnCVSS>7</dependency-check.failBuildOnCVSS>
 
+    <!-- Writes git.properties into the app jar so /actuator/info can answer "which build is this?"
+         (SPEC §9, an open carry item since M4). Version verified against Maven Central
+         maven-metadata.xml on 2026-07-27: 10.0.0 is both <latest> and <release>. Declared here
+         rather than in app/pom.xml so every plugin version in this build lives in one file. -->
+    <git-commit-id-maven-plugin.version>10.0.0</git-commit-id-maven-plugin.version>
+
     <spotless-maven-plugin.version>3.8.0</spotless-maven-plugin.version>
     <google-java-format.version>1.35.0</google-java-format.version>
     <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
