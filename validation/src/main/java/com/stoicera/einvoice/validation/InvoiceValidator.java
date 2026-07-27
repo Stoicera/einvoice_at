@@ -10,6 +10,8 @@ import com.stoicera.einvoice.validation.stage.SchematronStage;
 import com.stoicera.einvoice.validation.stage.XsdValidationStage;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.function.Supplier;
 
 /**
  * Validates an uploaded invoice document — ebInterface 6.1 or Peppol BIS Billing 3.0 UBL — and
@@ -73,6 +75,25 @@ public final class InvoiceValidator {
   private final BusinessRuleStage businessRules = new BusinessRuleStage();
   private final PeppolValidationStage peppol = new PeppolValidationStage();
 
+  private final ValidationObserver observer;
+
+  /** A validator that measures nothing — the shape every caller before M6 used. */
+  public InvoiceValidator() {
+    this(ValidationObserver.NONE);
+  }
+
+  /**
+   * A validator that reports each stage's execution to {@code observer}, so {@code app} can turn
+   * the pipeline into OpenTelemetry spans without this module knowing what a span is (M6,
+   * ADR-0012).
+   *
+   * @param observer the per-stage decorator; must not be {@code null} — pass {@link
+   *     ValidationObserver#NONE} for no measurement, which is what the no-argument constructor does
+   */
+  public InvoiceValidator(ValidationObserver observer) {
+    this.observer = Objects.requireNonNull(observer, "observer");
+  }
+
   /**
    * Validates {@code xml} and returns the report.
    *
@@ -84,6 +105,8 @@ public final class InvoiceValidator {
 
     // Stage -1 — defensive input-size guard. Reject an oversized upload before any parse so the
     // validator cannot be OOM'd by hostile input; this stop is terminal with a single XML-02.
+    // Deliberately NOT observed: it is a length comparison, not a stage, and a span around it would
+    // cost more than the check.
     if (input.length > MAX_INPUT_BYTES) {
       return report(DocumentFormat.UNKNOWN, PROFILE_NONE, List.of(inputTooLargeFinding()));
     }
@@ -91,13 +114,14 @@ public final class InvoiceValidator {
     ValidationContext ctx = new ValidationContext(input);
 
     // Stage 0 — secure DOM parse. Not well-formed XML stops the pipeline with a single XML-01.
-    if (ctx.dom().isEmpty()) {
+    if (observe(ValidationObserver.STAGE_PARSE, ctx::dom).isEmpty()) {
       return report(DocumentFormat.UNKNOWN, PROFILE_NONE, List.of(malformedXmlFinding()));
     }
 
     // Stage 1 — format detection. Any finding here (FORMAT-01 / FORMAT-02) is terminal: we cannot
     // validate a document whose format we do not recognise or do not support.
-    List<Finding> formatFindings = formatDetection.apply(ctx);
+    List<Finding> formatFindings =
+        observe(ValidationObserver.STAGE_FORMAT_DETECTION, () -> formatDetection.apply(ctx));
     if (!formatFindings.isEmpty()) {
       return report(DocumentFormat.UNKNOWN, PROFILE_NONE, formatFindings);
     }
@@ -124,10 +148,10 @@ public final class InvoiceValidator {
       return DocumentFormat.UNKNOWN;
     }
     ValidationContext ctx = new ValidationContext(input);
-    if (ctx.dom().isEmpty()) {
+    if (observe(ValidationObserver.STAGE_PARSE, ctx::dom).isEmpty()) {
       return DocumentFormat.UNKNOWN;
     }
-    formatDetection.apply(ctx);
+    observe(ValidationObserver.STAGE_FORMAT_DETECTION, () -> formatDetection.apply(ctx));
     return ctx.format();
   }
 
@@ -136,7 +160,10 @@ public final class InvoiceValidator {
    * internally, so there is nothing for this method to gate.
    */
   private ValidationReport validateUbl(ValidationContext ctx) {
-    return report(ctx.format(), PROFILE_PEPPOL_BIS_3, peppol.apply(ctx));
+    return report(
+        ctx.format(),
+        PROFILE_PEPPOL_BIS_3,
+        observe(ValidationObserver.STAGE_PEPPOL, () -> peppol.apply(ctx)));
   }
 
   private ValidationReport validateEbInterface(ValidationContext ctx) {
@@ -144,20 +171,32 @@ public final class InvoiceValidator {
 
     // Stage 2 — XSD. A structurally invalid document cannot be meaningfully checked by the later
     // Schematron and business-rule stages, so XSD errors stop the pipeline.
-    findings.addAll(xsdValidation.apply(ctx));
+    findings.addAll(observe(ValidationObserver.STAGE_XSD, () -> xsdValidation.apply(ctx)));
     ValidationReport afterXsd = report(ctx.format(), PROFILE_AT_B2G, findings);
     if (!afterXsd.isValid()) {
       return afterXsd;
     }
 
     // Stage 3 — our own AT-B2G Schematron, evaluated only on a schema-valid tree.
-    findings.addAll(schematron.apply(ctx));
+    findings.addAll(observe(ValidationObserver.STAGE_SCHEMATRON, () -> schematron.apply(ctx)));
 
     // Stage 4 — hand-written AT-B2G business rules (e.g. AT-B2G-02, the IBAN mod-97 check). Same
     // gating, and last, so its findings follow the Schematron findings in report order.
-    findings.addAll(businessRules.apply(ctx));
+    findings.addAll(
+        observe(ValidationObserver.STAGE_BUSINESS_RULES, () -> businessRules.apply(ctx)));
 
     return report(ctx.format(), PROFILE_AT_B2G, findings);
+  }
+
+  /**
+   * Runs one stage through the observer.
+   *
+   * <p>Wrapped in a method of its own so the observer's contract — "call the supplier exactly once
+   * and return its value" — is enforced in one place rather than repeated at six call sites, and so
+   * a stage's call site reads as the stage it is rather than as the measurement around it.
+   */
+  private <T> T observe(String stageName, Supplier<T> stage) {
+    return observer.observe(stageName, stage);
   }
 
   private static Finding malformedXmlFinding() {

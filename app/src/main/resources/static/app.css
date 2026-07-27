@@ -120,6 +120,18 @@ h3 {
   margin: 1.75rem 0 0.5rem;
 }
 
+/* A card's heading is an h2 in the document outline and h3-sized on the page.
+   The landing page's three feature cards used to be <h3> with no <h2> above them, which is a
+   heading-order violation (a11y): assistive technology reads the outline, not the font size, and
+   an h1 → h3 jump means a missing level. Lighthouse's accessibility audit found it at 96/100.
+   Fixing it in the markup rather than by silencing the audit, and keeping the visual weight here
+   rather than inventing a section heading nobody asked for. */
+.card h2 {
+  font-size: 1rem;
+  letter-spacing: normal;
+  margin: 0 0 0.5rem;
+}
+
 p,
 li {
   max-width: var(--measure);

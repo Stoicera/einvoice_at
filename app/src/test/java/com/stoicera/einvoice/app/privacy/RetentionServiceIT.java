@@ -9,12 +9,16 @@ import com.stoicera.einvoice.app.persistence.TenantEntity;
 import com.stoicera.einvoice.app.persistence.TenantRepository;
 import com.stoicera.einvoice.app.report.ReportService;
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
+import javax.sql.DataSource;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +26,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * The retention purge (GDPR Art. 5(1)(e), storage limitation) — the other half of the gap {@code
@@ -55,6 +60,8 @@ class RetentionServiceIT extends AbstractPostgresIT {
   @Autowired private InvoiceService invoiceService;
   @Autowired private ReportService reportService;
   @Autowired private JdbcTemplate jdbc;
+  @Autowired private PlatformTransactionManager transactionManager;
+  @Autowired private DataSource dataSource;
 
   // ------------------------------------------------------------------- expiring
 
@@ -169,12 +176,88 @@ class RetentionServiceIT extends AbstractPostgresIT {
     Assertions.assertThat(purged.auditEvents()).isZero();
   }
 
+  // ------------------------------------------------------- one instance purges
+
+  /**
+   * Instance election, the item M5 recorded as "the retention job runs in every instance … instance
+   * election belongs to M6".
+   *
+   * <p>A second instance is simulated the only way that is honest here: a real, separate PostgreSQL
+   * session holding the same advisory lock. Mocking the lock would prove that the code calls a
+   * function, not that the database refuses the second caller — and it is the database's behaviour
+   * that the whole design rests on.
+   */
+  @Test
+  void anInstanceThatDoesNotWinTheLockPurgesNothing() throws Exception {
+    TenantEntity tenant = tenant("election");
+    UUID reportId = storeReport(tenant);
+    backdateReport(reportId, Duration.ofDays(400));
+
+    try (Connection otherInstance = dataSource.getConnection()) {
+      otherInstance.setAutoCommit(false);
+      Assertions.assertThat(heldBy(otherInstance))
+          .as("the simulated other instance must actually hold the lock")
+          .isTrue();
+
+      RetentionService.Purged purged = service(365, 730).purge();
+
+      Assertions.assertThat(purged.reports()).isZero();
+      Assertions.assertThat(purged.auditEvents()).isZero();
+      Assertions.assertThat(reports.findById(reportId))
+          .as("an expired report must survive a purge this instance was not elected for")
+          .isPresent();
+
+      otherInstance.rollback(); // the other instance's transaction ends: the lock is released
+    }
+
+    // With the lock free the very same call now does the work — so the skip above was the lock, not
+    // a mis-set window or a row that was never expired in the first place.
+    Assertions.assertThat(service(365, 730).purge().reports()).isPositive();
+    Assertions.assertThat(reports.findById(reportId)).isEmpty();
+  }
+
+  /**
+   * The lock is transaction-scoped, so a purge must not leave it held. Were it session-scoped and
+   * released through a second {@code JdbcTemplate} call, that release would run on a different
+   * pooled connection and silently fail — wedging every later purge. This is the assertion that
+   * would catch that regression.
+   */
+  @Test
+  void aFinishedPurgeLeavesTheLockFree() throws Exception {
+    service(36500, 36500).purge();
+
+    try (Connection observer = dataSource.getConnection()) {
+      observer.setAutoCommit(false);
+      Assertions.assertThat(heldBy(observer))
+          .as("the purge lock must be free once a purge has finished")
+          .isTrue();
+      observer.rollback();
+    }
+  }
+
+  /** Takes the purge lock on {@code connection}'s own transaction; true when it was granted. */
+  private static boolean heldBy(Connection connection) throws Exception {
+    try (PreparedStatement statement =
+        connection.prepareStatement("SELECT pg_try_advisory_xact_lock(?)")) {
+      statement.setLong(1, RetentionService.PURGE_LOCK_KEY);
+      try (ResultSet rows = statement.executeQuery()) {
+        return rows.next() && rows.getBoolean(1);
+      }
+    }
+  }
+
   // ----------------------------------------------------------------- helpers
 
   /** A service with the given windows and a clock fixed at the current instant. */
   private RetentionService service(int reportDays, int auditDays) {
     return new RetentionService(
-        reports, auditEvents, Clock.fixed(Instant.now(), ZoneOffset.UTC), reportDays, auditDays);
+        reports,
+        auditEvents,
+        Clock.fixed(Instant.now(), ZoneOffset.UTC),
+        jdbc,
+        transactionManager,
+        reportDays,
+        auditDays);
   }
 
   private void backdateReport(UUID reportId, Duration age) {

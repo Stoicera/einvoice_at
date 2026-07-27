@@ -30,9 +30,23 @@ Repo-Skeleton: Maven-Multi-Module, Spotless/google-java-format, EditorConfig, Gi
 Thymeleaf (server-gerendert; htmx wurde geprüft und verworfen — ADR-0009 Entscheidung 5): öffentliche Prüfer-Seite (DE, SEO-Meta, DSGVO-Hinweis "Upload wird nicht gespeichert"), Report-Ansicht, Dashboard (Login, Rechnungserstellung als Wizard, API-Keys). `ai-assist`: OpenRouter-Adapter, FindingExplainer, Feature-Flag, PII-Scrubbing, Kosten-Metriken. Selenium-E2E: Upload→Report→Erklären-Flow; Gatling-Szenario Validator.
 **Abnahme:** E2E grün in CI (main); Validator-Demo-Video-tauglich; KI abschaltbar ohne Funktionsverlust.
 
-## M6 — Betrieb + Politur (2–3 Tage)
+## M6 — Betrieb + Politur (2–3 Tage) — **abgeschlossen bis auf zwei Owner-Schritte**
 OTel vollständig (Traces über Pipeline-Stufen), Observability-Compose-Profil, Deployment auf Hetzner+Dokploy inkl. `docs/deployment.md`, Backup/Restore-Probe, SECURITY.md (STRIDE-light), Dependency-Scans in CI, Lighthouse ≥ 95 public, README final (Screenshots, Quickstart < 5 min), GitHub Release v0.1.0.
 **Abnahme:** Live-Instanz erreichbar; ein Fremder kann dem Quickstart in 5 Minuten folgen.
+
+_M6-Stand (2026-07-27):_ Alles oben Genannte ist gebaut, gemessen und dokumentiert — mit **zwei
+ehrlich benannten Ausnahmen, die eine Maschine bzw. einen Knopfdruck brauchen und keine Codeänderung:**
+
+- **Die Live-Instanz ist nicht provisioniert.** `docs/deployment.md` beschreibt den Weg vollständig
+  und sagt selbst, welche Abschnitte ausgeführt und welche geplant sind; CI baut und veröffentlicht
+  das Image und ruft den Dokploy-Webhook, sobald das Secret existiert. Der VPS ist Owner-Sache.
+- **`v0.1.0` ist vorbereitet, nicht getaggt.** `CHANGELOG.md` steht; das Tag zu setzen und das
+  GitHub-Release zu veröffentlichen ist Owner-Sache.
+
+Die zweite Abnahme-Hälfte ist erfüllt und gemessen: Quickstart von `git clone` bis zur ersten
+gesunden Antwort **unter fünf Minuten**, Lighthouse **100/100/100/100** auf beiden öffentlichen
+Seiten. Zusätzlich geschlossen, weil M5 sie namentlich hierher übergeben hatte: Instanzwahl für den
+Retention-Job, `X-Forwarded-For`, und ein echter Authorization-Code-Login im Browser.
 
 ## M7 (Stretch) — e-rechnung.gv.at-Anbindung
 Webservice-Upload (ER>B) hinter Feature-Flag, Sandbox-Test; alternativ dokumentierter Peppol-Übergabepunkt. Nur nach M6 und nur, wenn Zeit übrig — der Werkvertrags-Case ist auch ohne M7 komplett.

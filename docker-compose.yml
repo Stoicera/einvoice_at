@@ -90,6 +90,34 @@ services:
       AI_MAX_RETRIES: ${AI_MAX_RETRIES:-1}
       AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-700}
       AI_MAX_FINDINGS_PER_REQUEST: ${AI_MAX_FINDINGS_PER_REQUEST:-10}
+      # Observability (M6, ADR-0012). OFF unless asked for: with OTEL_ENABLED false the exporters
+      # are built and never publish, so a stack started without the observability backends does not
+      # spend a request thread posting spans into a socket nobody is listening on.
+      #
+      # THE PROFILE DOES NOT TURN THIS ON BY ITSELF, and pretending otherwise would be the kind of
+      # silent-no-op this repository has now been bitten by twice (the RATE_LIMIT_* family in M5).
+      # A compose profile decides which SERVICES start; it cannot set an environment variable on a
+      # service that is already running. So the observability stack is one command with the flag
+      # given explicitly:
+      #
+      #     OTEL_ENABLED=true docker compose --profile observability up -d
+      #
+      # or `OTEL_ENABLED=true` in .env, which is what .env.example documents.
+      #
+      # The two endpoints point at compose service names, which is why they are defaulted here
+      # rather than left to application.yml alone: those defaults (`tempo`, `prometheus`) only
+      # resolve inside this network, and a deployment elsewhere sets its own.
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      OTEL_SAMPLING_PROBABILITY: ${OTEL_SAMPLING_PROBABILITY:-1.0}
+      OTEL_TRACES_ENDPOINT: ${OTEL_TRACES_ENDPOINT:-http://tempo:4318/v1/traces}
+      OTEL_METRICS_ENDPOINT: ${OTEL_METRICS_ENDPOINT:-http://prometheus:9090/api/v1/otlp/v1/metrics}
+      OTEL_METRICS_STEP: ${OTEL_METRICS_STEP:-15s}
+      # Reverse-proxy awareness. `none` locally, because nothing sits in front of this container and
+      # trusting X-Forwarded-For without a proxy lets any caller claim any IP — and therefore mint
+      # itself an unlimited number of rate-limit buckets. docs/deployment.md sets `framework` for the
+      # Traefik/Dokploy target, where the opposite failure applies: without it every anonymous
+      # caller shares Traefik's address and the per-IP limit becomes one global bucket.
+      SERVER_FORWARD_HEADERS_STRATEGY: ${SERVER_FORWARD_HEADERS_STRATEGY:-none}
     ports:
       - "${APP_PORT:-8080}:8080"
     restart: unless-stopped
@@ -164,5 +192,75 @@ services:
       - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
     restart: unless-stopped
 
+  # ---------------------------------------------------------------------------------------------
+  # The `observability` profile (ENGINEERING_STANDARDS §5, MILESTONES M6, ADR-0012).
+  #
+  #     OTEL_ENABLED=true docker compose --profile observability up -d
+  #
+  # Three containers and no OpenTelemetry Collector: the application speaks OTLP directly to both
+  # backends, so a Collector would be a fourth process whose only job is forwarding. A real
+  # deployment that wants tail sampling, redaction or fan-out adds one — docs/deployment.md says so
+  # — but a portfolio stack that starts in one command is worth more than a complete reference
+  # architecture nobody runs.
+  #
+  # None of these three is exposed beyond 127.0.0.1, and none of them authenticates anything. They
+  # are a local development aid; docs/deployment.md deliberately does NOT deploy them.
+
+  prometheus:
+    image: prom/prometheus:v3.7.3@sha256:6573196e5dbe834779ac4d34cb053113cc502a69e9e20ba3be96d37f33e81545
+    profiles: [observability]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      # Metrics arrive by OTLP push, not by scraping. Without this flag the receiver route does not
+      # exist and every export answers 404 — silently, from the application's point of view.
+      - --web.enable-otlp-receiver
+      - --storage.tsdb.retention.time=24h
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:2.9.1@sha256:1c32b96d2397cd134e908214d1ddfa6037e85798ed62f6c239e90213299cc15d
+    profiles: [observability]
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    # The image runs as uid 10001 and a freshly created named volume is owned by root, so Tempo
+    # cannot create its WAL directory on first start. Running as root is the usual workaround and is
+    # acceptable *here* — this is a development-only profile on a loopback-bound port that
+    # docs/deployment.md deliberately does not deploy. Stated rather than left as an unexplained
+    # privilege in a compose file, because it is exactly the line a reviewer stops at.
+    user: root
+    volumes:
+      - ./observability/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempodata:/var/tempo
+    ports:
+      # 3200 is Tempo's query API (Grafana reads it); 4318 is the OTLP/HTTP receiver the app writes
+      # to. Both bound to loopback — nothing here authenticates.
+      - "127.0.0.1:${TEMPO_PORT:-3200}:3200"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.3.1@sha256:7c064e627d9cb50c3485c9ded5ca0222de89a08e41403322a0c3ca6f1777a8d1
+    profiles: [observability]
+    depends_on: [prometheus, tempo]
+    environment:
+      # Anonymous admin, deliberately: this Grafana holds nothing but this stack's own numbers, and
+      # a login prompt in front of a demo dashboard is friction with no security value. It is bound
+      # to loopback (below) and docs/deployment.md does not deploy it.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_USERS_DEFAULT_THEME: dark
+      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor
+    volumes:
+      - ./observability/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./observability/grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./observability/grafana/einvoice-at.json:/etc/grafana/provisioning/dashboards/einvoice-at.json:ro
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    restart: unless-stopped
+
 volumes:
   pgdata:
+  tempodata:

@@ -43,4 +43,50 @@
     <cve>CVE-2023-5443</cve>
   </suppress>
 
+  <!--
+    CVE-2026-53914 (CVSS 9.8) against org.jetbrains.kotlin:kotlin-stdlib 2.3.21.
+
+    Added 2026-07-27, on the M6 branch's first CI run — the same run that raised CVE-2026-39883
+    against opentelemetry-semconv. That one was UPGRADED, not suppressed (root POM,
+    opentelemetry-semconv.version), which is the policy this header states and the order these two
+    were handled in.
+
+    Why this one is different, and why it is a wrong-component match rather than an inconvenience:
+
+      * The advisory reads, in full: "In JetBrains Kotlin before 2.4.20 code execution was possible
+        via unsafe deserialization in THE BUILD CACHE METADATA." The Kotlin build cache is a feature
+        of the Kotlin Gradle plugin and compiler — build-time tooling. `kotlin-stdlib` is the
+        RUNTIME library and contains no build-cache code at all.
+      * This project contains no Kotlin and compiles none. The jar arrives transitively, three
+        levels down: spring-boot-starter-opentelemetry -> opentelemetry-exporter-otlp ->
+        opentelemetry-exporter-sender-okhttp -> okhttp-jvm 5.3.2 -> kotlin-stdlib. It is OkHttp's
+        runtime, shipped and never built against.
+      * Dependency-Check matched it on `cpe:/a:jetbrains:kotlin` plus the version range. That CPE
+        covers the whole Kotlin product, so every artifact of the distribution inherits every
+        advisory about any part of it.
+
+    Why not simply upgrade, which is what the header demands first: the fix version the advisory
+    names is 2.4.20, and as of 2026-07-27 Maven Central publishes only 2.4.20-Beta2 — the latest
+    STABLE is 2.4.10, which is still inside the vulnerable range. Pinning a beta of the Kotlin
+    runtime underneath OkHttp, into a production container image, to dodge a build-tooling CVE this
+    project cannot reach, would be a worse trade than a documented and expiring suppression. It
+    would also override what OkHttp 5.3.2 was built and tested against.
+
+    <until> is set deliberately and near: this claim SHOULD decay. When Kotlin 2.4.20 goes stable
+    and OkHttp resolves at or above it, the finding disappears on its own and this entry must be
+    deleted rather than renewed by reflex. If it expires while still needed, re-argue it — that is
+    the point.
+  -->
+  <suppress until="2026-11-30Z">
+    <notes><![CDATA[
+      False positive for this artifact: CVE-2026-53914 is unsafe deserialization in the Kotlin BUILD
+      CACHE METADATA (build tooling). kotlin-stdlib is the runtime library and carries no
+      build-cache code; this project compiles no Kotlin and pulls the jar transitively via OkHttp,
+      which the OTLP exporter uses. Fix version 2.4.20 exists only as a Beta on Maven Central as of
+      2026-07-27, so an upgrade would mean shipping a beta runtime. See the block comment above.
+    ]]></notes>
+    <packageUrl regex="true">^pkg:maven/org\.jetbrains\.kotlin/kotlin-stdlib@.*$</packageUrl>
+    <cve>CVE-2026-53914</cve>
+  </suppress>
+
 </suppressions>

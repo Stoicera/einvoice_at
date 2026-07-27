@@ -261,6 +261,41 @@ jobs:
       - name: Gatling load scenario (public validator)
         run: ./mvnw -B -ntp -pl e2e gatling:test -Pload -Dload.base-url=http://localhost:8080
 
+      # MILESTONES M6: "Lighthouse >= 95 public". Run here rather than in its own job because the
+      # compose stack is already up — a second job would stand the whole thing up again to load two
+      # pages.
+      #
+      # Both public pages, all four categories, one threshold. The pages are built for this (no
+      # framework, no external request, one hand-authored stylesheet, deferred first-party JS), so a
+      # score below 95 means something regressed rather than that the bar is ambitious: measured
+      # 100/100/100/100 on both pages at the time this job was added. The one real finding along the
+      # way was an h1 -> h3 jump on the landing page's feature cards, which is a heading-order
+      # violation assistive technology cares about and a reader cannot see.
+      - name: Lighthouse (public pages, >= 95 in every category)
+        run: |
+          set -euo pipefail
+          threshold=95
+          status=0
+          for path in "/" "/validator"; do
+            name="$(echo "$path" | tr -c 'a-zA-Z0-9' '-')"
+            npx --yes lighthouse@12 "http://localhost:8080${path}" \
+              --quiet --chrome-flags="--headless=new --no-sandbox" \
+              --preset=desktop --output=json --output-path="lighthouse${name}.json"
+
+            echo "Lighthouse ${path}"
+            python3 scripts/lighthouse-check.py "lighthouse${name}.json" "$path" "$threshold" \
+              || status=1
+          done
+          exit "$status"
+
+      - name: Upload the Lighthouse reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: lighthouse-reports
+          path: lighthouse-*.json
+          retention-days: 14
+
       - name: Stop the stack
         if: always()
         run: docker compose down -v
@@ -276,14 +311,125 @@ jobs:
           retention-days: 14
 
   docker:
-    name: Docker image build
+    name: Docker image build and publish
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Only for the push on main; a pull request keeps the read-only default because the `if`
+      # below skips the login and the push entirely.
+      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # git-commit-id-maven-plugin runs INSIDE the image build (.git is part of the build
+          # context on purpose — see .dockerignore) and needs real history for `git describe`-style
+          # resolution. actions/checkout's default shallow clone is enough for the commit id itself,
+          # but fetch-depth 0 removes the whole class of "works locally, empty in the image".
+          fetch-depth: 0
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      # Publishing happens on main only. A pull request still BUILDS the image — that is the check
+      # worth having on every change — it simply does not push one.
+      - name: Log in to GHCR
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # `sha-<commit>` is the tag docs/deployment.md tells an operator to pin, because a mutable
+      # tag cannot answer "which build is running" and /actuator/info can only confirm an answer,
+      # not supply one. `main` is published alongside it for convenience.
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=main,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=long
+
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
-          push: false
+          push: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # The image must be able to say what it is, or docs/deployment.md's "pin the sha- tag and
+      # confirm it with /actuator/info" is a procedure that cannot be followed. This is cheap and it
+      # catches the exact regression that would break it: `.git` slipping back into .dockerignore,
+      # or the git-commit-id plugin losing its binding. It runs on pull requests too, where nothing
+      # is pushed — the image is loaded locally for the check.
+      - name: Build the image locally for the identity check
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          load: true
+          tags: einvoice-at:ci-check
+          cache-from: type=gha
+      - name: The built image knows its own commit
+        env:
+          EXPECTED_SHA: ${{ github.event_name == 'push' && github.sha || '' }}
+        run: |
+          set -euo pipefail
+          # The jar is copied OUT and read on the runner rather than unzipped inside the container:
+          # the runtime image is a JRE on Alpine and carries neither `unzip` nor `jar`, so an
+          # in-container extraction would fail for a reason that has nothing to do with what is
+          # being checked.
+          container="$(docker create einvoice-at:ci-check)"
+          docker cp "$container:/app/app.jar" /tmp/app.jar
+          docker rm -f "$container" > /dev/null
+
+          id="$(unzip -p /tmp/app.jar BOOT-INF/classes/git.properties 2>/dev/null \
+                | sed -n 's/^git\.commit\.id=\([0-9a-f]\{40\}\)$/\1/p' || true)"
+          echo "image reports commit: ${id:-<none>}"
+
+          if [ -z "$id" ]; then
+            echo "::error::The image contains no git.properties — /actuator/info cannot identify this build."
+            echo "::error::Check that .dockerignore does not exclude .git and that git-commit-id-maven-plugin is bound."
+            exit 1
+          fi
+
+          # Only a push event has a github.sha that is the commit actually built; a pull_request run
+          # checks out a synthetic merge commit, so the equality half is meaningless there and
+          # EXPECTED_SHA is deliberately empty. The presence half above — the one that guards
+          # docs/deployment.md's "pin the sha- tag, confirm with /actuator/info" — runs everywhere.
+          if [ -n "$EXPECTED_SHA" ] && [ "$id" != "$EXPECTED_SHA" ]; then
+            echo "::error::Image reports commit $id but this run built $EXPECTED_SHA."
+            exit 1
+          fi
+
+  # Tells the Hetzner/Dokploy deployment to pull the image that was just published.
+  #
+  # Skipped LOUDLY when the webhook secret is absent, exactly like the NVD scan above: a fork, a
+  # clone or a repository whose owner has not provisioned a VPS must not get a red pipeline for a
+  # deployment it does not have, and a stage that is permanently red teaches everyone to ignore red.
+  deploy:
+    name: Deploy (Dokploy webhook)
+    needs: [build, docker]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger the Dokploy deployment
+        env:
+          WEBHOOK: ${{ secrets.DOKPLOY_DEPLOY_WEBHOOK }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "::warning::DOKPLOY_DEPLOY_WEBHOOK is not set — NOTHING WAS DEPLOYED."
+            {
+              echo "## ℹ️ Deployment skipped"
+              echo
+              echo "\`DOKPLOY_DEPLOY_WEBHOOK\` is not configured, so this run published an image to"
+              echo "GHCR and did **not** deploy it. See \`docs/deployment.md\` §6."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # --fail so a 4xx/5xx from Dokploy is a failed job rather than a green one that deployed
+          # nothing. The webhook itself is fire-and-forget; it does not report the rollout's outcome,
+          # which is why the smoke test in docs/deployment.md §10 exists.
+          curl --fail --silent --show-error --request POST "$WEBHOOK"
+          echo "Deployment triggered for ${{ github.sha }}."

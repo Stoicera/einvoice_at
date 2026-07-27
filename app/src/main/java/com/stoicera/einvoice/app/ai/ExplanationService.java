@@ -2,6 +2,8 @@ package com.stoicera.einvoice.app.ai;
 
 import com.stoicera.einvoice.aiassist.ExplanationContext;
 import com.stoicera.einvoice.aiassist.FindingExplainer;
+import com.stoicera.einvoice.app.observability.PipelineObservations;
+import com.stoicera.einvoice.app.observability.PipelineStep;
 import com.stoicera.einvoice.core.validation.Finding;
 import java.util.Optional;
 import org.springframework.beans.factory.ObjectProvider;
@@ -26,9 +28,12 @@ import org.springframework.stereotype.Service;
 public class ExplanationService {
 
   private final ObjectProvider<FindingExplainer> explainer;
+  private final PipelineObservations observations;
 
-  public ExplanationService(ObjectProvider<FindingExplainer> explainer) {
+  public ExplanationService(
+      ObjectProvider<FindingExplainer> explainer, PipelineObservations observations) {
     this.explainer = explainer;
+    this.observations = observations;
   }
 
   /**
@@ -47,6 +52,13 @@ public class ExplanationService {
    */
   public Optional<String> explain(Finding finding, ExplanationContext context) {
     FindingExplainer available = explainer.getIfAvailable();
-    return available == null ? Optional.empty() : available.explain(finding, context);
+    if (available == null) {
+      // Observed only when there is something to observe. With the feature off this is a null
+      // check, and a span saying "we did not call a provider" is noise in every trace of a
+      // deployment that has AI switched off — which is the default.
+      return Optional.empty();
+    }
+    return observations.observe(
+        PipelineStep.EXPLAIN_FINDINGS, () -> available.explain(finding, context));
   }
 }

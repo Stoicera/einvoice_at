@@ -36,6 +36,29 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-validation</artifactId>
     </dependency>
+    <!-- Observability (M6, ADR-0012): OpenTelemetry traces AND metrics, both exported over OTLP.
+
+         ONE starter rather than four hand-picked artifacts. It brings micrometer-tracing-bridge-otel
+         (so a Micrometer Observation becomes an OTel span), opentelemetry-exporter-otlp (the span
+         exporter), micrometer-registry-otlp (the metric registry) and Boot's auto-configuration for
+         all of it — every version managed by the Boot parent through the micrometer-tracing and
+         opentelemetry BOMs it already imports.
+
+         DELIBERATELY NO PROMETHEUS SCRAPE ENDPOINT. Both signals push over OTLP, which means there
+         is exactly one mechanism to configure, one to document and one to get wrong — and, more to
+         the point, no new anonymous surface to secure: /actuator/** is authenticated (SecurityConfig)
+         except the health probes, so a scrape endpoint would have needed either a credential for
+         Prometheus or a hole in that rule. Prometheus 3 ingests OTLP directly (its
+         web.enable-otlp-receiver flag, see the observability compose profile), so the scrape model
+         buys nothing here. ENGINEERING_STANDARDS §5 names OTLP export as an acceptable shape.
+
+         INERT UNLESS SWITCHED ON: application.yml gates both exporters on OTEL_ENABLED (default
+         false) — see the comment there for why the Boot defaults would otherwise have every
+         deployment posting to localhost:4318 forever. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-opentelemetry</artifactId>
+    </dependency>
     <!-- Persistence: Spring Data JPA (Hibernate ORM 7 via Boot 4.1's dependencyManagement). -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -175,6 +198,14 @@
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- TestObservationRegistry + SimpleTracer, so the M6 instrumentation is asserted rather than
+         eyeballed in a Grafana screenshot: a test can state "this pipeline produced exactly these
+         stages, in this order, each once". Test scope; version from the Boot parent. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-opentelemetry-test</artifactId>
+      <scope>test</scope>
+    </dependency>
     <!-- Spring Security's own test support, for the M5 dashboard ITs. Version managed by the Boot
          parent; test scope only.
 
@@ -248,9 +279,67 @@
   <build>
     <finalName>app</finalName>
     <plugins>
+      <!-- "Which build is this?" — SPEC §9's version endpoint, an open carry item since M4.
+           /actuator/info reads git.properties (below) and build-info.properties (the `build-info`
+           goal on spring-boot-maven-plugin), and simply omits whichever is absent.
+
+           <failOnNoGitDirectory>false</failOnNoGitDirectory> is NOT here on purpose. It would make
+           the interesting case — the container image, which is the artifact actually deployed and
+           therefore the one whose identity anyone ever needs to ask about — silently ship without a
+           commit id, because .dockerignore excluded `.git` from the build context. The fix is on the
+           other side: `.git` is now part of the context (2 MB against an 8 MB source tree) so the
+           in-image build resolves a real sha, and a build that genuinely has no git metadata fails
+           loudly instead of producing an image that cannot say what it is. -->
+      <plugin>
+        <groupId>io.github.git-commit-id</groupId>
+        <artifactId>git-commit-id-maven-plugin</artifactId>
+        <version>${git-commit-id-maven-plugin.version}</version>
+        <executions>
+          <execution>
+            <id>get-the-git-infos</id>
+            <goals>
+              <goal>revision</goal>
+            </goals>
+            <phase>initialize</phase>
+          </execution>
+        </executions>
+        <configuration>
+          <generateGitPropertiesFile>true</generateGitPropertiesFile>
+          <generateGitPropertiesFilename>
+            ${project.build.outputDirectory}/git.properties
+          </generateGitPropertiesFilename>
+          <!-- Exactly the keys management.info.git.mode=simple publishes (git.commit.id and
+               git.commit.time), plus the abbreviated id because that is the form a human quotes.
+               The plugin's default set includes the branch name, the committer's name and e-mail
+               address and the full commit message; /actuator/info is authenticated, but
+               "authenticated" is not a reason to publish the people who wrote the code.
+
+               The patterns escape their dots. `^git.commit.id$` would also match `gitXcommitYidZ` —
+               harmless in practice and wrong as a statement of intent. -->
+          <includeOnlyProperties>
+            <includeOnlyProperty>^git\.commit\.id$</includeOnlyProperty>
+            <includeOnlyProperty>^git\.commit\.id\.abbrev$</includeOnlyProperty>
+            <includeOnlyProperty>^git\.commit\.time$</includeOnlyProperty>
+          </includeOnlyProperties>
+          <!-- Reproducible across timezones, and the same shape build-info.properties uses. -->
+          <dateFormat>yyyy-MM-dd'T'HH:mm:ssXXX</dateFormat>
+          <dateFormatTimeZone>UTC</dateFormatTimeZone>
+        </configuration>
+      </plugin>
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+        <executions>
+          <!-- build-info.properties: artifact, version and build time, the other half of
+               /actuator/info. `repackage` is bound by the Boot parent already; naming it here would
+               replace that default binding rather than add to it, so only build-info is declared. -->
+          <execution>
+            <id>build-info</id>
+            <goals>
+              <goal>build-info</goal>
+            </goals>
+          </execution>
+        </executions>
         <configuration>
           <!-- The executable fat jar gets a CLASSIFIER, so the plain jar stays this module's main
                Maven artifact.

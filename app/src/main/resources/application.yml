@@ -160,13 +160,32 @@ springdoc:
 
 server:
   port: 8080
+  # WHO THE CLIENT IS, BEHIND A REVERSE PROXY. Default `none`, and that is the safe direction: with
+  # this off, the request's remote address is whatever TCP peer connected, which behind Traefik is
+  # Traefik. Switch it to `framework` on a deployment that genuinely sits behind a trusted proxy
+  # (docs/deployment.md does exactly that for the Dokploy/Traefik target) and Spring's
+  # ForwardedHeaderFilter rewrites the request from X-Forwarded-For/-Proto/-Host.
+  #
+  # THIS IS A SECURITY SETTING IN BOTH DIRECTIONS, which is why it is a knob and not a constant:
+  #   * left off behind a proxy, every anonymous caller shares one apparent IP — so the per-IP rate
+  #     limit on POST /api/v1/validate becomes a single global bucket, and one abusive client
+  #     rate-limits the entire internet. It also makes {@code https://} redirects come out as http.
+  #   * turned on WITHOUT a proxy, X-Forwarded-For is caller-supplied text, so anyone can claim any
+  #     address and mint themselves an unlimited number of rate-limit buckets.
+  # There is no value that is right in both topologies, so the deployment states which one it is.
+  # RateLimitFilter's Javadoc records the same trade-off from the limiter's side.
+  forward-headers-strategy: ${SERVER_FORWARD_HEADERS_STRATEGY:none}
 
 # Actuator surface. `metrics` is exposed alongside the probes because M5 ships cost metrics
 # (einvoice.ai.calls / .tokens / .cost.usd) and a metric an operator cannot read is not a metric —
 # the M5 hostile review (F5) found all three recorded into a registry with no endpoint in front of
 # it. All of /actuator/** except the health probes requires authentication (SecurityConfig), so this
-# publishes nothing anonymously; a Prometheus scrape endpoint belongs to M6, where observability is
-# the milestone's subject.
+# publishes nothing anonymously.
+#
+# There is deliberately NO /actuator/prometheus. M6 exports both metrics and traces over OTLP (see
+# below), which is one mechanism instead of two and adds no endpoint that a scraper would need a
+# credential for. ENGINEERING_STANDARDS §5 names OTLP export as an acceptable shape; ADR-0012
+# records the choice and what it costs.
 management:
   endpoints:
     web:
@@ -176,6 +195,103 @@ management:
     health:
       probes:
         enabled: true
+
+  # /actuator/info — which build is this? SPEC §9 asks for "git sha + build time", carried as an open
+  # item since M4. Both come from files the build writes: git.properties (git-commit-id-maven-plugin)
+  # and build-info.properties (spring-boot-maven-plugin's build-info goal). Neither exists in a plain
+  # `mvn test` run against exploded classes, and Boot simply omits the section then rather than
+  # failing — so this is safe in every environment and only *populated* in a real build.
+  #
+  # `full` publishes every key git.properties contains — and that is safe here precisely because
+  # the POM's includeOnlyProperties has already reduced that file to three: the commit id, its
+  # abbreviation and the commit time. No branch, no committer name or e-mail address, no commit
+  # message. ONE filter, in the place that writes the file, rather than a second one here that
+  # could disagree with it.
+  #
+  # `simple` was tried first and is wrong for this purpose: it publishes `commit.id` with the
+  # ABBREVIATED value, and a 7-character prefix is a hash that can collide — the whole point of the
+  # endpoint is to be able to check out exactly the tree that is running. BuildInfoEndpointIT is
+  # what found that, by asserting the shape of the id rather than merely its presence.
+  info:
+    git:
+      mode: full
+    build:
+      enabled: true
+    # No environment properties. /actuator/info answers "which build is this?"; it is not a
+    # configuration dump, and this application's environment carries database and OAuth2 settings.
+    env:
+      enabled: false
+
+  # ---------------------------------------------------------------------------------------------
+  # OpenTelemetry (M6, ADR-0012). Traces AND metrics, both pushed over OTLP.
+  #
+  # OFF BY DEFAULT, AND THAT DEFAULT IS LOAD-BEARING. Boot's own defaults for both exporters are
+  # "enabled, endpoint http://localhost:4318/…", so leaving them alone would make every deployment
+  # that never asked for observability POST spans and metrics into a socket nobody is listening on,
+  # forever, and log the failures. `OTEL_ENABLED=false` gates both, so the exporters are constructed
+  # but never publish; `docker compose --profile observability up` is what turns them on.
+  #
+  # Note what is NOT gated: the ObservationRegistry, and therefore every span this application
+  # creates. Instrumentation has one shape in every deployment — see ObservabilityConfig for why
+  # a conditional object graph would be worse than a conditional exporter.
+  tracing:
+    enabled: ${OTEL_ENABLED:false}
+    # BOTH flags, and the second one is not redundant — that was measured, not assumed.
+    #
+    # `tracing.enabled: false` removes the Tracer and stops spans being RECORDED. It does not stop
+    # the OTLP span EXPORTER from being built, because that is gated on `tracing.export.enabled`
+    # (Boot's default: true) plus a configured endpoint — and this file configures one. The result
+    # was an application with tracing switched off that still opened a connection to `tempo:4318`
+    # and logged "Failed to export spans" on shutdown. The E2E run is what showed it: that hostname
+    # resolves only inside the compose network, so on a developer's machine it fails loudly.
+    export:
+      enabled: ${OTEL_ENABLED:false}
+    sampling:
+      # A ratio, not a switch. 1.0 in the local compose profile because a portfolio stack has no
+      # traffic to sample away and a half-sampled demo trace is a confusing demo; a real deployment
+      # lowers it. Boot's own default is 0.1.
+      probability: ${OTEL_SAMPLING_PROBABILITY:1.0}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTEL_TRACES_ENDPOINT:http://tempo:4318/v1/traces}
+  otlp:
+    metrics:
+      export:
+        enabled: ${OTEL_ENABLED:false}
+        url: ${OTEL_METRICS_ENDPOINT:http://prometheus:9090/api/v1/otlp/v1/metrics}
+        step: ${OTEL_METRICS_STEP:15s}
+
+  # Percentile histograms for the three meters a latency panel is ever drawn from.
+  #
+  # WITHOUT THIS, A p95 IS NOT MERELY IMPRECISE — IT IS UNCOMPUTABLE. A Micrometer timer publishes
+  # count, sum and max by default and no bucket boundaries at all, so Prometheus receives a single
+  # `+Inf` bucket and `histogram_quantile` answers NaN for every quantile, forever. The Grafana
+  # dashboard's latency panels were written before this was set and showed exactly that: six named
+  # series, every value NaN. Measured on the running stack, not reasoned about.
+  #
+  # Bounded on both ends deliberately. Micrometer's unbounded default generates ~70 buckets per
+  # meter, which is 70 series per tag value — and these meters are tagged by stage and by step. A
+  # 1 ms floor and a 10 s ceiling cover the real range (a Peppol XSLT run is the slow end, at
+  # hundreds of milliseconds) and cut the bucket count to a fraction of that.
+  #
+  # Tied to OTEL_ENABLED for the same reason as the exporters: with observability off there is no
+  # collector to send buckets to, and computing them would be work whose output nothing reads.
+  metrics:
+    distribution:
+      percentiles-histogram:
+        einvoice.validation.stage: ${OTEL_ENABLED:false}
+        einvoice.pipeline: ${OTEL_ENABLED:false}
+        http.server.requests: ${OTEL_ENABLED:false}
+      minimum-expected-value:
+        einvoice.validation.stage: 1ms
+        einvoice.pipeline: 1ms
+        http.server.requests: 1ms
+      maximum-expected-value:
+        einvoice.validation.stage: 10s
+        einvoice.pipeline: 10s
+        http.server.requests: 10s
 
 # Security-relevant events (a rejected API key, a rate-limited caller, an oversized body, a
 # provisioned tenant, an unhandled 500) are logged by the classes that produce them; this only
@@ -192,7 +308,15 @@ logging:
 # Production logging: structured JSON on stdout (ENGINEERING_STANDARDS §5), ECS field names so a
 # Grafana/Loki or Elastic pipeline can read it without a custom parser. Local development and the
 # integration tests keep the human-readable default — nothing activates this profile except a
-# deployment setting SPRING_PROFILES_ACTIVE=prod (M6).
+# deployment setting SPRING_PROFILES_ACTIVE=prod (M6, and docs/deployment.md sets it).
+#
+# LOG-TO-TRACE CORRELATION COMES FREE HERE and is worth saying out loud, because it is the whole
+# reason JSON logs and OTel traces are worth having together: micrometer-tracing puts `traceId` and
+# `spanId` into the SLF4J MDC for the duration of every span, and Boot's ECS format writes the MDC
+# out as top-level fields. So a log line emitted anywhere inside a request carries the id of the
+# trace it belongs to, and Grafana links from the line straight to the waterfall. Nothing below
+# configures that; it is a consequence of the two features being on at once, and it stops working
+# silently if either is removed.
 spring:
   config:
     activate:

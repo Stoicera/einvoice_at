@@ -1,0 +1,34 @@
+# Grafana datasource provisioning for the local `observability` compose profile (M6, ADR-0012).
+#
+# Provisioned rather than clicked together, for the same reason the Keycloak realm is imported: a
+# stack you have to configure by hand after every `docker compose up` is a stack nobody starts.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: einvoice-prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      httpMethod: POST
+      # Lets a Prometheus exemplar carry a trace id straight to the Tempo datasource below, so a
+      # spike on a latency chart is one click away from the slow trace that caused it. The
+      # application publishes exemplars because management.tracing.exemplars.include defaults to
+      # sampled traces.
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: einvoice-tempo
+
+  - name: Tempo
+    type: tempo
+    uid: einvoice-tempo
+    access: proxy
+    url: http://tempo:3200
+    jsonData:
+      # The other direction: from a span, jump to the metrics of the same service.
+      tracesToMetrics:
+        datasourceUid: einvoice-prometheus
+      serviceMap:
+        datasourceUid: einvoice-prometheus

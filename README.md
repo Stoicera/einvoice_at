@@ -7,24 +7,42 @@
 
 A self-hostable Java 25 / Spring Boot platform built by [Stoicera Software Group](https://stoicera.com) as a production-grade reference system. Austria's federal government only accepts structured e-invoices (ebInterface or Peppol BIS) via e-rechnung.gv.at — and rejected invoices come back with Schematron output that non-technical users cannot read. This platform closes that gap.
 
-> **Status: Milestone M5 complete — web UI, public validator, AI explanations, GDPR erasure.** On top
-> of M4's two formats, conversion and PDF, the platform has a full **browser surface**: a German,
-> SEO-oriented [public validator](#web-ui) that stores nothing, a report view grouping findings by
-> severity, an optional **AI explanation** per finding (off by default, degrades to a notice when the
-> provider is down), and an **authenticated dashboard** — invoice list and detail with all three
-> document downloads, report history, a four-step create-invoice wizard, API-key management, and a
-> **Konto** page that states what is stored before offering to erase it. The Peppol findings Austrian
-> filers actually hit carry **real German messages** rather than a German frame around English.
-> **GDPR Art. 17 and Art. 5(1)(e) are implemented** — full tenant erasure plus a retention job that
-> never touches invoices, because § 132 BAO obliges the business to keep them for seven years
-> ([ADR-0011](docs/adr/0011-retention-and-erasure.md)). The Upload → Report → Erklären flow is
-> asserted in a real browser, and the public validator has a Gatling load scenario. Deferred to M6 by
-> the milestone plan: Lighthouse ≥ 95 measurement, OpenTelemetry, `/actuator/info`. Milestone plan:
+> **Status: Milestone M6 complete — operations and polish.** On top of M5's browser surface, the
+> platform is now **observable, deployable and documented for it**. **OpenTelemetry traces run across
+> the pipeline stages** (ADR-0012): one trace of an invoice creation shows the JSON read, both
+> mappings, the XML write, all five validation stages and the transactional persist, nested under the
+> HTTP span — with traces and metrics both exported over OTLP and an `observability` compose profile
+> (Prometheus + Tempo + Grafana, provisioned) to look at them. `/actuator/info` names the commit and
+> the build time. There is a [deployment guide](docs/deployment.md) for Hetzner + Dokploy,
+> **backup/restore scripts whose drill runs on every build**, and a [SECURITY.md](SECURITY.md) with a
+> STRIDE-light threat model that names its own limits. Both public pages score **100 across all four
+> Lighthouse categories**, asserted in CI. The two gaps M5 recorded by name are closed: the retention
+> job now **elects a single purger** across instances, and a **real authorization-code login is driven
+> through Keycloak's own form in a browser**. Milestone plan:
 > [docs/MILESTONES.md](docs/MILESTONES.md); session-by-session detail: [docs/worklog.md](docs/worklog.md).
+
+## Screenshots
+
+Taken through a real browser against the running compose stack — the report is a genuine upload, the
+dashboard is behind a genuine Keycloak login, and the observability captures are real traffic.
+
+| | |
+|---|---|
+| [![Landing page](docs/screenshots/01-landing.png)](docs/screenshots/01-landing.png)<br>**Landing** — German-first, SEO meta, no framework | [![Public validator](docs/screenshots/02-validator.png)](docs/screenshots/02-validator.png)<br>**Public validator** — the upload is never stored |
+| [![Validation report](docs/screenshots/03-report.png)](docs/screenshots/03-report.png)<br>**Report** — findings grouped by severity, German first, rule id and location per finding | [![Dashboard](docs/screenshots/04-dashboard.png)](docs/screenshots/04-dashboard.png)<br>**Dashboard** — per-tenant overview behind an OIDC login |
+| [![Create-invoice wizard](docs/screenshots/05-wizard.png)](docs/screenshots/05-wizard.png)<br>**Wizard** — four server-rendered steps, no JavaScript required | [![Grafana pipeline dashboard](docs/screenshots/06-grafana-pipeline.png)](docs/screenshots/06-grafana-pipeline.png)<br>**Grafana** — stage and step latency, provisioned with the profile |
+
+[![Tempo trace of an invoice creation](docs/screenshots/07-tempo-trace.png)](docs/screenshots/07-tempo-trace.png)
+
+**One invoice creation, traced end to end.** This is what "OTel across the pipeline stages" means in
+practice: `read-canonical-json` → `map-ebinterface` → `write-ebinterface` → `parse` →
+`format-detection` → `xsd` → `schematron` → `business-rules` → `persist-invoice`, each timed, nested
+under the HTTP span. The validation stages live in a module that must not know Spring exists, and
+reach the tracer through a plain-Java port ([ADR-0012](docs/adr/0012-observability.md)).
 
 ## Deutsche Kurzfassung
 
-**einvoice-at** ist eine selbst hostbare Plattform für die österreichische E-Rechnung: Sie **erzeugt** ebInterface 6.1 und Peppol BIS Billing 3.0 (UBL) aus strukturierten Rechnungsdaten, **validiert** hochgeladene XML-Rechnungen gegen XSD, Schematron und österreichische Geschäftsregeln — mit einem menschenlesbaren, deutschen Prüfbericht — und **konvertiert** zwischen beiden Formaten mit dokumentierten Mapping-Grenzen. Ein abschaltbarer KI-Assistent erklärt jeden Befund auf Wunsch in einfacher Sprache; personenbezogene Daten werden vorher maskiert und das geprüfte Dokument verlässt die Plattform nie ([docs/privacy.md](docs/privacy.md)). Angemeldete Nutzer:innen verwalten ihre Rechnungen, Prüfberichte und API-Schlüssel im Dashboard, erstellen Rechnungen über einen vierstufigen Assistenten und können ihr Konto samt aller Daten jederzeit vollständig löschen (Art. 17 DSGVO). Rechnungen werden dabei **nie** automatisch gelöscht — § 132 BAO verpflichtet Sie zu sieben Jahren Aufbewahrung ([ADR-0011](docs/adr/0011-retention-and-erasure.md)). Aktueller Stand: **Milestone M5 abgeschlossen.**
+**einvoice-at** ist eine selbst hostbare Plattform für die österreichische E-Rechnung: Sie **erzeugt** ebInterface 6.1 und Peppol BIS Billing 3.0 (UBL) aus strukturierten Rechnungsdaten, **validiert** hochgeladene XML-Rechnungen gegen XSD, Schematron und österreichische Geschäftsregeln — mit einem menschenlesbaren, deutschen Prüfbericht — und **konvertiert** zwischen beiden Formaten mit dokumentierten Mapping-Grenzen. Ein abschaltbarer KI-Assistent erklärt jeden Befund auf Wunsch in einfacher Sprache; personenbezogene Daten werden vorher maskiert und das geprüfte Dokument verlässt die Plattform nie ([docs/privacy.md](docs/privacy.md)). Angemeldete Nutzer:innen verwalten ihre Rechnungen, Prüfberichte und API-Schlüssel im Dashboard, erstellen Rechnungen über einen vierstufigen Assistenten und können ihr Konto samt aller Daten jederzeit vollständig löschen (Art. 17 DSGVO). Rechnungen werden dabei **nie** automatisch gelöscht — § 132 BAO verpflichtet Sie zu sieben Jahren Aufbewahrung ([ADR-0011](docs/adr/0011-retention-and-erasure.md)). Betrieb und Observability sind mit M6 fertig: OpenTelemetry-Traces über die Pipeline-Stufen, ein Compose-Profil zum Anschauen, ein Deployment-Leitfaden für Hetzner + Dokploy, Backup- und Restore-Skripte samt automatisierter Probe, und ein STRIDE-light-Bedrohungsmodell in [SECURITY.md](SECURITY.md). Aktueller Stand: **Milestone M6 abgeschlossen** — bis auf die Live-Instanz und das `v0.1.0`-Tag, die beide eine Maschine bzw. einen Knopfdruck brauchen.
 
 ## Architecture
 
@@ -44,7 +62,7 @@ einvoice-at
 └── e2e                   browser E2E (Selenium/Chrome) + the Gatling load scenario — see Testing
 ```
 
-Every module is built and tested as of M5. `e2e` is compiled by every build but its tests run only
+Every module is built and tested as of M6. `e2e` is compiled by every build but its tests run only
 under `-Pe2e` / `-Pload`, in a dedicated CI job.
 
 Stack: Java 25, Spring Boot 4.1, PostgreSQL 17 + Flyway, Thymeleaf (server-rendered, no CSS/JS build step — [ADR-0009](docs/adr/0009-web-ui.md)), Keycloak, Testcontainers. Rationale in [ADR-0001](docs/adr/0001-java-spring-boot-stack.md).
@@ -64,6 +82,23 @@ curl http://localhost:8080/actuator/health
 ```
 
 Then open **<http://localhost:8080/validator>** and drop an ebInterface or UBL invoice on it.
+There are two ready to try in [`samples/`](samples/). Log in at **<http://localhost:8080/app>** with
+`testuser` / `testpass` (the dev realm's only user) to see the dashboard.
+
+Measured, not estimated: `docker compose up -d --build` to the first `"status":"UP"` took **82 s**
+with no image present, and the image build alone takes **75 s** with `--no-cache` and an empty Maven
+cache — i.e. downloading every dependency. Both are well inside M6's five-minute Quickstart budget;
+the variable is your connection to Maven Central, not this repository.
+
+**Want the traces?** One more flag and three more containers:
+
+```bash
+OTEL_ENABLED=true docker compose --profile observability up -d
+# Grafana on http://localhost:3000 — datasources and the pipeline dashboard are provisioned
+```
+
+The profile decides which *services* start; it cannot set an environment variable on the app, which
+is why `OTEL_ENABLED` is given explicitly. See [Observability](#observability).
 
 ## REST API
 
@@ -179,22 +214,23 @@ network I/O and would blow the build-time budget:
 ./mvnw -Psecurity verify        # needs NVD_API_KEY in the environment
 ```
 
-⚠️ **One-time owner setup:** the NVD rate-limits unauthenticated clients hard enough that a first
-sync stalls, leaves its local database half-written, and then fails with an unrelated-looking error.
-Request a free key at <https://nvd.nist.gov/developers/request-an-api-key> and add it as the
-repository secret `NVD_API_KEY`.
+**In this repository the scan is a live gate** — the `NVD_API_KEY` secret is configured, so CI runs
+it for real and fails the build on CVSS ≥ 7. The two version overrides in the root POM are that
+gate's own verdicts rather than precautionary bumps.
 
-Until that secret exists the CI job **skips the scan** rather than running a doomed one — with a
-warning annotation and a job summary saying so in as many words, because a stage that is
-permanently red for an external reason only teaches people to ignore red. The job is not a no-op
-in the meantime: it still asserts that the scan binds exactly once, at the root. Adding the secret
-turns it into a real gate with no workflow change.
+**Running it yourself, or in a fork:** the NVD rate-limits unauthenticated clients hard enough that a
+first sync stalls, leaves its local database half-written and then fails with an unrelated-looking
+error, so request a free key at <https://nvd.nist.gov/developers/request-an-api-key> and either
+export it or add it as the repository secret `NVD_API_KEY`. Without it the CI job **skips the scan**
+rather than running a doomed one — with a warning annotation and a job summary saying so in as many
+words, because a stage that is permanently red for an external reason only teaches people to ignore
+red. The job is not a no-op even then: it still asserts the scan binds exactly once, at the root.
 
 ## Testing
 
 JUnit 5 + AssertJ + Mockito for unit tests, ArchUnit for module-boundary rules, Testcontainers for integration tests, **Selenium** for the browser flow and **Gatling** for the load scenario — built out milestone by milestone per [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md).
 
-**1048 tests** in a clean `./mvnw verify`, plus 3 browser E2E tests under `-Pe2e`.
+**1078 tests** in a clean `./mvnw verify`, plus 5 browser E2E tests under `-Pe2e`.
 
 **The `e2e` module, and what a green build does and does not mean.** Selenium and Gatling live in their own module because neither belongs on `app`'s test classpath, and because a Chrome image and a load profile do not belong in every developer's inner loop. Its tests are always *compiled* — a module whose tests are never built is a module that quietly stops compiling — but they only *run* under `-Pe2e` (browser) and `-Pload` (Gatling), in a dedicated CI job alongside the existing mutation and security jobs. Stated plainly rather than implied: **a green plain `./mvnw verify` does not mean the browser flow works; the `e2e` job is what means that.**
 
@@ -212,7 +248,7 @@ The browser suite covers what no HTTP assertion can: that the report fragment is
 |---|---|---|---|---|
 | `core` | 99.6 % | 98.3 % | 95/90 | 98 % (126/129) |
 | `mapping` | 99.2 % | 90.6 % | 95/90 | 99 % (411/417) |
-| `validation` | 94.3 % | 87.7 % | 90/85 | 86 % (129/150) |
+| `validation` | 95.9 % | 90.0 % | 90/85 | 89 % (140/158) |
 | `formats-ebinterface` | 100 % | 100 % | 90/85 | 100 % (12/12) |
 | `formats-ubl` | 98.6 % | 96.3 % | 90/85 | 93 % (27/29) |
 | `rendering` | 95.6 % | 88.8 % | 90/85 | — |
@@ -223,7 +259,7 @@ The browser suite covers what no HTTP assertion can: that the report fragment is
 
 **Round trips and golden files.** The two mapper pairs are exercised by jqwik round-trip properties over one shared input space, which is how the formats' asymmetries were established rather than assumed. `UblEndToEndGenerationTest` is the milestone's strongest automated claim: the sample invoice, generated through the real chain, is judged **Peppol-clean by the official OpenPeppol rule set** — an external verdict, not a self-assessment, since those rules are OpenPeppol's and this project only runs them.
 
-**`app` module.** 94.8 % line / 81.3 % branch (JaCoCo gate 90/78, measured across unit *and* integration runs merged — most of this module's behaviour is only observable end to end). 101 unit tests and 196 integration tests across 28 IT classes, the latter against real PostgreSQL and real Keycloak via Testcontainers:
+**`app` module.** 95.0 % line / 81.4 % branch (JaCoCo gate 90/78, measured across unit *and* integration runs merged — most of this module's behaviour is only observable end to end). 110 unit tests and 207 integration tests across 33 IT classes, the latter against real PostgreSQL and real Keycloak via Testcontainers:
 
 - **Auth matrix** (`AuthMatrixIT`) — both directions of every mechanism: anonymous, unknown key, revoked key, valid key, valid JWT, a bearer header that is not a JWT, an `alg=none` token, a genuine Keycloak token with a rewritten payload, and a request presenting two competing credentials.
 - **Token validation** (`JwtDecoderTest`) — a throwaway JWKS over loopback and self-minted tokens, so wrong issuer, expired `exp`, a foreign signing key, and a foreign key impersonating the real `kid` can each be varied one at a time.
@@ -407,9 +443,69 @@ Every rule id the pipeline can produce is centralised in `RuleIds` (module `vali
 
 Exit codes: `0` every validated file is valid, `1` at least one is invalid, `2` a usage or I/O error occurred — including no arguments, a nonexistent path, or a resolved file list that came back empty (e.g. a mistyped corpus path with no `*.xml` files), so a CI gate reading only the exit code can never mistake "found nothing" for "all valid".
 
+## Observability
+
+Both signals — traces **and** metrics — are exported over **OTLP**, and there is deliberately no
+`/actuator/prometheus`. One mechanism to configure, and no new surface needing a credential:
+everything under `/actuator` except the health probes is authenticated, so a scrape endpoint would
+have meant either a credential for Prometheus or a hole in that rule. Prometheus 3 ingests OTLP
+directly. Full rationale and its trade-offs: [ADR-0012](docs/adr/0012-observability.md).
+
+**Off by default, and that default is load-bearing.** Boot's own defaults for both exporters are
+"enabled, pointing at `localhost:4318`", so leaving them alone would have every installation that
+never asked for observability posting into a socket nobody is listening on. `OTEL_ENABLED` gates
+both. What is *not* gated is the instrumentation itself: with observability off, an observation is a
+few field writes and no span, so the code has one shape in every deployment and switching it on is a
+configuration change rather than a different object graph.
+
+| Signal | Where it comes from |
+|---|---|
+| `einvoice.validation.stage{stage=…}` | The `validation` module's stages — `parse`, `format-detection`, `xsd`, `schematron`, `business-rules`, `peppol` — reported through a plain-Java `ValidationObserver` port so that module never imports Spring |
+| `einvoice.pipeline{step=…}` | The steps `app` orchestrates: canonical-JSON read, both mappings, both writers, the PDF renderer, the transactional persist, the paid LLM call |
+| `einvoice.ai.calls` / `.tokens` / `.cost.usd` | The provider's own reported usage, never a local price table ([ADR-0010](docs/adr/0010-ai-assist.md)) |
+| `http.server.requests` | Boot's own |
+
+Tag values come from a fixed set — compile-time constants and an enum — because a tag fed from
+anywhere else is an unbounded number of time series. Latency panels need percentile histograms to
+exist at all: without them Micrometer publishes a single `+Inf` bucket and `histogram_quantile`
+answers `NaN` forever, which is exactly what the first version of the dashboard showed.
+
+Under `SPRING_PROFILES_ACTIVE=prod` the logs are ECS-shaped JSON carrying `traceId`/`spanId`, so a
+log line links to its trace with no further configuration.
+
 ## Deployment
 
-Target: single Hetzner VPS via Dokploy (Traefik/TLS). Deployment documentation lands with milestone M6 in `docs/deployment.md`.
+Target: a single Hetzner VPS via Dokploy, with Traefik terminating TLS. The full guide —
+provisioning, the environment a production deployment must think about, Keycloak in production mode,
+rolling back, and a post-deploy smoke test — is **[docs/deployment.md](docs/deployment.md)**.
+
+CI publishes an image to GHCR on every push to `main` (`ghcr.io/stoicera/einvoice_at:sha-<commit>`,
+which is the tag to pin) and triggers the Dokploy webhook. Both steps skip loudly when their secrets
+are absent, so a fork does not inherit a red pipeline for a deployment it does not have. A CI check
+proves the built image can identify itself, because the deployment guide tells an operator to pin the
+`sha-` tag and confirm it with `/actuator/info`.
+
+**Backups.** `scripts/backup.sh` takes a compressed custom-format dump, **verifies it is readable**
+with `pg_restore --list` before reporting success, and writes a SHA-256 sidecar. `scripts/restore.sh`
+checks that sidecar, prints the target database and refuses to run without an explicit confirmation.
+The round trip is not only documented: `BackupRestoreDrillIT` performs it on **every build** — dump,
+restore into a second database, and assert every table's row count, the Flyway history, and the
+canonical JSON column's actual content. Row counts alone would pass on a restore that produced the
+right number of empty rows.
+
+**Behind a reverse proxy, set `SERVER_FORWARD_HEADERS_STRATEGY=framework`.** Without it every
+anonymous caller shares Traefik's address, so the per-IP rate limit on the public validator becomes
+one global bucket. With it and *no* proxy, `X-Forwarded-For` is caller-supplied text and anyone can
+mint unlimited buckets. There is no value that is right in both topologies, so the deployment states
+which one it is — and both directions are covered by tests.
+
+## Security
+
+[SECURITY.md](SECURITY.md) carries the vulnerability-disclosure policy and a STRIDE-light threat
+model: one table per category, each row naming the control **and** the class or test that enforces
+it, so a reader can check the claim rather than take it. It also collects the known limits in one
+place — the rate limiter is per instance, an Art. 17 erasure takes the audit trail with it, and this
+platform is not a Peppol Access Point.
 
 ## Standards artefacts & credits
 

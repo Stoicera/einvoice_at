@@ -1,4 +1,8 @@
-.git
+# .git is deliberately NOT ignored (M6). The build inside the image runs
+# git-commit-id-maven-plugin, which writes the commit id into git.properties so /actuator/info can
+# answer "which build is this?" — SPEC §9. Excluding .git here would leave exactly the artifact that
+# gets deployed as the one artifact unable to identify itself, and the failure would be silent.
+# It costs 2 MB of build context against an 8 MB source tree.
 .github
 .idea
 .vscode

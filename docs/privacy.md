@@ -146,6 +146,31 @@ Beide Lücken, die dieses Dokument von M3 bis M5 ausdrücklich als offen benannt
 einer Formulierung wie „Löschkonzept vorhanden" zu verstecken —, sind damit geschlossen. Der Satz, dass
 diese Plattform keine ausreichende Grundlage für echte Kundendaten sei, steht hier nicht mehr.
 
+## 4a. Telemetrie: was die Plattform über sich selbst hinausschickt (M6)
+
+Seit M6 kann die Plattform **Traces und Metriken** an ein Observability-Backend schicken. Das ist ein
+Datenfluss nach außen und gehört deshalb in dieses Dokument, auch wenn er keine Rechnungsdaten
+enthält.
+
+- **Standardmäßig aus.** `OTEL_ENABLED` ist `false`; ohne diesen Schalter verlässt kein Byte
+  Telemetrie den Prozess. Das ist kein Nebeneffekt, sondern korrigiert Spring Boots eigene Defaults,
+  die beide Exporter eingeschaltet hätten.
+- **Was in einem Span steht:** der Name der Operation (`einvoice.validation.stage.xsd`,
+  `http post /api/v1/invoices`), die Dauer, und bei einem Fehler dessen Typ. Die Route erscheint als
+  **Muster** (`/api/v1/invoices/{id}`), nicht mit eingesetzter Id.
+- **Was in einer Metrik steht:** Anzahl und Dauer je Stufe bzw. Schritt. Die Tag-Werte stammen
+  ausschließlich aus Konstanten und einem Enum dieses Repositories — genau damit dort kein
+  Dokumentwert, keine Mandanten-Id und keine Eingabe eines Aufrufers landen kann.
+- **Was ausdrücklich nicht mitgeht:** kein Rechnungsinhalt, kein Befundtext, keine IBAN, keine UID,
+  keine E-Mail-Adresse, keine Mandanten-Id, kein Credential.
+- **Wohin:** an das OTLP-Ziel, das *Sie* konfigurieren. Das mitgelieferte Compose-Profil hält alles
+  auf dem eigenen Rechner (Prometheus, Tempo, Grafana, alle nur an `127.0.0.1`); eine Installation,
+  die ein externes Backend wählt, trifft diese Entscheidung selbst — und sollte prüfen, wo dessen
+  Server stehen.
+- **Protokollzeilen** tragen unter dem Profil `prod` zusätzlich `traceId`/`spanId`. Der Inhalt der
+  Logzeilen ändert sich dadurch nicht; es gilt weiter, dass kein Credential jemals vollständig
+  protokolliert wird.
+
 ## 5. Selbst hosten ist die eigentliche Antwort
 
 Die Plattform ist self-hostbar. Wer sie im eigenen Netz betreibt, verlässt keine Rechnungsdaten das

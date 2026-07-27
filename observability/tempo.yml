@@ -1,0 +1,37 @@
+# Tempo for the local `observability` compose profile (M6, ADR-0012).
+#
+# Single-binary, local filesystem backend, no object store: this exists so a developer can look at
+# a trace on their own machine and so the README can show one. It is deliberately not a production
+# Tempo configuration — docs/deployment.md points a real deployment at an OTLP endpoint of its own
+# choosing instead (Grafana Cloud, an OTel Collector, a managed Tempo).
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        # HTTP only. The application exports over OTLP/HTTP (Boot's default transport for
+        # management.opentelemetry.tracing.export.otlp), so a gRPC listener would be a port nobody
+        # connects to.
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  # Flush quickly: a demo that has to wait five minutes before a trace appears is a demo nobody
+  # believes. Wrong for production, right here, and said out loud so nobody copies it.
+  max_block_duration: 5m
+  complete_block_timeout: 1m
+
+compactor:
+  compaction:
+    # Traces from a laptop stack are worth a day, not a fortnight.
+    block_retention: 24h
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks

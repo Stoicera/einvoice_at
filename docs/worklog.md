@@ -1,5 +1,193 @@
 # Worklog — einvoice-at
 
+## 2026-07-27 — M6: Betrieb + Politur — complete, minus two owner steps
+
+**Status: M6 is complete** except for the two things that need a machine or a button rather than a
+commit — the live Hetzner instance and the `v0.1.0` tag. Both are named below rather than implied.
+
+`./mvnw clean verify` green across all 11 modules, **1078 tests** (from 1048), every JaCoCo gate met,
+all six mutation gates met, `./mvnw -pl e2e verify -Pe2e` green with **5** browser tests (from 3).
+
+**OTel across the pipeline stages, which is what the milestone actually asked for**
+
+The stages live in `validation`, and SPEC §2 keeps that module free of Spring. So they reach
+Micrometer through `ValidationObserver` — a plain-Java port, the same shape `ai-assist` has used for
+its token and cost numbers since M5. `app` implements it in one adapter; `PipelineObservations`
+covers the steps `app` orchestrates itself. Two observation families, each one name plus one
+low-cardinality tag drawn from a closed set, because a tag fed from anywhere else is an unbounded
+number of time series — the M5 review's lesson about the AI `model` tag, applied rather than quoted.
+
+The result, read off the running stack and not imagined:
+
+```
+http post /api/v1/invoices  (22.95 ms)
+  security filterchain before                     2.34 ms
+  secured request                                19.85 ms
+    einvoice.pipeline.read-canonical-json         1.01 ms
+    einvoice.pipeline.map-ebinterface           212.33 µs
+    einvoice.pipeline.write-ebinterface           1.70 ms
+    einvoice.validation.stage.parse               1.62 ms
+    einvoice.validation.stage.format-detection  159.73 µs
+    einvoice.validation.stage.xsd                 1.79 ms
+    einvoice.validation.stage.schematron        579.21 µs
+    einvoice.validation.stage.business-rules      1.47 ms
+    einvoice.pipeline.persist-invoice             4.37 ms
+```
+
+**Three defects the milestone's own verification found, all in M6's own work**
+
+1. **Every latency panel was `NaN`, and would have stayed that way.** A Micrometer timer publishes
+   count, sum and max by default and *no bucket boundaries*, so Prometheus receives a single `+Inf`
+   bucket and `histogram_quantile` cannot answer. The Grafana dashboard was written first and showed
+   exactly that: six correctly named series, every value NaN. Found by opening the dashboard against
+   the running stack instead of shipping it. After enabling percentile histograms (bounded 1 ms–10 s,
+   because the unbounded default is ~70 buckets *per tag value*): 61 buckets, p95 peppol 29 ms, parse
+   1.7 ms, xsd 1.4 ms.
+2. **`OTEL_ENABLED=false` still exported spans.** `management.tracing.enabled: false` removes the
+   Tracer and stops spans being *recorded*; it does not stop the OTLP *exporter* being built, which
+   is gated on `management.tracing.export.enabled` (Boot's default: true) plus a configured endpoint.
+   So an application with observability switched off opened a connection to `tempo:4318` and logged
+   the failure. The E2E run is what surfaced it — that hostname resolves only inside the compose
+   network, so off the network it fails loudly instead of quietly succeeding into nothing.
+3. **Two more Spring contexts exhausted Postgres.** Every cached context holds a ten-connection pool
+   for the JVM's life while Failsafe runs classes sequentially, so around ten contexts reach the
+   default `max_connections` of 100 — and the failure looks nothing like its cause: an unrelated IT
+   dies at startup with "FATAL: sorry, too many clients already". Fixed on the consuming side (cap 4,
+   `minimum-idle` 0) rather than by raising the server limit, because the connections were waste and
+   not demand.
+
+**What else shipped**
+
+- **The `observability` compose profile** — Prometheus 3 (OTLP receiver), Tempo and Grafana with
+  datasources *and* a dashboard provisioned. Both signals push over OTLP and there is deliberately no
+  `/actuator/prometheus`: one mechanism, and no new surface needing a credential (ADR-0012).
+- **`/actuator/info`** naming the commit and build time — SPEC §9's version endpoint, open since M4.
+  `.git` is now part of the Docker build context so the deployed artefact is not the one artefact
+  unable to identify itself, and a CI check proves the built image reports the commit it was built
+  from.
+- **`docs/deployment.md`**, `scripts/backup.sh` / `scripts/restore.sh`, and `BackupRestoreDrillIT`,
+  which performs the dump-and-restore round trip on **every build** inside the Testcontainers
+  Postgres and into a second database.
+- **`SECURITY.md`** — STRIDE-light, one table per category, each row naming the control *and* the
+  class or test that enforces it.
+- **CI**: GHCR publish with a `sha-<commit>` tag, a Dokploy deploy webhook, and a Lighthouse gate.
+  The two deployment steps skip loudly without their secrets, like the NVD scan.
+- **The three items M5 deferred by name**: instance election for the retention job (a PostgreSQL
+  advisory lock), `X-Forwarded-For` (an explicit switch, both directions tested), and **a real
+  authorization-code login driven through Keycloak's own form in a browser**.
+
+**Decisions**
+
+- **Both signals over OTLP; no scrape endpoint.** The classic answer is `micrometer-registry-
+  prometheus` plus `/actuator/prometheus` plus a `scrape_config`. It costs more than it looks: every
+  route under `/actuator` except the health probes is authenticated, so that endpoint needs either a
+  credential for Prometheus or a hole in a rule that is otherwise one line long — and it would be a
+  *second* mechanism beside the trace export, with a second set of configuration to disagree with the
+  first. Prometheus 3 ingests OTLP directly. Whoever wants the scrape model reverses this; it is
+  documented, not hidden.
+- **The exporters are off by default; the instrumentation never is.** With `OTEL_ENABLED=false` the
+  `ObservationRegistry` still exists and simply carries no tracing handler, so an observation is a
+  few field writes. Conditional *beans* would have made the instrumented and un-instrumented builds
+  two different programs, and that difference is discovered in production.
+- **The compose profile does not flip the flag, and the file says so.** A profile decides which
+  *services* start; it cannot set an environment variable on one. The command is
+  `OTEL_ENABLED=true docker compose --profile observability up -d`. Implying otherwise would have
+  been the same silent-no-op class as M5's `RATE_LIMIT_*` family, which is why the comment is blunt.
+- **`pg_try_advisory_xact_lock`, not the session-level lock.** A session lock needs an explicit
+  release, and that release goes through `JdbcTemplate` — which *outside a transaction* hands out a
+  different pooled connection than the one that took the lock. The unlock then silently fails and the
+  lock survives on an idle pooled connection: the job is wedged until that connection is recycled,
+  which may be never. The transaction-scoped lock has no release call to get wrong.
+- **The purge opens its own transaction rather than relying on `@Transactional`.** The lock's scope
+  *is* the transaction, so "is there a transaction?" must not depend on how the method was called —
+  through the proxy the annotation applies, on a directly constructed instance it does not, and that
+  second case degrades to no election, silently.
+- **The forwarded-headers switch has no safe constant.** Off behind a proxy, every anonymous caller
+  shares Traefik's address and the per-IP limit becomes one global bucket. On without a proxy,
+  `X-Forwarded-For` is caller-supplied text and the limit is free to bypass. So the deployment states
+  which topology it is, and both directions have a test.
+- **`management.info.git.mode: full`, filtered at the source.** `simple` was tried first and
+  publishes the *abbreviated* id under `commit.id` — a 7-character prefix can collide, and the point
+  of the endpoint is checking out exactly what is running. `full` republishes whatever
+  `git.properties` holds, and the POM's `includeOnlyProperties` has already reduced that to three
+  keys: no branch, no committer name or e-mail address, no commit message. One filter, not two that
+  can disagree. `BuildInfoEndpointIT` is what found it.
+- **The backup script verifies its own output.** `pg_restore --list` before reporting success,
+  because a dump that writes fine and cannot be read back is a backup you find out about during a
+  restore.
+
+**Verification**
+
+- `./mvnw clean verify`: 11 modules, 2 m 01 s, **1078 tests**. Per module: `core` 220, `formats-api`
+  7, `formats-ebinterface` 14, `formats-ubl` 31, `mapping` 201, `validation` 138, `rendering` 36,
+  `ai-assist` 114, `app` 110 unit + 207 integration (33 IT classes).
+- Coverage measured, not estimated: `app` 95.0 % line / 81.4 % branch against the unchanged 90/78
+  gate; `validation` 95.9 / 90.0.
+- Mutation: `core` 126/129, `formats-ebinterface` 12/12, `formats-ubl` 27/29, `mapping` 411/417,
+  `validation` **140/158 = 89 %** (up from 86 — M6's own observer tests killed mutants the module did
+  not have before), `ai-assist` 99/110.
+- `./mvnw -pl e2e verify -Pe2e` green: 5 tests, including the Keycloak login.
+- **Lighthouse: 100 / 100 / 100 / 100** on both `/` and `/validator`, desktop preset, against the
+  compose stack. It was 100/96/100/100 before the heading-order fix.
+- **Quickstart timed**: `docker compose up -d --build` to the first `"status":"UP"` in **82 s** with
+  no image present; the image build alone in **75 s** with `--no-cache` and an empty Maven cache.
+- **Backup/restore drilled by hand as well as in CI**, against a real PostgreSQL 17: dump (31
+  entries, verified readable), restore into a fresh database, row counts identical
+  (1/2/2/0/57). The output is reproduced verbatim in `docs/deployment.md`.
+- Compose stack run with the observability profile throughout; traces read out of Tempo and metrics
+  out of Prometheus by query, not by screenshot alone.
+
+**Review findings, fixed in the same wave**
+
+- **`validation` could have imported Micrometer and nothing would have complained.** ADR-0012's whole
+  argument rests on that module staying free of the tracing library, and only the *Spring*-free rule
+  existed. Now an ArchUnit rule covers `io.micrometer..` and `io.opentelemetry..` too — the guard the
+  ADR assumed it had.
+- **An unexplained `user: root` in the compose file.** Tempo's image runs as uid 10001 and a fresh
+  named volume is root-owned, so it cannot create its WAL directory. The workaround is fine here and
+  is now *stated*, because it is exactly the line a reviewer stops at.
+- **`docs/privacy.md` said nothing about telemetry.** Traces and metrics are a data flow out of the
+  platform, and a privacy document that covers the LLM call and not this one is incomplete. §4a now
+  states what is in a span, what is not, and that it is off by default.
+
+**Open — owner action**
+
+1. **Provision the Hetzner VPS and Dokploy, and deploy.** `docs/deployment.md` covers it end to end
+   and says plainly which of its sections were executed (backup, restore) and which are the intended
+   procedure (provisioning). CI already builds and publishes the image; add
+   `DOKPLOY_DEPLOY_WEBHOOK` and the deploy step stops skipping.
+2. **Tag `v0.1.0` and publish the GitHub Release.** `CHANGELOG.md` is written and its "Known limits"
+   section is the honest half.
+3. ~~**Confirm the `NVD_API_KEY` secret.**~~ **Settled the same day.** The repository contradicted
+   itself — the M5 worklog called the secret outstanding while the root POM recorded two version
+   overrides made "after the NVD_API_KEY secret was configured (2026-07-25)". Version overrides do
+   not happen without a scan that ran, so this entry named the contradiction rather than guessing;
+   the owner confirmed on 2026-07-27 that **the secret is configured and the scan is a live gate**,
+   and has been since M4. `SECURITY.md`, the README and the M5 entry are corrected accordingly. The
+   skip-with-warning path stays, because it is what a fork without the secret needs.
+
+**Open — named, not hidden**
+
+- **Logout is local.** It ends this application's session, not the Keycloak SSO session, so on a
+  shared computer the next visitor's login is transparent. RP-initiated logout needs the
+  `end_session_endpoint` configured explicitly (this application performs no OIDC discovery, on
+  purpose) plus a post-logout redirect URI in the realm. Recorded in `SECURITY.md`, `CHANGELOG.md`
+  and the E2E test itself rather than bolted on in the last hour of a milestone.
+- **The rate limiter is still per instance.** Two replicas mean two allowances. bucket4j ships a
+  distributed store; nothing here needs one yet, and the deployment guide says so where someone
+  scaling would read it.
+- **The `observability` profile is not deployed** and should not be: its Grafana runs with anonymous
+  admin access.
+
+**Next**
+
+- **M7 (stretch) — e-rechnung.gv.at**: webservice upload (ER>B) behind a feature flag against the
+  sandbox, or a documented Peppol hand-off point. MILESTONES is explicit that the case study is
+  complete without it.
+- One hard date, unchanged and now closer: the **Peppol rule-set upgrade to 2026.5 before
+  2026-08-17** (ADR-0007 Entscheidung 8), including re-checking the 80 German translations against
+  2026.5's assertion texts. That is three weeks out and is the next thing with a deadline attached.
+
 ## 2026-07-26 — M5 hostile review: 17 findings, all closed
 
 The per-milestone quality gate, run on `feat/m5-web-ui-ai` before the merge rather than after it.
@@ -90,6 +278,14 @@ One piece of owner action is still outstanding from M4 and unchanged: **add the 
 repository secret.** Until it exists the OWASP Dependency-Check job skips the scan loudly — a warning
 annotation plus a job-summary line — rather than failing; adding the secret turns it into a real gate
 with no workflow edit.
+
+> **Correction, 2026-07-27 (M6):** this paragraph was **wrong when written**. The secret had already
+> been configured during the M4 wave — `.superpowers/m5-hostile-review-findings.md` says so, and the
+> root POM's two CVE version overrides are dated to "the scan's first real run (the one after
+> NVD_API_KEY was configured)", which cannot have happened without a scan that ran. Confirmed by the
+> owner on 2026-07-27. The scan has been a live gate since M4; this line said otherwise for a whole
+> milestone, in the document a reader trusts most. Left in place with the correction attached rather
+> than edited away, because that is what the rest of this worklog does with its own mistakes.
 
 ## 2026-07-26 — M5 (part 2): dashboard, GDPR erasure, retention, explain API, browser E2E — M5 complete
 

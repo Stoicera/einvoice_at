@@ -50,6 +50,27 @@ class ValidationArchitectureTest {
         .check(MODULE_CLASSES);
   }
 
+  /**
+   * The module reports its pipeline stages for tracing and stays free of every tracing library —
+   * the property ADR-0012 rests on, now enforced rather than merely asserted in prose.
+   *
+   * <p>{@code ValidationObserver} is a plain-Java port precisely so that {@code app} can turn each
+   * stage into a Micrometer observation and an OpenTelemetry span from the outside. An {@code
+   * io.micrometer} import here would work perfectly and quietly cost this module its
+   * dependency-freedom — the same way a {@code org.springframework} import would, which is the rule
+   * directly above. M6 added the seam and this is the guard that keeps the seam a seam.
+   */
+  @Test
+  void doesNotDependOnATracingOrMetricsLibrary() {
+    noClasses()
+        .should()
+        .dependOnClassesThat()
+        .resideInAnyPackage("io.micrometer..", "io.opentelemetry..")
+        .because(
+            "ADR-0012: the stages report through the ValidationObserver port; app owns the tracer")
+        .check(MODULE_CLASSES);
+  }
+
   @Test
   void doesNotDependOnJpa() {
     noClasses()
