@@ -15,3 +15,5 @@ README.md
 .superpowers
 .claude
 .jqwik-database
+# Lighthouse reports from a local or CI run — measurements, never build input.
+lighthouse-*.json

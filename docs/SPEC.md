@@ -220,10 +220,12 @@ stating.
    `.git` is part of the Docker build context so the deployed artefact is not the one artefact
    unable to identify itself.
 
-**Added:** `SERVER_FORWARD_HEADERS_STRATEGY` (default `none`). Behind Traefik it must be `framework`,
+**Added:** `SERVER_FORWARD_HEADERS_STRATEGY` (default `none`). Behind Traefik it must be `native`,
 or every anonymous caller shares the proxy's address and the per-IP rate limit becomes one global
 bucket; without a proxy it must stay `none`, or `X-Forwarded-For` is caller-supplied text and the
-limit is free to bypass. Design and honest limits:
+limit is free to bypass. It must **not** be `framework`: that strategy resolves the client from the
+leftmost `X-Forwarded-For` entry, which is the end a caller writes, so the limit stays bypassable
+behind the proxy too (M6 hostile review, F1). Design and honest limits:
 [ADR-0012](adr/0012-observability.md), [docs/deployment.md](deployment.md), [SECURITY.md](../SECURITY.md).
 
 ## 9a. Observability (M6)

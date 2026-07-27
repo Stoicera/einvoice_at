@@ -272,13 +272,24 @@ jobs:
       # way was an h1 -> h3 jump on the landing page's feature cards, which is a heading-order
       # violation assistive technology cares about and a reader cannot see.
       - name: Lighthouse (public pages, >= 95 in every category)
+        env:
+          # PINNED EXACTLY, not `lighthouse@12`. Every GitHub Action in this workflow is pinned to a
+          # commit SHA; running whatever npm currently publishes for 12.x — on a runner holding
+          # GITHUB_TOKEN, with `--yes` suppressing the one prompt that would ask — was the single
+          # unpinned dependency left in the pipeline (M6 hostile review, F3). A version bump is now
+          # a reviewable diff. `npx` still verifies the package against the registry; what changes
+          # is that the pipeline no longer decides for itself which build to trust.
+          LIGHTHOUSE_VERSION: 12.8.2
         run: |
           set -euo pipefail
           threshold=95
           status=0
           for path in "/" "/validator"; do
-            name="$(echo "$path" | tr -c 'a-zA-Z0-9' '-')"
-            npx --yes lighthouse@12 "http://localhost:8080${path}" \
+            # printf, not echo: `tr -c` translates every non-alphanumeric byte, and echo's trailing
+            # NEWLINE is one of them. That is where the committed `lighthouse--.json` and
+            # `lighthouse-validator-.json` got their names (M6 hostile review, F2).
+            name="$(printf '%s' "$path" | tr -c 'a-zA-Z0-9' '-')"
+            npx --yes "lighthouse@${LIGHTHOUSE_VERSION}" "http://localhost:8080${path}" \
               --quiet --chrome-flags="--headless=new --no-sandbox" \
               --preset=desktop --output=json --output-path="lighthouse${name}.json"
 

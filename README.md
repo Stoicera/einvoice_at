@@ -230,7 +230,7 @@ red. The job is not a no-op even then: it still asserts the scan binds exactly o
 
 JUnit 5 + AssertJ + Mockito for unit tests, ArchUnit for module-boundary rules, Testcontainers for integration tests, **Selenium** for the browser flow and **Gatling** for the load scenario — built out milestone by milestone per [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md).
 
-**1078 tests** in a clean `./mvnw verify`, plus 5 browser E2E tests under `-Pe2e`.
+**1080 tests** in a clean `./mvnw verify`, plus 5 browser E2E tests under `-Pe2e`.
 
 **The `e2e` module, and what a green build does and does not mean.** Selenium and Gatling live in their own module because neither belongs on `app`'s test classpath, and because a Chrome image and a load profile do not belong in every developer's inner loop. Its tests are always *compiled* — a module whose tests are never built is a module that quietly stops compiling — but they only *run* under `-Pe2e` (browser) and `-Pload` (Gatling), in a dedicated CI job alongside the existing mutation and security jobs. Stated plainly rather than implied: **a green plain `./mvnw verify` does not mean the browser flow works; the `e2e` job is what means that.**
 
@@ -259,7 +259,7 @@ The browser suite covers what no HTTP assertion can: that the report fragment is
 
 **Round trips and golden files.** The two mapper pairs are exercised by jqwik round-trip properties over one shared input space, which is how the formats' asymmetries were established rather than assumed. `UblEndToEndGenerationTest` is the milestone's strongest automated claim: the sample invoice, generated through the real chain, is judged **Peppol-clean by the official OpenPeppol rule set** — an external verdict, not a self-assessment, since those rules are OpenPeppol's and this project only runs them.
 
-**`app` module.** 95.0 % line / 81.4 % branch (JaCoCo gate 90/78, measured across unit *and* integration runs merged — most of this module's behaviour is only observable end to end). 110 unit tests and 207 integration tests across 33 IT classes, the latter against real PostgreSQL and real Keycloak via Testcontainers:
+**`app` module.** 95.0 % line / 81.4 % branch (JaCoCo gate 90/78, measured across unit *and* integration runs merged — most of this module's behaviour is only observable end to end). 110 unit tests and 209 integration tests across 33 IT classes, the latter against real PostgreSQL and real Keycloak via Testcontainers:
 
 - **Auth matrix** (`AuthMatrixIT`) — both directions of every mechanism: anonymous, unknown key, revoked key, valid key, valid JWT, a bearer header that is not a JWT, an `alg=none` token, a genuine Keycloak token with a rewritten payload, and a request presenting two competing credentials.
 - **Token validation** (`JwtDecoderTest`) — a throwaway JWKS over loopback and self-minted tokens, so wrong issuer, expired `exp`, a foreign signing key, and a foreign key impersonating the real `kid` can each be varied one at a time.
@@ -493,11 +493,15 @@ restore into a second database, and assert every table's row count, the Flyway h
 canonical JSON column's actual content. Row counts alone would pass on a restore that produced the
 right number of empty rows.
 
-**Behind a reverse proxy, set `SERVER_FORWARD_HEADERS_STRATEGY=framework`.** Without it every
-anonymous caller shares Traefik's address, so the per-IP rate limit on the public validator becomes
-one global bucket. With it and *no* proxy, `X-Forwarded-For` is caller-supplied text and anyone can
-mint unlimited buckets. There is no value that is right in both topologies, so the deployment states
-which one it is — and both directions are covered by tests.
+**Behind a reverse proxy, set `SERVER_FORWARD_HEADERS_STRATEGY=native`.** Without it every anonymous
+caller shares Traefik's address, so the per-IP rate limit on the public validator becomes one global
+bucket. With it and *no* proxy, `X-Forwarded-For` is caller-supplied text and anyone can mint
+unlimited buckets. There is no value that is right in both topologies, so the deployment states which
+one it is — and both directions are covered by tests. Boot's other option, `framework`, is
+deliberately **not** used: a proxy appends to `X-Forwarded-For`, so the rightmost entry is the only
+trustworthy one, and Spring's `ForwardedHeaderFilter` reads the leftmost. `native` (Tomcat's
+`RemoteIpValve`) walks the chain from the trustworthy end. [`docs/deployment.md` §4](docs/deployment.md)
+has the diagram; a third test asserts that a prepended address buys no extra allowance.
 
 ## Security
 

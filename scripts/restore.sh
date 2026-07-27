@@ -35,10 +35,16 @@ POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 POSTGRES_DB="${POSTGRES_DB:-einvoice}"
 POSTGRES_USER="${POSTGRES_USER:-einvoice}"
 
-command -v pg_restore >/dev/null 2>&1 || {
-  echo "error: pg_restore is not on PATH (install postgresql-client)" >&2
-  exit 1
-}
+# BOTH binaries, checked BEFORE anything destructive. pg_restore does the restore and psql reads the
+# row counts back; discovering the second one missing after `--clean` has dropped the schema means
+# reporting failure for a restore that actually worked, to an operator who is already having a bad
+# day. Everything this script can check, it checks first.
+for binary in pg_restore psql; do
+  command -v "$binary" >/dev/null 2>&1 || {
+    echo "error: ${binary} is not on PATH (install postgresql-client)" >&2
+    exit 1
+  }
+done
 
 # Check the checksum when the backup wrote one. A restore is the moment you most want to know that
 # the bytes are the bytes.
@@ -83,9 +89,19 @@ pg_restore \
 echo "Restored. Row counts:"
 PSQL=(psql --host="$POSTGRES_HOST" --port="$POSTGRES_PORT" --username="$POSTGRES_USER"
       --dbname="$POSTGRES_DB" --tuples-only --no-align)
-for table in tenant invoice report api_key audit_event; do
-  count="$("${PSQL[@]}" --command="select count(*) from ${table}")"
-  printf '  %-14s %s\n' "$table" "$count"
+
+# The table list is READ FROM THE RESTORED DATABASE, not hard-coded here. A literal list goes stale
+# the first time a migration adds a table, and it goes stale silently: the report keeps printing the
+# tables it knows and says nothing about the one it does not, which is the opposite of what a
+# post-restore check is for. BackupRestoreDrillIT asserts the same property on the test side.
+TABLES="$("${PSQL[@]}" --command="
+  select table_name from information_schema.tables
+   where table_schema = 'public' and table_type = 'BASE TABLE'
+   order by table_name")"
+
+for table in $TABLES; do
+  count="$("${PSQL[@]}" --command="select count(*) from \"${table}\"")"
+  printf '  %-24s %s\n' "$table" "$count"
 done
 
 echo

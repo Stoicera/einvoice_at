@@ -1,5 +1,65 @@
 # Worklog — einvoice-at
 
+## 2026-07-27 — M6 hostile review: six findings, all fixed
+
+Due-diligence pass over M6 as merged (`dddc664..ca2cc09`), in the voice of a Viennese enterprise
+Java shop deciding whether this repository is evidence of senior engineering. Full record:
+[`.superpowers/m6-hostile-review-findings.md`](../.superpowers/m6-hostile-review-findings.md).
+
+**What**
+
+- **F1 (P1, security) — the documented production proxy configuration made the rate limit
+  decorative.** `SERVER_FORWARD_HEADERS_STRATEGY=framework` installs Spring's
+  `ForwardedHeaderFilter`, which resolves the client from the **leftmost** `X-Forwarded-For` entry.
+  A proxy *appends*, so the leftmost entry is the end the caller writes: every anonymous request
+  could pick its own bucket on the public validator, silently. Switched to `native` (Tomcat's
+  `RemoteIpValve`), which walks the chain right to left past the internal-proxy ranges. Regression
+  test written first and watched fail under `framework`.
+- **F2 (P2) — 1.2 MB of Lighthouse CI output committed at the repository root**, ignored by
+  neither `.gitignore` nor `.dockerignore`. Removed and ignored; the workflow's `echo`-into-`tr`
+  filename bug that produced `lighthouse--.json` fixed with `printf`.
+- **F3 (P2) — `npx --yes lighthouse@12`** was the only unpinned dependency in a workflow that
+  SHA-pins every action. Pinned to 12.8.2.
+- **F4 (P2) — the backup drill and `restore.sh` verified a hard-coded five-table list.** A sixth
+  table would have been covered by nothing, and found during a restore. The drill now asserts its
+  list against `information_schema`; the script derives its list from the database. `restore.sh`
+  also checks `psql` *before* the destructive step, not after.
+- **F5 (P3)** — a compose comment claimed Tempo's 4318 was bound to loopback; it is not published
+  at all. Corrected rather than reworded.
+- **F6 (P3)** — no M6 findings file existed, in a repository whose `.gitignore` carries an explicit
+  exception for exactly that file because M5 found the same gap. Written.
+
+**Decisions**
+
+- `native` over `framework` is a security decision, not a preference: only `native` reads the
+  trustworthy end of the forwarded chain. It gives up `X-Forwarded-Prefix`, which this application —
+  served at the root of its own host — does not use. Recorded in `application.yml`, `.env.example`,
+  `docker-compose.yml`, `RateLimitFilter`, `README.md`, `docs/SPEC.md`, `docs/deployment.md` §4 and
+  `SECURITY.md`, so no document still names the vulnerable value.
+- `BackupRestoreDrillIT.TABLES` stays hard-coded and gains a guard, rather than becoming
+  self-deriving. A drill that reads its own expectations from the database it is checking asserts
+  nothing.
+- Four things were suspected and cleared rather than "fixed": the retention deletes really are bulk
+  `@Modifying` queries, the Grafana dashboard's `_milliseconds_` metric names really are what
+  `OtlpMeterRegistry` emits, the `Runnable`/`Supplier` overload really is unambiguous, and `.git` in
+  the build context really does not reach the runtime image. Listed in the findings file so their
+  absence reads as a decision.
+
+**Verification**
+
+- F1: `expected: 429 but was: 200` under `framework`; green under `native`, with the pre-existing
+  per-client test unchanged and still passing.
+- F4: guard verified by removing `audit_event` from the list and watching it fail; `backup.sh` and
+  `restore.sh` run end to end against a scratch PostgreSQL 17, and a table added afterwards appeared
+  in the report with no script change.
+- `./mvnw verify` green — 10 modules, **1080 tests** (from 1078; F1 and F4 each added one).
+
+**Next**
+
+- The two owner steps M6 named and this review did not re-litigate: provision the Hetzner instance,
+  and tag `v0.1.0`.
+- Then M7 (stretch) or the Peppol 2026.5 rule-set upgrade, whichever the calendar forces first.
+
 ## 2026-07-27 — M6: Betrieb + Politur — complete, minus two owner steps
 
 **Status: M6 is complete** except for the two things that need a machine or a button rather than a

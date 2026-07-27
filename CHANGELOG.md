@@ -94,7 +94,9 @@ explanation per finding, and the operational scaffolding to run it.
   an automated backup/restore drill that runs on every build.
 - **`SECURITY.md`** with a STRIDE-light threat model and a disclosure policy.
 - **`SERVER_FORWARD_HEADERS_STRATEGY`** so the rate limiter sees real client addresses behind a
-  trusted proxy — and ignores forged ones without one. Both directions tested.
+  trusted proxy — and ignores forged ones without one. Behind a proxy the value is `native`, which
+  reads the `X-Forwarded-For` chain from the end a proxy writes rather than the end a caller writes.
+  All three directions tested.
 - **Instance election for the retention job** via a PostgreSQL advisory lock, so several replicas
   against one database no longer all purge.
 - **A real authorization-code login driven through Keycloak's own form** in a browser test, closing
