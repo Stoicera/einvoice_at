@@ -239,8 +239,14 @@ services:
       - ./observability/tempo.yml:/etc/tempo/tempo.yml:ro
       - tempodata:/var/tempo
     ports:
-      # 3200 is Tempo's query API (Grafana reads it); 4318 is the OTLP/HTTP receiver the app writes
-      # to. Both bound to loopback — nothing here authenticates.
+      # 3200 is Tempo's query API, bound to loopback so a developer can reach it directly and
+      # nothing else can — this container authenticates nothing.
+      #
+      # 4318, the OTLP/HTTP receiver the application writes to, is deliberately NOT published: the
+      # app reaches it over the compose network by service name, and a receiver that accepts
+      # unauthenticated spans needs no host-side door. (An earlier version of this comment said both
+      # were "bound to loopback", which read as a deliberate exposure of a port that is in fact not
+      # exposed at all — M6 hostile review, F5.)
       - "127.0.0.1:${TEMPO_PORT:-3200}:3200"
     restart: unless-stopped
 
