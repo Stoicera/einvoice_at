@@ -225,6 +225,11 @@ services:
     image: grafana/tempo:2.9.1@sha256:1c32b96d2397cd134e908214d1ddfa6037e85798ed62f6c239e90213299cc15d
     profiles: [observability]
     command: ["-config.file=/etc/tempo/tempo.yml"]
+    # The image runs as uid 10001 and a freshly created named volume is owned by root, so Tempo
+    # cannot create its WAL directory on first start. Running as root is the usual workaround and is
+    # acceptable *here* — this is a development-only profile on a loopback-bound port that
+    # docs/deployment.md deliberately does not deploy. Stated rather than left as an unexplained
+    # privilege in a compose file, because it is exactly the line a reviewer stops at.
     user: root
     volumes:
       - ./observability/tempo.yml:/etc/tempo/tempo.yml:ro
