@@ -236,6 +236,16 @@ management:
   # a conditional object graph would be worse than a conditional exporter.
   tracing:
     enabled: ${OTEL_ENABLED:false}
+    # BOTH flags, and the second one is not redundant — that was measured, not assumed.
+    #
+    # `tracing.enabled: false` removes the Tracer and stops spans being RECORDED. It does not stop
+    # the OTLP span EXPORTER from being built, because that is gated on `tracing.export.enabled`
+    # (Boot's default: true) plus a configured endpoint — and this file configures one. The result
+    # was an application with tracing switched off that still opened a connection to `tempo:4318`
+    # and logged "Failed to export spans" on shutdown. The E2E run is what showed it: that hostname
+    # resolves only inside the compose network, so on a developer's machine it fails loudly.
+    export:
+      enabled: ${OTEL_ENABLED:false}
     sampling:
       # A ratio, not a switch. 1.0 in the local compose profile because a portfolio stack has no
       # traffic to sample away and a half-sampled demo trace is a confusing demo; a real deployment
