@@ -1,0 +1,200 @@
+{
+  "uid": "einvoice-at-pipeline",
+  "title": "einvoice-at — Pipeline",
+  "description": "Validation stages and application pipeline steps, as exported over OTLP. Every metric name and label in this file was read off a running stack (OTEL_ENABLED=true docker compose --profile observability up -d) rather than guessed: Micrometer publishes its timers in milliseconds and Prometheus' OTLP receiver appends the unit, which is why the series are *_milliseconds_* and not *_seconds_*.",
+  "tags": ["einvoice-at", "m6"],
+  "timezone": "browser",
+  "editable": true,
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "einvoice-prometheus" },
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Validation pipeline (validation module)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Stage latency, p95",
+      "description": "One line per stage. The Peppol stage runs the whole OpenPeppol rule set as XSLT and is expected to dominate; a change in the ebInterface XSD or Schematron lines is the one worth reacting to.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "fillOpacity": 8, "lineWidth": 2 } },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "histogram_quantile(0.95, sum by (stage, le) (rate(einvoice_validation_stage_milliseconds_bucket[5m])))",
+          "legendFormat": "{{stage}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Stage throughput",
+      "description": "Runs per second per stage. parse and format-detection run for every document; xsd/schematron/business-rules only for ebInterface and peppol only for UBL — so the split between them is also the format mix of the traffic.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 1 },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "fillOpacity": 8, "lineWidth": 2 } },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum by (stage) (rate(einvoice_validation_stage_milliseconds_count[5m]))",
+          "legendFormat": "{{stage}}"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Application pipeline steps (app module)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 10 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Step latency, p95",
+      "description": "The steps app orchestrates itself: canonical JSON in, both mappings, both writers, the PDF renderer, the transactional write, and the paid LLM call.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 11 },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "fillOpacity": 8, "lineWidth": 2 } },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "histogram_quantile(0.95, sum by (step, le) (rate(einvoice_pipeline_milliseconds_bucket[5m])))",
+          "legendFormat": "{{step}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Failing steps and stages",
+      "description": "Rate of pipeline work that ended with an exception. Micrometer's `error` label carries the exception type and reads `none` on success, so an empty panel is the healthy state.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 11 },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "fillOpacity": 20, "lineWidth": 2 } },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum by (step, error) (rate(einvoice_pipeline_milliseconds_count{error!=\"none\"}[5m]))",
+          "legendFormat": "{{step}} — {{error}}"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum by (stage, error) (rate(einvoice_validation_stage_milliseconds_count{error!=\"none\"}[5m]))",
+          "legendFormat": "{{stage}} — {{error}}"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "HTTP and AI cost",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 20 }
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP request latency, p95 by route",
+      "description": "Actuator routes are excluded: the health probe runs every ten seconds and would otherwise be the loudest line on the panel while saying nothing.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "fillOpacity": 8, "lineWidth": 2 } },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "histogram_quantile(0.95, sum by (uri, le) (rate(http_server_requests_milliseconds_bucket{uri!~\"/actuator.*\"}[5m])))",
+          "legendFormat": "{{uri}}"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "LLM spend (provider-reported)",
+      "description": "einvoice.ai.cost.usd — the provider's own reported charge, never a local price table (ADR-0010). No value when features.ai-explanations is off, which is the default: that is the feature switched off, not a broken panel.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 21 },
+      "fieldConfig": {
+        "defaults": { "unit": "currencyUSD", "decimals": 4, "noValue": "AI off" },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(einvoice_ai_cost_usd_total)",
+          "legendFormat": "USD"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "LLM tokens",
+      "description": "einvoice.ai.tokens, split by kind=prompt|completion.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 21 },
+      "fieldConfig": { "defaults": { "unit": "short", "noValue": "AI off" }, "overrides": [] },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum by (kind) (einvoice_ai_tokens_total)",
+          "legendFormat": "{{kind}}"
+        }
+      ]
+    }
+  ]
+}

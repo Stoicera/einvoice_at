@@ -253,6 +253,36 @@ management:
         url: ${OTEL_METRICS_ENDPOINT:http://prometheus:9090/api/v1/otlp/v1/metrics}
         step: ${OTEL_METRICS_STEP:15s}
 
+  # Percentile histograms for the three meters a latency panel is ever drawn from.
+  #
+  # WITHOUT THIS, A p95 IS NOT MERELY IMPRECISE — IT IS UNCOMPUTABLE. A Micrometer timer publishes
+  # count, sum and max by default and no bucket boundaries at all, so Prometheus receives a single
+  # `+Inf` bucket and `histogram_quantile` answers NaN for every quantile, forever. The Grafana
+  # dashboard's latency panels were written before this was set and showed exactly that: six named
+  # series, every value NaN. Measured on the running stack, not reasoned about.
+  #
+  # Bounded on both ends deliberately. Micrometer's unbounded default generates ~70 buckets per
+  # meter, which is 70 series per tag value — and these meters are tagged by stage and by step. A
+  # 1 ms floor and a 10 s ceiling cover the real range (a Peppol XSLT run is the slow end, at
+  # hundreds of milliseconds) and cut the bucket count to a fraction of that.
+  #
+  # Tied to OTEL_ENABLED for the same reason as the exporters: with observability off there is no
+  # collector to send buckets to, and computing them would be work whose output nothing reads.
+  metrics:
+    distribution:
+      percentiles-histogram:
+        einvoice.validation.stage: ${OTEL_ENABLED:false}
+        einvoice.pipeline: ${OTEL_ENABLED:false}
+        http.server.requests: ${OTEL_ENABLED:false}
+      minimum-expected-value:
+        einvoice.validation.stage: 1ms
+        einvoice.pipeline: 1ms
+        http.server.requests: 1ms
+      maximum-expected-value:
+        einvoice.validation.stage: 10s
+        einvoice.pipeline: 10s
+        http.server.requests: 10s
+
 # Security-relevant events (a rejected API key, a rate-limited caller, an oversized body, a
 # provisioned tenant, an unhandled 500) are logged by the classes that produce them; this only
 # guarantees the category is not filtered out. Hibernate's own WARN for a constraint violation the
