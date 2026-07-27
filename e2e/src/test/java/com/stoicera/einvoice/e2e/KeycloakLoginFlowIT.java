@@ -128,8 +128,18 @@ class KeycloakLoginFlowIT extends AbstractPostgresIT {
           // Host header, so this realm would call itself two different things to the two parties.
           .withEnv("KC_HOSTNAME", BROWSER_FACING_KEYCLOAK)
           .withEnv("KC_HOSTNAME_BACKCHANNEL_DYNAMIC", "true")
+          // MODE 0644, EXPLICITLY. `Files.createTempFile` creates a file readable only by its owner
+          // (0600), and `withCopyFileToContainer` preserves the mode — so Keycloak, which runs as a
+          // different uid inside the container, could not read its own realm and died with
+          // "einvoice-realm.json (Permission denied)" reported only as "container exited with code
+          // 1", three minutes into the run.
+          //
+          // This passed locally and failed on the CI runner, because whether the uids happen to
+          // line up is a property of the machine. AbstractKeycloakIT gets away with the one-arg
+          // form: it mounts a file from the repository, which is already world-readable. A temp
+          // file is not, and that difference is invisible at the call site unless it is stated.
           .withCopyFileToContainer(
-              MountableFile.forHostPath(realmWithE2eRedirectUri()),
+              MountableFile.forHostPath(realmWithE2eRedirectUri(), 0644),
               "/opt/keycloak/data/import/einvoice-realm.json")
           .withCommand("start-dev", "--import-realm")
           .waitingFor(
