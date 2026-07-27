@@ -15,6 +15,12 @@ target/
 # Environment / secrets
 .env
 
+# Lighthouse reports. The CI e2e job writes one per public page beside the POM and uploads them as
+# build artefacts; they are a measurement of one run, not source. Two of them (1.2 MB of JSON) had
+# been committed to the repository root by M6 — with names like `lighthouse--.json`, which is what a
+# reader sees first in a portfolio repository.
+lighthouse-*.json
+
 # OS / misc
 .DS_Store
 *.log
