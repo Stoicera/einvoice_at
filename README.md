@@ -42,7 +42,7 @@ reach the tracer through a plain-Java port ([ADR-0012](docs/adr/0012-observabili
 
 ## Deutsche Kurzfassung
 
-**einvoice-at** ist eine selbst hostbare Plattform für die österreichische E-Rechnung: Sie **erzeugt** ebInterface 6.1 und Peppol BIS Billing 3.0 (UBL) aus strukturierten Rechnungsdaten, **validiert** hochgeladene XML-Rechnungen gegen XSD, Schematron und österreichische Geschäftsregeln — mit einem menschenlesbaren, deutschen Prüfbericht — und **konvertiert** zwischen beiden Formaten mit dokumentierten Mapping-Grenzen. Ein abschaltbarer KI-Assistent erklärt jeden Befund auf Wunsch in einfacher Sprache; personenbezogene Daten werden vorher maskiert und das geprüfte Dokument verlässt die Plattform nie ([docs/privacy.md](docs/privacy.md)). Angemeldete Nutzer:innen verwalten ihre Rechnungen, Prüfberichte und API-Schlüssel im Dashboard, erstellen Rechnungen über einen vierstufigen Assistenten und können ihr Konto samt aller Daten jederzeit vollständig löschen (Art. 17 DSGVO). Rechnungen werden dabei **nie** automatisch gelöscht — § 132 BAO verpflichtet Sie zu sieben Jahren Aufbewahrung ([ADR-0011](docs/adr/0011-retention-and-erasure.md)). Aktueller Stand: **Milestone M5 abgeschlossen.**
+**einvoice-at** ist eine selbst hostbare Plattform für die österreichische E-Rechnung: Sie **erzeugt** ebInterface 6.1 und Peppol BIS Billing 3.0 (UBL) aus strukturierten Rechnungsdaten, **validiert** hochgeladene XML-Rechnungen gegen XSD, Schematron und österreichische Geschäftsregeln — mit einem menschenlesbaren, deutschen Prüfbericht — und **konvertiert** zwischen beiden Formaten mit dokumentierten Mapping-Grenzen. Ein abschaltbarer KI-Assistent erklärt jeden Befund auf Wunsch in einfacher Sprache; personenbezogene Daten werden vorher maskiert und das geprüfte Dokument verlässt die Plattform nie ([docs/privacy.md](docs/privacy.md)). Angemeldete Nutzer:innen verwalten ihre Rechnungen, Prüfberichte und API-Schlüssel im Dashboard, erstellen Rechnungen über einen vierstufigen Assistenten und können ihr Konto samt aller Daten jederzeit vollständig löschen (Art. 17 DSGVO). Rechnungen werden dabei **nie** automatisch gelöscht — § 132 BAO verpflichtet Sie zu sieben Jahren Aufbewahrung ([ADR-0011](docs/adr/0011-retention-and-erasure.md)). Betrieb und Observability sind mit M6 fertig: OpenTelemetry-Traces über die Pipeline-Stufen, ein Compose-Profil zum Anschauen, ein Deployment-Leitfaden für Hetzner + Dokploy, Backup- und Restore-Skripte samt automatisierter Probe, und ein STRIDE-light-Bedrohungsmodell in [SECURITY.md](SECURITY.md). Aktueller Stand: **Milestone M6 abgeschlossen** — bis auf die Live-Instanz und das `v0.1.0`-Tag, die beide eine Maschine bzw. einen Knopfdruck brauchen.
 
 ## Architecture
 
@@ -62,7 +62,7 @@ einvoice-at
 └── e2e                   browser E2E (Selenium/Chrome) + the Gatling load scenario — see Testing
 ```
 
-Every module is built and tested as of M5. `e2e` is compiled by every build but its tests run only
+Every module is built and tested as of M6. `e2e` is compiled by every build but its tests run only
 under `-Pe2e` / `-Pload`, in a dedicated CI job.
 
 Stack: Java 25, Spring Boot 4.1, PostgreSQL 17 + Flyway, Thymeleaf (server-rendered, no CSS/JS build step — [ADR-0009](docs/adr/0009-web-ui.md)), Keycloak, Testcontainers. Rationale in [ADR-0001](docs/adr/0001-java-spring-boot-stack.md).
@@ -85,9 +85,10 @@ Then open **<http://localhost:8080/validator>** and drop an ebInterface or UBL i
 There are two ready to try in [`samples/`](samples/). Log in at **<http://localhost:8080/app>** with
 `testuser` / `testpass` (the dev realm's only user) to see the dashboard.
 
-Measured end to end on a cold machine — clone, `docker compose up -d --build`, first healthy
-response — this takes **under five minutes**, most of it the Maven build inside the image. A second
-start, with the image already built, is well under a minute.
+Measured, not estimated: `docker compose up -d --build` to the first `"status":"UP"` took **82 s**
+with no image present, and the image build alone takes **75 s** with `--no-cache` and an empty Maven
+cache — i.e. downloading every dependency. Both are well inside M6's five-minute Quickstart budget;
+the variable is your connection to Maven Central, not this repository.
 
 **Want the traces?** One more flag and three more containers:
 
@@ -228,7 +229,7 @@ turns it into a real gate with no workflow change.
 
 JUnit 5 + AssertJ + Mockito for unit tests, ArchUnit for module-boundary rules, Testcontainers for integration tests, **Selenium** for the browser flow and **Gatling** for the load scenario — built out milestone by milestone per [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md).
 
-**1048 tests** in a clean `./mvnw verify`, plus 3 browser E2E tests under `-Pe2e`.
+**1077 tests** in a clean `./mvnw verify`, plus 5 browser E2E tests under `-Pe2e`.
 
 **The `e2e` module, and what a green build does and does not mean.** Selenium and Gatling live in their own module because neither belongs on `app`'s test classpath, and because a Chrome image and a load profile do not belong in every developer's inner loop. Its tests are always *compiled* — a module whose tests are never built is a module that quietly stops compiling — but they only *run* under `-Pe2e` (browser) and `-Pload` (Gatling), in a dedicated CI job alongside the existing mutation and security jobs. Stated plainly rather than implied: **a green plain `./mvnw verify` does not mean the browser flow works; the `e2e` job is what means that.**
 
@@ -246,7 +247,7 @@ The browser suite covers what no HTTP assertion can: that the report fragment is
 |---|---|---|---|---|
 | `core` | 99.6 % | 98.3 % | 95/90 | 98 % (126/129) |
 | `mapping` | 99.2 % | 90.6 % | 95/90 | 99 % (411/417) |
-| `validation` | 94.3 % | 87.7 % | 90/85 | 86 % (129/150) |
+| `validation` | 95.9 % | 90.0 % | 90/85 | 89 % (140/158) |
 | `formats-ebinterface` | 100 % | 100 % | 90/85 | 100 % (12/12) |
 | `formats-ubl` | 98.6 % | 96.3 % | 90/85 | 93 % (27/29) |
 | `rendering` | 95.6 % | 88.8 % | 90/85 | — |
@@ -257,7 +258,7 @@ The browser suite covers what no HTTP assertion can: that the report fragment is
 
 **Round trips and golden files.** The two mapper pairs are exercised by jqwik round-trip properties over one shared input space, which is how the formats' asymmetries were established rather than assumed. `UblEndToEndGenerationTest` is the milestone's strongest automated claim: the sample invoice, generated through the real chain, is judged **Peppol-clean by the official OpenPeppol rule set** — an external verdict, not a self-assessment, since those rules are OpenPeppol's and this project only runs them.
 
-**`app` module.** 94.8 % line / 81.3 % branch (JaCoCo gate 90/78, measured across unit *and* integration runs merged — most of this module's behaviour is only observable end to end). 101 unit tests and 196 integration tests across 28 IT classes, the latter against real PostgreSQL and real Keycloak via Testcontainers:
+**`app` module.** 95.0 % line / 81.4 % branch (JaCoCo gate 90/78, measured across unit *and* integration runs merged — most of this module's behaviour is only observable end to end). 110 unit tests and 207 integration tests across 33 IT classes, the latter against real PostgreSQL and real Keycloak via Testcontainers:
 
 - **Auth matrix** (`AuthMatrixIT`) — both directions of every mechanism: anonymous, unknown key, revoked key, valid key, valid JWT, a bearer header that is not a JWT, an `alg=none` token, a genuine Keycloak token with a rewritten payload, and a request presenting two competing credentials.
 - **Token validation** (`JwtDecoderTest`) — a throwaway JWKS over loopback and self-minted tokens, so wrong issuer, expired `exp`, a foreign signing key, and a foreign key impersonating the real `kid` can each be varied one at a time.
