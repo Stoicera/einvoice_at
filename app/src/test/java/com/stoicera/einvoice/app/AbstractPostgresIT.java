@@ -1,6 +1,7 @@
 package com.stoicera.einvoice.app;
 
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.test.context.TestPropertySource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
@@ -18,6 +19,29 @@ import org.testcontainers.utility.DockerImageName;
  * <p>The image is pinned to the exact tag <em>and</em> digest used by {@code docker-compose.yml},
  * so tests and the local stack run byte-identical Postgres.
  */
+@TestPropertySource(
+    properties = {
+      // ONE Postgres container serves every IT class in this module, and Spring's context cache
+      // keeps every distinct context alive for the whole JVM run — each with its own HikariCP pool.
+      // At Boot's default of 10 connections per pool, roughly ten cached contexts is all it takes
+      // to exhaust Postgres' default max_connections of 100, and the failure is nothing like its
+      // cause: an unrelated IT fails at context startup with "FATAL: sorry, too many clients
+      // already". M6 added two contexts and crossed that line.
+      //
+      // The fix is on the consuming side rather than by raising max_connections, because the
+      // connections were waste, not demand: Failsafe runs these classes sequentially, so at most
+      // one or two contexts are doing anything at a time and the rest hold idle sockets. A ceiling
+      // of four leaves room for a test that needs a second connection while holding a transaction;
+      // minimum-idle 0 plus the shortest idle timeout HikariCP accepts (10 s — it warns and resets
+      // anything lower) means a finished context's pool drains instead of squatting.
+      //
+      // Deliberately NOT put in an application.yml on the test classpath: that file would REPLACE
+      // the main one rather than add to it, and the tests would silently stop exercising the real
+      // configuration.
+      "spring.datasource.hikari.maximum-pool-size=4",
+      "spring.datasource.hikari.minimum-idle=0",
+      "spring.datasource.hikari.idle-timeout=10000"
+    })
 public abstract class AbstractPostgresIT {
 
   // Pinned to the exact same image bytes as docker-compose.yml. Testcontainers' DockerImageName
