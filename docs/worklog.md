@@ -1,5 +1,86 @@
 # Worklog — einvoice-at
 
+## 2026-07-30 — Deployment documentation rewritten for the owner's actual infrastructure
+
+`docs/deployment.md` was written as reference prose for a reader who already knew Dokploy, and the
+owner — who does not — could not follow it. Rewritten as a walkthrough against the real target, with
+every claim checked against primary documentation rather than recalled.
+
+**What**
+
+- **`docs/deployment.md` is now a walkthrough**, eleven steps, each in the same shape: *what this is
+  → why → do this → verify (with expected output) → if it fails*. It assumes no Dokploy experience
+  and names the actual hostnames rather than `example.at`.
+- **`docs/deployment-reference.md` is new** and holds what the walkthrough should not carry: the
+  `native` vs `framework` analysis, the two-server topology, scaling limits, Keycloak's production
+  settings with a reason per row, observability, rollback, backup/restore, and a symptom-to-cause
+  table. It ends with the primary sources every claim came from.
+- **`docs/owner-checklist.md` is new**: the three remaining owner tasks — repository polish, the
+  deployment, the `v0.1.0` release — dependency-ordered, each with the state verified on the day and
+  a "done when" test.
+
+**Five defects found in the old document**, four of which would have cost an evening each:
+
+1. **The topology was wrong for this deployment.** The document assumed one fresh VPS. The owner runs
+   a Dokploy *panel* server that deploys over SSH to a separate *production* server; Traefik runs on
+   the production one, so that is where DNS must resolve. Pointing DNS at the panel produces a
+   certificate that never issues and a Dokploy 404 — a symptom that does not name its cause.
+2. **The GHCR package is private.** Verified: an anonymous pull of `ghcr.io/stoicera/einvoice_at` is
+   refused today. GitHub publishes container packages private by default even from a public
+   repository. Dokploy would have failed with a message that reads like a typo in the image name. The
+   old document did not mention it at all.
+3. **`start --optimized` cannot work** against the stock `quay.io/keycloak/keycloak` image — that
+   flag requires an image built with `kc.sh build`, per Keycloak's own container documentation. The
+   old §5 instructed exactly that. Corrected to `start`, with the reason stated so it is not
+   "optimised" back later.
+4. **Keycloak was missing `KC_HTTP_ENABLED=true`**, which defaults to `false`. Traefik terminates TLS
+   and speaks plain HTTP to the container, so without it every request is a 502 Bad Gateway.
+   `KC_HOSTNAME_STRICT` and the 26.x names `KC_BOOTSTRAP_ADMIN_USERNAME` / `_PASSWORD` were likewise
+   unstated, and health lives on management port 9000, not 8080.
+5. **The document contradicted the pipeline it described.** It said to pin the `sha-` tag, but the CI
+   webhook can only say "redeploy" — it cannot change which tag Dokploy pulls, so a pinned tag and
+   auto-deploy are mutually exclusive. Resolved in favour of tracking `main`; pinning is documented
+   as a deliberate later step. The `ci.yml` comments that asserted the old story are corrected.
+
+**Decisions**
+
+- **`main` tag + webhook, not a pinned `sha-`.** Auto-deploy is worth more than pinning on a demo
+  instance, and "which build is running" stays answerable because `/actuator/info` reports the
+  commit — which a CI step already proves the image can do. Reversible; the swap is written down.
+- **Flat `auth-einvoice.sebastiankern.net`, not `auth.einvoice.…`.** Cloudflare's free Universal SSL
+  covers one subdomain level; Dokploy's own documentation states the same limit for its stack. The
+  deployment runs DNS-only today, where a sub-subdomain would work — the flat name costs nothing and
+  removes a trap that would only spring on the day the orange cloud is switched on.
+- **Keycloak gets its own PostgreSQL**, not a second database in the application's instance. Separate
+  lifecycles: restoring an application backup should not log everyone out.
+- **Cloudflare stays DNS-only.** Proxied, `RemoteIpValve` would stop at the Cloudflare edge address
+  and the per-IP rate limit would bucket by data centre — the same class of silent failure F1 fixed,
+  from the other direction. Documented in reference §3 with the fix, for the day it is wanted.
+
+**Verification**
+
+- Every external claim is from primary documentation, cited in reference §"Sources": Dokploy, Keycloak
+  (hostname / reverse proxy / containers / management interface / all-config), Hetzner, Cloudflare,
+  GitHub Packages, and Traefik.
+- **F1's remaining half is no longer only reasoned.** Traefik's
+  `pkg/middlewares/forwardedheaders/forwarded_header.go` deletes every `X-Forwarded-*` header when
+  `!insecure && !isTrustedIP` — read from source, quoted in reference §2. It is still not *observed*
+  on a live instance; deployment.md §9 carries the two commands that will observe it, and the
+  expected result is `429`.
+- Repository state checked live rather than assumed: `main` unprotected, no tags, About box empty,
+  `NVD_API_KEY` present, `DOKPLOY_DEPLOY_WEBHOOK` absent, CI green at `9a4c04e`. The five required
+  check names in the checklist are the exact names from that run.
+- Cross-references repaired where sections moved (`SECURITY.md`, `docker-compose.yml`, `README.md`,
+  `ci.yml`); the dated M6 entry below still says "§4" and is left alone, because it records what was
+  true then. All internal anchors and referenced paths verified to resolve.
+- CI's `.env.example` ↔ compose ↔ `application.yml` consistency check re-run locally: 45 documented
+  variables all wired, 34 read variables all documented. `docker compose config` and `ci.yml` parse.
+
+**Next**
+
+- Owner: `docs/owner-checklist.md`, sections A → B → C. Nothing in it is blocked on code.
+- Mine, and the only thing with a deadline: the **Peppol 2026.5 rule-set upgrade before 2026-08-17**.
+
 ## 2026-07-27 — M6 hostile review: six findings, all fixed
 
 Due-diligence pass over M6 as merged (`dddc664..ca2cc09`), in the voice of a Viennese enterprise
