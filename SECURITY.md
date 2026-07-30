@@ -154,7 +154,7 @@ installation (see `docs/deployment.md`) must:
 2. Terminate TLS in front of the application (Traefik via Dokploy) and set
    `SERVER_FORWARD_HEADERS_STRATEGY=native` so the rate limiter sees real client addresses. **Not
    `framework`** — it reads the leftmost `X-Forwarded-For` entry, which is the end the caller
-   controls; `docs/deployment.md` §4 has the chain diagram.
+   controls; `docs/deployment-reference.md` §2 has the chain diagram.
 3. Run Keycloak in production mode with its own database and a real hostname — not `start-dev`.
 4. Set `SPRING_PROFILES_ACTIVE=prod` for structured JSON logs.
 5. Consider `API_DOCS_ENABLED=false`.
