@@ -349,9 +349,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # `sha-<commit>` is the tag docs/deployment.md tells an operator to pin, because a mutable
-      # tag cannot answer "which build is running" and /actuator/info can only confirm an answer,
-      # not supply one. `main` is published alongside it for convenience.
+      # Both tags are published on every push to main, and they answer different questions.
+      # `main` is what the deployment tracks, because the deploy webhook below can only say
+      # "redeploy" — it cannot change which tag Dokploy pulls, so auto-deploy needs a moving tag.
+      # `sha-<commit>` is immutable and is what you pin for a rollback or a frozen release
+      # (docs/deployment-reference.md §4). "Which build is running" is therefore answered by
+      # /actuator/info reporting its own commit, NOT by trusting the tag — which is what the
+      # identity check below exists to guarantee.
       - name: Image tags
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
@@ -370,8 +374,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # The image must be able to say what it is, or docs/deployment.md's "pin the sha- tag and
-      # confirm it with /actuator/info" is a procedure that cannot be followed. This is cheap and it
+      # The image must be able to say what it is, or "ask /actuator/info which commit is running"
+      # is a procedure that cannot be followed — and with the deployment tracking a MOVING tag,
+      # that endpoint is the only thing that answers it. This is cheap and it
       # catches the exact regression that would break it: `.git` slipping back into .dockerignore,
       # or the git-commit-id plugin losing its binding. It runs on pull requests too, where nothing
       # is pushed — the image is loaded locally for the check.
@@ -408,7 +413,7 @@ jobs:
           # Only a push event has a github.sha that is the commit actually built; a pull_request run
           # checks out a synthetic merge commit, so the equality half is meaningless there and
           # EXPECTED_SHA is deliberately empty. The presence half above — the one that guards
-          # docs/deployment.md's "pin the sha- tag, confirm with /actuator/info" — runs everywhere.
+          # docs/deployment.md's "confirm the running commit with /actuator/info" — runs everywhere.
           if [ -n "$EXPECTED_SHA" ] && [ "$id" != "$EXPECTED_SHA" ]; then
             echo "::error::Image reports commit $id but this run built $EXPECTED_SHA."
             exit 1
@@ -435,12 +440,12 @@ jobs:
               echo "## ℹ️ Deployment skipped"
               echo
               echo "\`DOKPLOY_DEPLOY_WEBHOOK\` is not configured, so this run published an image to"
-              echo "GHCR and did **not** deploy it. See \`docs/deployment.md\` §6."
+              echo "GHCR and did **not** deploy it. See \`docs/deployment.md\` §11."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           # --fail so a 4xx/5xx from Dokploy is a failed job rather than a green one that deployed
           # nothing. The webhook itself is fire-and-forget; it does not report the rollout's outcome,
-          # which is why the smoke test in docs/deployment.md §10 exists.
+          # which is why the smoke test in docs/deployment.md §9 exists.
           curl --fail --silent --show-error --request POST "$WEBHOOK"
           echo "Deployment triggered for ${{ github.sha }}."
