@@ -162,9 +162,12 @@ ones worth knowing before you start:
    server. This is the single most common way this setup goes wrong.
 2. **The GHCR package is private.** I verified an anonymous pull is refused today. Dokploy will fail
    with a message that sounds like a typo in the image name.
-3. **Keycloak's run command is `start`, not `start --optimized`.** The stock image has no pre-built
-   configuration, so `--optimized` fails. An earlier version of the deployment doc told you to use
-   it — that was wrong, and it is fixed.
+3. **Keycloak's Run Command is the full path `/opt/keycloak/bin/kc.sh start`.** Dokploy's **Command**
+   field is the container's *entrypoint*, not its arguments — it replaces the image's `ENTRYPOINT`.
+   A bare `start` therefore discards `kc.sh` and asks Docker to run a program that does not exist:
+   the deployment goes green, the tile goes green, and the container dies before it can log anything.
+   (`docker compose`'s `command:` is the opposite — that one *is* arguments. Hence the trap.) Do not
+   add `--optimized` either; the stock image has no pre-built configuration.
 
 **Done when:** all five checks in [deployment.md §9](deployment.md#9-prove-it-actually-works) pass,
 including the browser login, and an empty commit pushed to `main` reaches the live instance by itself.

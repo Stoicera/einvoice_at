@@ -225,7 +225,7 @@ that is for production.** The production shape, and the reason for each part:
 
 | Setting | Value | Why |
 |---|---|---|
-| Command | `start` | **Not `start --optimized`.** That flag requires an image built with `kc.sh build`; against the plain `quay.io/keycloak/keycloak` image it fails because the build artefacts do not exist |
+| Run Command | `/opt/keycloak/bin/kc.sh start` | **The full path, not a bare `start`.** Dokploy writes this field into the Swarm service as `ContainerSpec.Command`, which *replaces* the image `ENTRYPOINT` — so `start` alone discards `kc.sh` and asks Docker to exec a binary that does not exist. Compose's `command:` is `CMD` and behaves the opposite way; that is the trap. Also **not `--optimized`**: that flag requires an image built with `kc.sh build`, and against the plain image it fails because the build artefacts do not exist |
 | `KC_DB` | `postgres` | Its own database, separate from the application's — see [deployment.md §6](deployment.md#6-create-the-two-databases) |
 | `KC_HOSTNAME` | `https://auth-einvoice.sebastiankern.net` | Keycloak stamps this into every token's `iss` and every redirect. It must be what the browser sees |
 | `KC_HOSTNAME_STRICT` | `true` | Keycloak's default is already `true`; set explicitly so nobody "fixes" a hostname problem by relaxing it |
@@ -362,8 +362,9 @@ Ordered roughly by how often each occurs.
 | Symptom | Likely cause |
 |---|---|
 | Traefik returns 404 for your hostname, certificate never issues | DNS points at the Dokploy **panel** VPS instead of the production VPS. Traefik runs on the production server |
-| `502 Bad Gateway` from Keycloak | `KC_HTTP_ENABLED=true` is missing (it defaults to `false`), or the domain's Container Port is not `8080` |
-| Keycloak logs complain about a missing build / `--optimized` | The run command is `start --optimized` against the stock image. Use `start` |
+| A service is green in Dokploy but 502s, and its containers have **no logs** (or `No such container`) | The container is dying at `exec`; Swarm recreates it and Dokploy shows you the dead ones. Dokploy's green tick only means "image pulled, service updated". `docker service ps --no-trunc <service>` carries the real error. For Keycloak this is nearly always a Run Command of `start` instead of `/opt/keycloak/bin/kc.sh start` — Dokploy's Command field is the entrypoint, not the arguments |
+| `502 Bad Gateway` from Keycloak, with a normal startup in its logs | `KC_HTTP_ENABLED=true` is missing (it defaults to `false`), or the domain's Container Port is not `8080` |
+| Keycloak logs complain about a missing build / `--optimized` | The run command carries `--optimized` against the stock image. Use `/opt/keycloak/bin/kc.sh start` |
 | Dokploy cannot pull the image: "not found" / `denied` | The GHCR package is private. Make it public, or give Dokploy a registry credential ([deployment.md §3](deployment.md#3-make-the-container-image-pullable)) |
 | Login redirects to Keycloak and then fails with an issuer mismatch | `KC_HOSTNAME` and `OAUTH2_ISSUER_URI` disagree. Keycloak derives URLs from the request `Host` unless `KC_HOSTNAME` is pinned |
 | Login succeeds at Keycloak but the app rejects the token | `OAUTH2_AUDIENCE=einvoice-api` is set but the audience mapper is not attached to `einvoice-web` ([deployment.md §7.4d](deployment.md#74-create-the-realm-and-its-two-clients)) |

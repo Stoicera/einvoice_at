@@ -384,20 +384,38 @@ On the **General** tab:
 | Docker Image | `quay.io/keycloak/keycloak:26.7.0` |
 | Registry username / password | *(leave empty — quay.io is public)* |
 
-On the **Advanced** tab, find **Run Command** (Dokploy's docs describe this as running "custom
-commands within the container") and set it to:
+On the **Advanced** tab, find the **Run Command** card. It has two fields, **Command** and
+**Arguments (Args)**. Fill in **Command** exactly as below and leave **Arguments (Args)** empty:
 
 ```
-start
+/opt/keycloak/bin/kc.sh start
 ```
 
-> **Not `start --optimized`.** This is the single most likely thing to waste your evening. Keycloak's
-> own container documentation says `--optimized` "requires a pre-built image. Running this against
-> the plain `quay.io/keycloak/keycloak` image without a prior build step will fail because the
-> optimization artifacts don't exist." `--optimized` is for a *custom* image you built with
-> `kc.sh build` baked in. Plain `start` does that build at startup instead: it costs about 30 extra
-> seconds on first boot and it works. An earlier version of this document told you to use
-> `--optimized`; it was wrong.
+> **Write the full path. A bare `start` will not work.** Dokploy's **Command** field is the
+> container's *entrypoint*, not its arguments: it is written straight into the Docker Swarm service
+> as `TaskTemplate.ContainerSpec.Command`, which **replaces** the image's `ENTRYPOINT` exactly the
+> way `docker run --entrypoint` does. The field's own placeholder is `/bin/sh` — that is the hint.
+>
+> The Keycloak image's entrypoint is `/opt/keycloak/bin/kc.sh` and its `CMD` is empty. So typing
+> `start` there does **not** run `kc.sh start`. It throws `kc.sh` away and asks Docker to execute a
+> program called `start`, which does not exist. The task dies at `exec`, before a single line of log
+> — and Dokploy still reports the deployment as successful, because pulling the image and updating
+> the service both succeeded. See the failure table in 7.3.
+>
+> **Why this is easy to get wrong:** our own `docker-compose.yml` says
+> `command: ["start-dev", "--import-realm"]` and that is correct. Compose's `command:` is `CMD` —
+> arguments *appended* to the entrypoint. Dokploy's `Command` is `ENTRYPOINT` — the thing being
+> replaced. Same word, opposite halves of the same line.
+>
+> Splitting it across both fields — **Command** `/opt/keycloak/bin/kc.sh`, one **Arg** `start` — is
+> exactly equivalent and maps more literally onto `ENTRYPOINT` + `CMD`. One field is fewer moving
+> parts; either is correct.
+
+> **And not `start --optimized`.** Keycloak's own container documentation says `--optimized`
+> "requires a pre-built image. Running this against the plain `quay.io/keycloak/keycloak` image
+> without a prior build step will fail because the optimization artifacts don't exist." `--optimized`
+> is for a *custom* image you built with `kc.sh build` baked in. Plain `start` does that build at
+> startup instead: it costs about 30 extra seconds on first boot and it works.
 
 ### 7.2 Environment
 
@@ -453,6 +471,15 @@ port on the container that the domain should route to."
 Now click **Deploy** and watch the **Logs** tab. First boot takes 60–90 seconds — Keycloak builds its
 optimized configuration and then runs its database migrations.
 
+> **What Dokploy's green tick actually means.** The deployment log ends at `✅ Pulling image
+> completed.` after a few seconds, and the service goes green. That means *the image was pulled and
+> the Swarm service was updated* — nothing more. Dokploy does not wait for the container to run, so a
+> container that dies on startup still shows a successful deployment and a green tile. **The Logs
+> tab is the source of truth, not the tick.** If the Logs tab offers you a handful of containers with
+> no output, or `Error response from daemon: No such container`, the container is crash-looping:
+> Swarm keeps replacing the dead task and Dokploy is offering you the corpses. Go to the diagnostic
+> below.
+
 **Verify.** Wait for the Logs tab to stop scrolling, then from your laptop:
 
 ```bash
@@ -475,10 +502,43 @@ login) points nowhere near the actual cause.
 
 | Symptom | Cause |
 |---|---|
-| `502 Bad Gateway` | `KC_HTTP_ENABLED=true` is missing, or Container Port is not `8080` |
-| Logs: `Unable to find the Quarkus build output` or a `--optimized` complaint | Run Command is `start --optimized`. Change it to `start` |
+| `502`, deployment green in seconds, several containers with **no logs at all** | The container is dying at `exec` and Swarm keeps recreating it. Almost always the **Run Command**: it must be the full path `/opt/keycloak/bin/kc.sh start`, not a bare `start` (7.1) |
+| `502 Bad Gateway`, but the container logs a normal Keycloak startup | `KC_HTTP_ENABLED=true` is missing, or Container Port is not `8080` |
+| Logs: `Unable to find the Quarkus build output` or a `--optimized` complaint | Run Command ends in `--optimized`. Drop that flag (7.1) |
 | Logs: connection refused to the database | `KC_DB_URL` has the wrong internal host — recheck the value from step 6 |
 | Certificate never issues | DNS is not yet pointing at the production VPS (step 4), or port 80 is closed (step 2) |
+
+**The diagnostic when there are no logs.** A container that fails before its first instruction has
+nothing to log, so Dokploy's Logs tab is empty and tells you nothing. Docker still records why. Ask
+it directly:
+
+```bash
+ssh root@<PRODUCTION_IP>
+
+# 1. Find the Keycloak application service — the one that is NOT the database.
+docker service ls | grep -i keycloak
+
+# 2. The ERROR column of the most recent task is the real reason. --no-trunc matters:
+#    without it Docker cuts the message off before the useful part.
+docker service ps --no-trunc <keycloak-service-name>
+```
+
+A repeating list of `Shutdown`/`Failed` tasks with an error such as
+`starting container failed: exec: "start": executable file not found in $PATH` is the Run Command
+fault above. To see what Dokploy actually sent, print the service's own entrypoint:
+
+```bash
+docker service inspect <keycloak-service-name> \
+  --format '{{json .Spec.TaskTemplate.ContainerSpec.Command}}'
+```
+
+Expected: `["/opt/keycloak/bin/kc.sh","start"]`. If it prints `["start"]`, fix 7.1 and redeploy.
+
+One corroborating check, if you want certainty before changing anything: open the **keycloak-db**
+service's logs. A Keycloak that got as far as its database prints connection activity there. If that
+log shows nothing but `database system is ready to accept connections` and periodic checkpoints, then
+Keycloak never reached JDBC at all — which rules out every database-shaped explanation and leaves the
+process never having started.
 
 ### 7.4 Create the realm and its two clients
 

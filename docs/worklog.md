@@ -1,5 +1,40 @@
 # Worklog — einvoice-at
 
+## 2026-08-01 — Keycloak 502 during the live deployment: Dokploy's `Command` is the entrypoint
+
+The owner reached §7.3 and got a persistent `502` from `auth-einvoice.sebastiankern.net`, while
+Dokploy reported the deployment successful in six seconds and showed the service green.
+
+**Root cause.** Dokploy's **Run Command → Command** field is written into the Swarm service as
+`TaskTemplate.ContainerSpec.Command` (`packages/server/src/utils/builders/index.ts`, `command.split(" ")`),
+and Swarm's `Command` *replaces* the image `ENTRYPOINT`; the sibling `Args` field is the `CMD`
+override. The `quay.io/keycloak/keycloak:26.7.0` image config is `Entrypoint:
+["/opt/keycloak/bin/kc.sh"]`, `Cmd: null` — verified against the registry, not recalled. So the
+documented value `start` discarded `kc.sh` and asked Docker to exec a binary named `start`. Every
+task died at `exec`, before any process ran; Swarm recreated it, which is the handful of logless
+containers and `No such container` the owner saw.
+
+The mistake came from `docker-compose.yml`, which correctly says `command: ["start-dev",
+"--import-realm"]` — Compose's `command:` is `CMD`, i.e. the opposite half of the line. Same word,
+inverted meaning.
+
+**Corroboration that excluded the alternatives.** The keycloak-db log showed initdb, then nothing but
+a time-based checkpoint — no client connection, no auth failure. Keycloak never reached JDBC, which
+rules out every database-shaped explanation as well as a late-startup crash.
+
+**What changed**
+
+- `deployment.md` §7.1: Run Command is `/opt/keycloak/bin/kc.sh start`, with the entrypoint-vs-CMD
+  reasoning and the Compose contrast stated, so it is not "simplified" back later.
+- `deployment.md` §7.3: what Dokploy's green tick actually proves (image pulled, service updated —
+  not that anything runs), and a `docker service ps --no-trunc` / `docker service inspect` diagnostic
+  for the case where there are no container logs to read at all.
+- `deployment-reference.md` §5 and the troubleshooting table; `owner-checklist.md` skim-trap 3.
+
+**Standing lesson.** A green deployment in Dokploy is not a running container. The failure class —
+crash before first log line — is invisible in the panel UI by construction, and only
+`docker service ps --no-trunc` names it.
+
 ## 2026-07-30 — Deployment documentation rewritten for the owner's actual infrastructure
 
 `docs/deployment.md` was written as reference prose for a reader who already knew Dokploy, and the
