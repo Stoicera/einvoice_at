@@ -13,7 +13,7 @@ A self-hostable Java 25 / Spring Boot platform built by [Stoicera Software Group
 > mappings, the XML write, all five validation stages and the transactional persist, nested under the
 > HTTP span — with traces and metrics both exported over OTLP and an `observability` compose profile
 > (Prometheus + Tempo + Grafana, provisioned) to look at them. `/actuator/info` names the commit and
-> the build time. There is a [deployment guide](docs/deployment.md) for Hetzner + Dokploy,
+> the build time. There is a [deployment walkthrough](docs/deployment.md) for Hetzner + Dokploy,
 > **backup/restore scripts whose drill runs on every build**, and a [SECURITY.md](SECURITY.md) with a
 > STRIDE-light threat model that names its own limits. Both public pages score **100 across all four
 > Lighthouse categories**, asserted in CI. The two gaps M5 recorded by name are closed: the retention
@@ -475,15 +475,20 @@ log line links to its trace with no further configuration.
 
 ## Deployment
 
-Target: a single Hetzner VPS via Dokploy, with Traefik terminating TLS. The full guide —
-provisioning, the environment a production deployment must think about, Keycloak in production mode,
-rolling back, and a post-deploy smoke test — is **[docs/deployment.md](docs/deployment.md)**.
+Target: Hetzner Cloud via Dokploy, with Traefik terminating TLS. Two documents, because they have
+different readers:
 
-CI publishes an image to GHCR on every push to `main` (`ghcr.io/stoicera/einvoice_at:sha-<commit>`,
-which is the tag to pin) and triggers the Dokploy webhook. Both steps skip loudly when their secrets
-are absent, so a fork does not inherit a red pipeline for a deployment it does not have. A CI check
-proves the built image can identify itself, because the deployment guide tells an operator to pin the
-`sha-` tag and confirm it with `/actuator/info`.
+- **[docs/deployment.md](docs/deployment.md)** — the walkthrough. Eleven steps from an empty server
+  to a live instance, each with a command that proves the step worked before the next one starts.
+- **[docs/deployment-reference.md](docs/deployment-reference.md)** — the reasoning. Why `native` and
+  not `framework`, what does and does not scale, Keycloak's production settings and why each is
+  required, backup and restore, rolling back, and a symptom-to-cause table.
+
+CI publishes an image to GHCR on every push to `main` — `:main`, which the deployment tracks, and
+`:sha-<commit>`, which is immutable — and then triggers the Dokploy webhook. Both steps skip loudly
+when their secrets are absent, so a fork does not inherit a red pipeline for a deployment it does not
+have. A CI check proves the built image can identify itself, because "which build is running?" is
+answered by `/actuator/info` reporting its own commit rather than by trusting a tag.
 
 **Backups.** `scripts/backup.sh` takes a compressed custom-format dump, **verifies it is readable**
 with `pg_restore --list` before reporting success, and writes a SHA-256 sidecar. `scripts/restore.sh`
@@ -500,8 +505,9 @@ unlimited buckets. There is no value that is right in both topologies, so the de
 one it is — and both directions are covered by tests. Boot's other option, `framework`, is
 deliberately **not** used: a proxy appends to `X-Forwarded-For`, so the rightmost entry is the only
 trustworthy one, and Spring's `ForwardedHeaderFilter` reads the leftmost. `native` (Tomcat's
-`RemoteIpValve`) walks the chain from the trustworthy end. [`docs/deployment.md` §4](docs/deployment.md)
-has the diagram; a third test asserts that a prepended address buys no extra allowance.
+`RemoteIpValve`) walks the chain from the trustworthy end.
+[`docs/deployment-reference.md` §2](docs/deployment-reference.md) has the diagram; a third test
+asserts that a prepended address buys no extra allowance.
 
 ## Security
 
