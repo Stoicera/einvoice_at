@@ -484,14 +484,23 @@ optimized configuration and then runs its database migrations.
 
 ```bash
 # 1. Reachable over HTTPS with a valid certificate (curl -f fails on a bad cert).
-curl -fsS -o /dev/null -w '%{http_code}\n' https://auth-einvoice.sebastiankern.net/
+#    Print the redirect target too — Keycloak's root path does not serve a page.
+curl -fsS -o /dev/null -w '%{http_code} %{redirect_url}\n' https://auth-einvoice.sebastiankern.net/
 
 # 2. The discovery document exists and — crucially — reports the right issuer.
 curl -fsS https://auth-einvoice.sebastiankern.net/realms/master/.well-known/openid-configuration \
   | jq -r .issuer
 ```
 
-Expected: `200`, then exactly `https://auth-einvoice.sebastiankern.net/realms/master`.
+Expected: `302 https://auth-einvoice.sebastiankern.net/admin/`, then exactly
+`https://auth-einvoice.sebastiankern.net/realms/master`.
+
+**`302` is the healthy answer here, not `200`.** Keycloak serves nothing at `/`: once an admin user
+exists — which `KC_BOOTSTRAP_ADMIN_*` guarantees on first boot — the root path redirects to
+`/admin/`, and `/admin/` redirects again to `/admin/master/console/`. There is no welcome page left
+to return `200`. Verified against `quay.io/keycloak/keycloak:26.7.0`. `curl -f` does not treat a
+redirect as an error, so the command still succeeds; an earlier version of this document said to
+expect `200`, which was simply wrong.
 
 **Check 2 is the important one.** If it prints `http://` instead of `https://`, or a container
 hostname, or an internal IP, then `KC_HOSTNAME` or `KC_PROXY_HEADERS` is wrong. Fix it now —

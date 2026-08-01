@@ -35,6 +35,21 @@ rules out every database-shaped explanation as well as a late-startup crash.
 crash before first log line — is invisible in the panel UI by construction, and only
 `docker service ps --no-trunc` names it.
 
+**Follow-up the same day: §7.3's expected status code was also wrong.** With Keycloak up, the owner's
+check 1 returned `302`, not the documented `200`. `302` is correct: Keycloak serves nothing at `/`,
+and once an admin user exists (which `KC_BOOTSTRAP_ADMIN_*` guarantees) the root redirects to
+`/admin/`, which redirects again to `/admin/master/console/`. Confirmed by booting
+`quay.io/keycloak/keycloak:26.7.0` locally and reading the `Location` headers rather than reasoning
+about it. The check now prints `%{redirect_url}` alongside the code and expects
+`302 https://auth-einvoice.sebastiankern.net/admin/`. Check 2 (the issuer) returned exactly the right
+value, so Keycloak, Traefik, TLS, `KC_HOSTNAME` and `KC_PROXY_HEADERS` are all confirmed correct on
+the live instance.
+
+**Second-order lesson, and the more useful one:** both defects in this document were *expected
+values* that had never been executed — a command whose output was reasoned about instead of observed.
+The walkthrough's whole value is that its "expected" lines are trustworthy. Any future check added to
+it should be run once against something real before it is written down.
+
 ## 2026-07-30 — Deployment documentation rewritten for the owner's actual infrastructure
 
 `docs/deployment.md` was written as reference prose for a reader who already knew Dokploy, and the
