@@ -678,7 +678,9 @@ credentials live in the database, not the environment.
 > both tags and then calls Dokploy's webhook, but a webhook only says "redeploy" — it cannot change
 > which tag Dokploy pulls. With `main`, every merge is live about six minutes later with no clicking.
 > You do not lose the ability to answer "which build is running": `/actuator/info` reports the exact
-> commit, and a CI check proves the image can identify itself. If you ever want a pinned tag instead,
+> commit, and a CI check proves the image can identify itself. Note that it answers **401** to an
+> anonymous caller — `SecurityConfig` permits only `/actuator/health/**` — so read it with a
+> credential, or from inside the container. If you ever want a pinned tag instead,
 > [deployment-reference.md](deployment-reference.md#pinning-an-exact-build) has the swap.
 
 ### 8.2 Environment
@@ -759,23 +761,28 @@ FEATURES_AI_EXPLANATIONS=false
 | HTTPS | **on** |
 | Certificate | **Let's Encrypt** |
 
-**Advanced** tab → *Cluster Settings* / *Swarm Settings* → Health Check. Dokploy's production guide
-recommends this and it is worth the two minutes: it is what makes a broken deploy roll back instead
-of replacing a working container with a crashing one.
+**Advanced** tab → *Cluster Settings* / *Swarm Settings* → Health Check.
 
-```json
-{
-  "Test": ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health/readiness"],
-  "Interval": 10000000000,
-  "Timeout": 5000000000,
-  "StartPeriod": 60000000000,
-  "Retries": 5
-}
-```
+> **Leave the Health Check fields EMPTY.** The image already defines one (`Dockerfile`, the
+> `HEALTHCHECK` instruction), Swarm honours an image health check exactly like a service-level one,
+> and a health check that lives in version control cannot silently disagree with a UI text field.
+>
+> This is not a style preference — filling that form in is what broke the first production
+> deployment of this application, on 2026-08-06, for roughly an hour. Dokploy's Health Check is a
+> **form with a separate `Test` input**, and whatever you type there is wrapped into a one-element
+> array. Pasting the Docker API's `["CMD", "wget", …]` therefore reaches dockerd as
+> `Test: ["[\"CMD\", \"wget\", …]"]` — an array whose first element is the literal text of an array.
+> Docker requires `Test[0]` to be `CMD`, `CMD-SHELL` or `NONE`, so it logs
+> `Unknown healthcheck type … (expected 'CMD')` and builds **no probe at all**.
+>
+> The failure that follows is silent and deeply misleading. The container runs perfectly and its
+> logs are clean to the last line — but with no probe it never emits a `health_status` event, and
+> Swarm waits for that event before promoting a task from `Starting` to `Running`. The task hangs in
+> `Starting` forever, the service stays at `0/1`, the service VIP has no backend, and Traefik answers
+> **502** to every request. Nothing anywhere reports an error, because from each component's own
+> point of view nothing went wrong.
 
-(Those are nanoseconds — Docker's Swarm API takes durations that way. 10 s / 5 s / 60 s / 5 tries.)
-
-And in *Update Config*, so a bad build reverts itself:
+*Update Config*, on the other hand, you do want — so a bad build reverts itself:
 
 ```json
 { "Parallelism": 1, "Order": "start-first", "FailureAction": "rollback" }
@@ -800,7 +807,36 @@ Expected: `UP`.
 | `ClientRegistrations.fromIssuerLocation` | You added a provider `issuer-uri`. Remove it |
 | Flyway `Validate failed` | The database is not empty and does not match. On a first deploy this means you pointed at the wrong database |
 | Container starts then Traefik says 502 | Container Port is not `8080`, or the health check is failing — check `/actuator/health` from inside the container |
+| Logs are **clean** and the app is up, but Traefik still says 502 | Swarm never promoted the task. Do not read the application log — it will tell you nothing. Run the three commands below |
 | `AI_API_KEY` complaint at startup | `FEATURES_AI_EXPLANATIONS=true` with no key. The app refuses to start rather than pretend the feature works. Set it to `false` |
+
+**Diagnosing a 502 that the logs cannot explain.** A 502 is a statement about *routing*, never about
+your code, so read the routing layer rather than the application. Three commands, in this order —
+each one either clears a component or convicts it:
+
+```bash
+ssh <production-server>
+
+# 1. Does Swarm believe the app is running? "0/1" here is the whole answer.
+docker service ls | grep einvoiceapp
+
+# 2. If 0/1: why is the task not promoted? Look for a task stuck in "Starting".
+docker service ps <app-service> --no-trunc
+
+# 3. Is there a health probe at all, and did dockerd refuse to build one?
+docker inspect <app-container> --format '{{json .Config.Healthcheck}}{{"\n"}}{{json .State.Health}}'
+journalctl -u docker --since "1 hour ago" | grep -i healthcheck
+```
+
+`State.Health: null` on a container whose spec *has* a `Healthcheck` is the signature of a malformed
+`Test`: dockerd parsed the spec, rejected the command form, and created no probe. Confirm with the
+`Unknown healthcheck type` warning in the daemon log, then clear the Health Check fields as above.
+
+Two facts worth internalising, because they are what make this failure so confusing: a Swarm service
+VIP with zero running tasks refuses connections *immediately*, so Traefik's 502 arrives in
+milliseconds and looks nothing like a timeout — and the container serves traffic perfectly the whole
+time, so `docker exec <container> wget -qO- http://localhost:8080/actuator/health` answers `UP`
+while the public URL answers 502.
 
 ---
 
@@ -814,7 +850,7 @@ Run them from your laptop, in the repository directory (check 2 uploads a sample
 ```bash
 BASE=https://einvoice.sebastiankern.net
 
-# 1. Alive, and which build is this?
+# 1. Alive? (For "which build is this?" see /actuator/info — it needs a credential, see step 8.1.)
 curl -fsS $BASE/actuator/health | jq -r .status          # -> UP
 
 # 2. The public validator works with NO credential, and stores nothing.
@@ -824,7 +860,11 @@ curl -fsS -F "file=@samples/invoice-b2g-sample.ebinterface.xml" \
 
 # 3. The landing page renders, and the dashboard redirects to the real Keycloak.
 curl -fsS -o /dev/null -w '%{http_code}\n' $BASE/                      # -> 200
-curl -fsS -o /dev/null -w '%{http_code} %{redirect_url}\n' $BASE/app   # -> 302 https://auth-einvoice...
+curl -fsS -o /dev/null -w '%{http_code} %{redirect_url}\n' $BASE/app   # -> 302 $BASE/oauth2/authorization/keycloak
+# That first hop is Spring Security's own entry point, NOT Keycloak. Follow the chain to prove the
+# flow actually terminates at the IdP — two redirects, ending on the realm's authorization endpoint
+# with client_id=einvoice-web and code_challenge_method=S256.
+curl -fsS -o /dev/null -L -w '%{num_redirects} %{url_effective}\n' $BASE/app
 
 # 4. HTTP is redirected to HTTPS.
 curl -sSI http://einvoice.sebastiankern.net | grep -i '^location'      # -> https://...
