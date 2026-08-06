@@ -191,6 +191,50 @@ always detach a firewall from the Hetzner console, which needs no SSH.
 > `22` open to the world and rely on key-only authentication (Hetzner's default with an SSH key) —
 > that is a reasonable trade for a demo instance.
 
+### If the server runs fail2ban, exempt Dokploy first
+
+**This will otherwise ban your own control plane, and it will do it mid-deployment.** Dokploy drives
+the server over SSH, and it opens a *burst* of parallel connections per operation, dropping the
+surplus before authenticating. `fail2ban`'s `sshd` filter in `mode = aggressive` counts every
+`[preauth]` disconnect as a failed attempt, so five of them inside `findtime` are enough — even
+though every real authentication *succeeded*. On 2026-08-06 that banned this project's Dokploy host
+at 10:55:02, and because `bantime.increment` was on and the IP had been flagged before, the ban
+escalated well past the one-hour base.
+
+The symptom is unmistakable once you know it, and baffling if you do not: Dokploy reports
+
+```
+SSH connection error: connect ECONNREFUSED <PRODUCTION_IP>:22
+```
+
+`ECONNREFUSED` and not a timeout, because fail2ban's `nftables` action *rejects* rather than drops.
+Meanwhile `ufw` still shows `22/tcp ALLOW IN Anywhere`, sshd is `active` and listening, and **you can
+still SSH in yourself** — because the ban is per source IP and yours is not the banned one. Every
+check you would naturally run says the server is fine.
+
+Add the exemption before your first deploy:
+
+```bash
+ssh <production-server>
+
+# Is the control plane already banned?
+fail2ban-client status sshd | grep -i banned
+
+# Exempt it permanently, then release it if it is already caught.
+sed -i '0,/^\[DEFAULT\]/s//[DEFAULT]\nignoreip = 127.0.0.1\/8 ::1 <DOKPLOY_CONTROL_PLANE_IP>/' \
+  /etc/fail2ban/jail.local
+fail2ban-client set sshd unbanip <DOKPLOY_CONTROL_PLANE_IP>
+fail2ban-client reload
+
+# Verify: the IP must appear here, and must NOT appear in the banned list.
+fail2ban-client get sshd ignoreip
+fail2ban-client status sshd | grep -i banned
+```
+
+Keep `mode = aggressive` for everything else. A public VPS takes a constant beating — this one had
+logged 6591 failed attempts and 374 bans — and that hardening is worth keeping. Exempt only the one
+host that is supposed to be opening many SSH sessions on purpose.
+
 ---
 
 ## 3. Make the container image pullable
