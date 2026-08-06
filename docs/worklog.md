@@ -1,5 +1,67 @@
 # Worklog — einvoice-at
 
+## 2026-08-06 (evening) — The completion sprint: backups, hardening, and two CVE gates the world moved
+
+One autonomous session closed everything that stood between the morning's first login and a
+finished M6: deployment steps §10–§11, the owner checklist, and a CI that had been silently red
+on `main` since 2026-08-01 — through docs-only merges, so the code had not changed. The world had.
+
+**§10 backups, done and rehearsed.** Scripts installed to `/opt/einvoice-at/scripts` from `main`;
+first dump taken and archive-verified (16K, 31 entries); nightly cron at 02:15 with credentials in
+a root-only 0600 env file and the newline-terminated cron file; restore rehearsed into
+`einvoice_drill` — row counts matched the live database exactly (tenant 1, flyway 2, rest 0) —
+then dropped. The dump still lives on the same disk as the database; the off-site copy is the one
+open operational item (owner-checklist.md).
+
+**Hardening audit, all green.** fail2ban exempts the Dokploy panel (46.224.182.114) and is
+actively banning others (9 at audit time); external scan shows only 22/80/443 reachable
+(2377/3000/5432/8080/9000 closed); sshd is key-only; `KC_BOOTSTRAP_*` is gone from Keycloak's
+environment; unattended-upgrades on; no Swarm service publishes a port; the app service carries
+`start-first` + `rollback` and no health-check override.
+
+**§9 re-verified, and one check corrected.** All five pass, including a real Playwright browser
+login to the dashboard. The forged-`X-Forwarded-For` probe first answered `200` — and that was the
+*check* being wrong, not the defense: a single probe races the one-token-per-second refill. Five
+forged addresses back-to-back separated the outcomes (4×429, one refill 200, control 429);
+deployment.md §9 now documents the deterministic variant.
+
+**The red CI: three fixes, one PR (#18).**
+
+- *OWASP gate:* the NVD published a CVE batch against DOMPurify 3.3.2, embedded in swagger-ui
+  5.32.2, bundled by springdoc 3.0.3. Fixed by springdoc 3.1.0 — bundles swagger-ui 5.32.11 /
+  DOMPurify 3.4.12 (verified by extracting the webjar), and its POM parent is exactly this repo's
+  Boot 4.1.0.
+- *Mid-PR, the NVD moved again:* CVE-2026-66299 (7.5) against tomcat-embed 11.0.24 — an unbounded
+  buffer in the WebSocket chat **example** of the Tomcat distribution, a component no embed jar
+  ships. Tomcat 11.0.25 is not on Maven Central, so: documented suppression expiring 2026-10-31.
+  Its first version named `tomcat-embed-core`; the next scan raised the identical finding against
+  `tomcat-embed-websocket` — every embed artifact carries the product-wide `cpe:/a:apache:tomcat`.
+  Now scoped to `tomcat-embed-*`, still pinned to the one CVE.
+- *Browser E2E `logsOut`, failing 5/5 on the runner and passing locally with identical
+  digest-pinned images:* a diagnostics branch (#20) dumped the cookie jar and found
+  `KEYCLOAK_IDENTITY` back **immediately after `deleteAllCookies()`**. The account console is a
+  SPA whose check-SSO dance is still in flight on a slow machine when the deletion runs, and any
+  of its responses re-sets the SSO cookie; `/app` then re-authenticates silently and the test
+  hunts a login form on the dashboard, every log clean. Fix: delete cookies from the realm's
+  discovery document — same realm path, pure JSON, nothing in flight — and assert the jar is
+  empty so a regression fails at the cause. First green E2E run since 08-01.
+
+**Merged under a stated risk.** A GitHub Actions incident ("Partial System Outage") starved the
+last two jobs of the gate run for over an hour. #18 was merged with 4/6 green — the four included
+both previously-failing gates on the exact head SHA; the starved two (mutation tests over modules
+this PR does not touch; `verify`, green locally) could not be affected by the diff. The
+merge-triggered `main` run is the definitive record once GitHub recovers; anything it finds gets
+fixed forward.
+
+**Also:** `DOKPLOY_DEPLOY_WEBHOOK` set (§11); About box filled including the live website (A1);
+branch protection and the v0.1.0 release follow this entry's merge, in that order, so the tag
+carries the finished docs.
+
+**Standing lesson.** A pinned, reproducible build does not pin the *judgment* of the world about
+it: two CVE publications turned a green repo red in one week without a single changed line. The
+gate is doing exactly its job — the response discipline is upgrade first, suppress only what is
+provably unreachable, and give every suppression an expiry so the claim has to be re-argued.
+
 ## 2026-08-06 — App 502 at §8.3: a malformed health check, and fail2ban banning Dokploy
 
 The owner reached §8.3 and got a persistent `502` from `einvoice.sebastiankern.net` for over an hour,
