@@ -937,16 +937,26 @@ done
 #   -> "rate limited after N requests".  If the loop finishes without printing that, the limiter
 #      is not engaging at all — check RATE_LIMIT_VALIDATE_* in step 8.
 
-# 2. Immediately claim to be someone else. If forging worked, this would be a fresh bucket.
-curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Forwarded-For: 198.51.100.1' \
-  -F "file=@$SAMPLE" $BASE/api/v1/validate
-#   -> 429.  A 200 here would mean anyone can mint themselves unlimited allowance.
+# 2. Immediately claim to be several other people. If forging worked, EACH address would be a
+#    fresh 60-request bucket and every one of these would answer 200.
+for n in 1 2 3 4 5; do
+  printf 'forged-%s: %s\n' "$n" "$(curl -s -o /dev/null -w '%{http_code}' \
+    -H "X-Forwarded-For: 198.51.100.$n" -F "file=@$SAMPLE" $BASE/api/v1/validate)"
+done
+#   -> 429 on (at least) four of the five.
 ```
 
-Run the second command **right after** the first: the bucket refills at one token per second, so a
-minute's pause would hand you a `200` for an innocent reason and make the check meaningless.
+**Expected: `429` across the board, with at most ONE `200`.** Why the tolerance, and why five
+requests rather than the single forged request an earlier version of this document used: the bucket
+refills at one token per second, and the seconds it takes to observe the 429 and fire the next
+request are enough for one token to drip back in. A single forged request can therefore catch that
+token and print `200` while the defense is working perfectly — it happened on this project's own
+§9 run on 2026-08-06, and it reads exactly like the vulnerability it is not. Five forged addresses
+back-to-back make the two outcomes unmistakable: a real forgery hands every address its own full
+bucket (five `200`s), while an intact defense has all five drawing on the same empty bucket, so at
+most one inherits the lone refilled token.
 
-**Expected: `429`.** If you get `200`, something upstream is trusting client headers — check that you
+If you see **two or more `200`s**, something upstream is trusting client headers — check that you
 did not enable `forwardedHeaders.insecure` in Traefik and that the Cloudflare records are still grey.
 
 Finally, log in through the browser once: open `https://einvoice.sebastiankern.net/app`, sign in as
