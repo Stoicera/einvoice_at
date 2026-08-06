@@ -306,22 +306,55 @@ class KeycloakLoginFlowIT extends AbstractPostgresIT {
         .isNotNull();
 
     driver.get(appUrl("/logout"));
+    dump("after GET /logout");
     // Spring Security's logout page asks for a confirmation POST while CSRF is on, which it is on
     // the browser chain. Submitting it is the flow a user actually performs.
     driver.findElement(By.cssSelector("button[type=submit], input[type=submit]")).click();
     wait.until(ExpectedConditions.urlToBe(appUrl("/")));
+    dump("after logout confirmation");
 
     // Drop the identity provider's cookies, so nothing but this application's own session could
     // authenticate the next request. The stale JSESSIONID is deliberately left in place — it is
     // precisely the credential under test.
     driver.get(BROWSER_FACING_KEYCLOAK + "/realms/" + REALM + "/account");
+    dump("after GET /realms/" + REALM + "/account");
     driver.manage().deleteAllCookies();
+    System.out.println(
+        "[e2e-diag] cookies after deleteAllCookies: " + driver.manage().getCookies());
 
     driver.get(appUrl("/app"));
-    wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("username")));
+    dump("after GET /app");
+    try {
+      wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("username")));
+    } catch (org.openqa.selenium.TimeoutException e) {
+      dump("TIMEOUT waiting for #username");
+      String source = driver.getPageSource();
+      System.out.println(
+          "[e2e-diag] page source ("
+              + source.length()
+              + " chars): "
+              + source.substring(0, Math.min(source.length(), 4000)));
+      driver
+          .manage()
+          .logs()
+          .get(org.openqa.selenium.logging.LogType.BROWSER)
+          .forEach(entry -> System.out.println("[e2e-diag] console: " + entry));
+      throw e;
+    }
     assertThat(driver.getCurrentUrl())
         .as("with no SSO session, the invalidated application session must reach the login form")
         .startsWith(BROWSER_FACING_KEYCLOAK);
+  }
+
+  /** Temporary diagnostics for the CI-only logsOut timeout; prints via failsafe's system-out. */
+  private void dump(String label) {
+    System.out.println(
+        "[e2e-diag] "
+            + label
+            + " | url="
+            + driver.getCurrentUrl()
+            + " | title="
+            + driver.getTitle());
   }
 
   private void logIn() {
