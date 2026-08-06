@@ -191,6 +191,50 @@ always detach a firewall from the Hetzner console, which needs no SSH.
 > `22` open to the world and rely on key-only authentication (Hetzner's default with an SSH key) —
 > that is a reasonable trade for a demo instance.
 
+### If the server runs fail2ban, exempt Dokploy first
+
+**This will otherwise ban your own control plane, and it will do it mid-deployment.** Dokploy drives
+the server over SSH, and it opens a *burst* of parallel connections per operation, dropping the
+surplus before authenticating. `fail2ban`'s `sshd` filter in `mode = aggressive` counts every
+`[preauth]` disconnect as a failed attempt, so five of them inside `findtime` are enough — even
+though every real authentication *succeeded*. On 2026-08-06 that banned this project's Dokploy host
+at 10:55:02, and because `bantime.increment` was on and the IP had been flagged before, the ban
+escalated well past the one-hour base.
+
+The symptom is unmistakable once you know it, and baffling if you do not: Dokploy reports
+
+```
+SSH connection error: connect ECONNREFUSED <PRODUCTION_IP>:22
+```
+
+`ECONNREFUSED` and not a timeout, because fail2ban's `nftables` action *rejects* rather than drops.
+Meanwhile `ufw` still shows `22/tcp ALLOW IN Anywhere`, sshd is `active` and listening, and **you can
+still SSH in yourself** — because the ban is per source IP and yours is not the banned one. Every
+check you would naturally run says the server is fine.
+
+Add the exemption before your first deploy:
+
+```bash
+ssh <production-server>
+
+# Is the control plane already banned?
+fail2ban-client status sshd | grep -i banned
+
+# Exempt it permanently, then release it if it is already caught.
+sed -i '0,/^\[DEFAULT\]/s//[DEFAULT]\nignoreip = 127.0.0.1\/8 ::1 <DOKPLOY_CONTROL_PLANE_IP>/' \
+  /etc/fail2ban/jail.local
+fail2ban-client set sshd unbanip <DOKPLOY_CONTROL_PLANE_IP>
+fail2ban-client reload
+
+# Verify: the IP must appear here, and must NOT appear in the banned list.
+fail2ban-client get sshd ignoreip
+fail2ban-client status sshd | grep -i banned
+```
+
+Keep `mode = aggressive` for everything else. A public VPS takes a constant beating — this one had
+logged 6591 failed attempts and 374 bans — and that hardening is worth keeping. Exempt only the one
+host that is supposed to be opening many SSH sessions on purpose.
+
 ---
 
 ## 3. Make the container image pullable
@@ -678,7 +722,9 @@ credentials live in the database, not the environment.
 > both tags and then calls Dokploy's webhook, but a webhook only says "redeploy" — it cannot change
 > which tag Dokploy pulls. With `main`, every merge is live about six minutes later with no clicking.
 > You do not lose the ability to answer "which build is running": `/actuator/info` reports the exact
-> commit, and a CI check proves the image can identify itself. If you ever want a pinned tag instead,
+> commit, and a CI check proves the image can identify itself. Note that it answers **401** to an
+> anonymous caller — `SecurityConfig` permits only `/actuator/health/**` — so read it with a
+> credential, or from inside the container. If you ever want a pinned tag instead,
 > [deployment-reference.md](deployment-reference.md#pinning-an-exact-build) has the swap.
 
 ### 8.2 Environment
@@ -759,23 +805,28 @@ FEATURES_AI_EXPLANATIONS=false
 | HTTPS | **on** |
 | Certificate | **Let's Encrypt** |
 
-**Advanced** tab → *Cluster Settings* / *Swarm Settings* → Health Check. Dokploy's production guide
-recommends this and it is worth the two minutes: it is what makes a broken deploy roll back instead
-of replacing a working container with a crashing one.
+**Advanced** tab → *Cluster Settings* / *Swarm Settings* → Health Check.
 
-```json
-{
-  "Test": ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health/readiness"],
-  "Interval": 10000000000,
-  "Timeout": 5000000000,
-  "StartPeriod": 60000000000,
-  "Retries": 5
-}
-```
+> **Leave the Health Check fields EMPTY.** The image already defines one (`Dockerfile`, the
+> `HEALTHCHECK` instruction), Swarm honours an image health check exactly like a service-level one,
+> and a health check that lives in version control cannot silently disagree with a UI text field.
+>
+> This is not a style preference — filling that form in is what broke the first production
+> deployment of this application, on 2026-08-06, for roughly an hour. Dokploy's Health Check is a
+> **form with a separate `Test` input**, and whatever you type there is wrapped into a one-element
+> array. Pasting the Docker API's `["CMD", "wget", …]` therefore reaches dockerd as
+> `Test: ["[\"CMD\", \"wget\", …]"]` — an array whose first element is the literal text of an array.
+> Docker requires `Test[0]` to be `CMD`, `CMD-SHELL` or `NONE`, so it logs
+> `Unknown healthcheck type … (expected 'CMD')` and builds **no probe at all**.
+>
+> The failure that follows is silent and deeply misleading. The container runs perfectly and its
+> logs are clean to the last line — but with no probe it never emits a `health_status` event, and
+> Swarm waits for that event before promoting a task from `Starting` to `Running`. The task hangs in
+> `Starting` forever, the service stays at `0/1`, the service VIP has no backend, and Traefik answers
+> **502** to every request. Nothing anywhere reports an error, because from each component's own
+> point of view nothing went wrong.
 
-(Those are nanoseconds — Docker's Swarm API takes durations that way. 10 s / 5 s / 60 s / 5 tries.)
-
-And in *Update Config*, so a bad build reverts itself:
+*Update Config*, on the other hand, you do want — so a bad build reverts itself:
 
 ```json
 { "Parallelism": 1, "Order": "start-first", "FailureAction": "rollback" }
@@ -800,7 +851,36 @@ Expected: `UP`.
 | `ClientRegistrations.fromIssuerLocation` | You added a provider `issuer-uri`. Remove it |
 | Flyway `Validate failed` | The database is not empty and does not match. On a first deploy this means you pointed at the wrong database |
 | Container starts then Traefik says 502 | Container Port is not `8080`, or the health check is failing — check `/actuator/health` from inside the container |
+| Logs are **clean** and the app is up, but Traefik still says 502 | Swarm never promoted the task. Do not read the application log — it will tell you nothing. Run the three commands below |
 | `AI_API_KEY` complaint at startup | `FEATURES_AI_EXPLANATIONS=true` with no key. The app refuses to start rather than pretend the feature works. Set it to `false` |
+
+**Diagnosing a 502 that the logs cannot explain.** A 502 is a statement about *routing*, never about
+your code, so read the routing layer rather than the application. Three commands, in this order —
+each one either clears a component or convicts it:
+
+```bash
+ssh <production-server>
+
+# 1. Does Swarm believe the app is running? "0/1" here is the whole answer.
+docker service ls | grep einvoiceapp
+
+# 2. If 0/1: why is the task not promoted? Look for a task stuck in "Starting".
+docker service ps <app-service> --no-trunc
+
+# 3. Is there a health probe at all, and did dockerd refuse to build one?
+docker inspect <app-container> --format '{{json .Config.Healthcheck}}{{"\n"}}{{json .State.Health}}'
+journalctl -u docker --since "1 hour ago" | grep -i healthcheck
+```
+
+`State.Health: null` on a container whose spec *has* a `Healthcheck` is the signature of a malformed
+`Test`: dockerd parsed the spec, rejected the command form, and created no probe. Confirm with the
+`Unknown healthcheck type` warning in the daemon log, then clear the Health Check fields as above.
+
+Two facts worth internalising, because they are what make this failure so confusing: a Swarm service
+VIP with zero running tasks refuses connections *immediately*, so Traefik's 502 arrives in
+milliseconds and looks nothing like a timeout — and the container serves traffic perfectly the whole
+time, so `docker exec <container> wget -qO- http://localhost:8080/actuator/health` answers `UP`
+while the public URL answers 502.
 
 ---
 
@@ -814,7 +894,7 @@ Run them from your laptop, in the repository directory (check 2 uploads a sample
 ```bash
 BASE=https://einvoice.sebastiankern.net
 
-# 1. Alive, and which build is this?
+# 1. Alive? (For "which build is this?" see /actuator/info — it needs a credential, see step 8.1.)
 curl -fsS $BASE/actuator/health | jq -r .status          # -> UP
 
 # 2. The public validator works with NO credential, and stores nothing.
@@ -824,7 +904,11 @@ curl -fsS -F "file=@samples/invoice-b2g-sample.ebinterface.xml" \
 
 # 3. The landing page renders, and the dashboard redirects to the real Keycloak.
 curl -fsS -o /dev/null -w '%{http_code}\n' $BASE/                      # -> 200
-curl -fsS -o /dev/null -w '%{http_code} %{redirect_url}\n' $BASE/app   # -> 302 https://auth-einvoice...
+curl -fsS -o /dev/null -w '%{http_code} %{redirect_url}\n' $BASE/app   # -> 302 $BASE/oauth2/authorization/keycloak
+# That first hop is Spring Security's own entry point, NOT Keycloak. Follow the chain to prove the
+# flow actually terminates at the IdP — two redirects, ending on the realm's authorization endpoint
+# with client_id=einvoice-web and code_challenge_method=S256.
+curl -fsS -o /dev/null -L -w '%{num_redirects} %{url_effective}\n' $BASE/app
 
 # 4. HTTP is redirected to HTTPS.
 curl -sSI http://einvoice.sebastiankern.net | grep -i '^location'      # -> https://...
@@ -853,16 +937,26 @@ done
 #   -> "rate limited after N requests".  If the loop finishes without printing that, the limiter
 #      is not engaging at all — check RATE_LIMIT_VALIDATE_* in step 8.
 
-# 2. Immediately claim to be someone else. If forging worked, this would be a fresh bucket.
-curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Forwarded-For: 198.51.100.1' \
-  -F "file=@$SAMPLE" $BASE/api/v1/validate
-#   -> 429.  A 200 here would mean anyone can mint themselves unlimited allowance.
+# 2. Immediately claim to be several other people. If forging worked, EACH address would be a
+#    fresh 60-request bucket and every one of these would answer 200.
+for n in 1 2 3 4 5; do
+  printf 'forged-%s: %s\n' "$n" "$(curl -s -o /dev/null -w '%{http_code}' \
+    -H "X-Forwarded-For: 198.51.100.$n" -F "file=@$SAMPLE" $BASE/api/v1/validate)"
+done
+#   -> 429 on (at least) four of the five.
 ```
 
-Run the second command **right after** the first: the bucket refills at one token per second, so a
-minute's pause would hand you a `200` for an innocent reason and make the check meaningless.
+**Expected: `429` across the board, with at most ONE `200`.** Why the tolerance, and why five
+requests rather than the single forged request an earlier version of this document used: the bucket
+refills at one token per second, and the seconds it takes to observe the 429 and fire the next
+request are enough for one token to drip back in. A single forged request can therefore catch that
+token and print `200` while the defense is working perfectly — it happened on this project's own
+§9 run on 2026-08-06, and it reads exactly like the vulnerability it is not. Five forged addresses
+back-to-back make the two outcomes unmistakable: a real forgery hands every address its own full
+bucket (five `200`s), while an intact defense has all five drawing on the same empty bucket, so at
+most one inherits the lone refilled token.
 
-**Expected: `429`.** If you get `200`, something upstream is trusting client headers — check that you
+If you see **two or more `200`s**, something upstream is trusting client headers — check that you
 did not enable `forwardedHeaders.insecure` in Traefik and that the Cloudflare records are still grey.
 
 Finally, log in through the browser once: open `https://einvoice.sebastiankern.net/app`, sign in as

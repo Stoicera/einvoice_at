@@ -1,5 +1,70 @@
 # Worklog — einvoice-at
 
+## 2026-08-06 — App 502 at §8.3: a malformed health check, and fail2ban banning Dokploy
+
+The owner reached §8.3 and got a persistent `502` from `einvoice.sebastiankern.net` for over an hour,
+with an application log that was clean to its last line — Tomcat on 8080, both Flyway migrations
+applied, `Started EinvoiceApplication in 6.534 seconds`, and nothing after it. Two independent
+faults were stacked, which is why nothing added up.
+
+**Root cause 1 — the health check produced no probe.** Dokploy's *Swarm Settings → Health Check* is a
+form with a **separate `Test` input**, and it wraps whatever is typed into a one-element array. §8.3
+told the owner to enter the Docker API's `["CMD", "wget", …]`, so dockerd received
+`Test: ["[\"CMD\", \"wget\", …]"]` — an array whose sole element is the literal text of an array.
+Docker requires `Test[0]` ∈ {`CMD`, `CMD-SHELL`, `NONE`}; it matched none, so the daemon logged
+`Unknown healthcheck type '["CMD", "wget", …]' (expected 'CMD')` and built **no probe at all**.
+
+With no probe the container never emits a `health_status` event, and Swarm waits for that event
+before promoting a task `Starting → Running`. The task sat in `Starting` for 52 minutes, the service
+stayed at `0/1`, the service VIP had no backend, and Traefik answered 502 in ~0.13 s. Every
+component was individually correct and silent: the Traefik route was right
+(`http://…-einvoiceapp-…:8080`, on `dokploy-network`), and `docker exec … wget -qO-
+http://localhost:8080/actuator/health/readiness` returned `{"status":"UP"}` throughout.
+
+**Root cause 2 — fail2ban banned the Dokploy control plane.** Mid-session Dokploy began reporting
+`SSH connection error: connect ECONNREFUSED …:22`. sshd was `active` and listening on `0.0.0.0:22`,
+`ufw` showed `22/tcp ALLOW IN Anywhere`, and an ordinary SSH login from the owner's laptop succeeded
+— because the ban is per source IP. Dokploy opens a burst of parallel SSH sessions per operation and
+drops the surplus pre-auth; the `sshd` jail runs `mode = aggressive`, which counts every `[preauth]`
+disconnect as a failure. Ban placed 10:55:02; `bantime.increment` plus an earlier flag on 08-02
+escalated it past the 1 h base. `banaction = nftables` rejects rather than drops, hence
+`ECONNREFUSED` and not a timeout.
+
+**Corroboration that excluded the alternatives.** `Config.Healthcheck` present while `State.Health`
+was `null` is only possible if dockerd refused to build the probe — confirmed directly by the daemon
+warning in `journalctl -u docker`. The application was excluded as a cause by the in-container
+`wget`, and the routing layer by reading the generated
+`/etc/dokploy/traefik/dynamic/…-einvoiceapp-….yml` (correct host, service, port 8080). For the ban,
+the timestamps are decisive on their own: banned at 10:55:02, first diagnostic login at 11:53:47.
+
+**What changed**
+
+- `deployment.md` §8.3: leave the Health Check fields **empty** — the image's `HEALTHCHECK` is in
+  version control, Swarm honours it identically, and one definition cannot disagree with itself. The
+  form-input mangling and the resulting silent `0/1` are written out so the advice is not "simplified"
+  back later.
+- `deployment.md` §8.3 troubleshooting: a row for *clean logs + 502*, plus a three-command routing
+  diagnostic (`docker service ls` → `docker service ps --no-trunc` → `.Config.Healthcheck` vs
+  `.State.Health`), and the note that a zero-task Swarm VIP refuses instantly rather than timing out.
+- `deployment.md` §2: a new subsection on exempting the Dokploy control plane from fail2ban before
+  the first deploy, with the `ignoreip` recipe and the reason `aggressive` mode catches it.
+- `deployment.md` §8.1 / §9: `/actuator/info` answers 401 anonymously (`SecurityConfig` permits only
+  `/actuator/health/**`), and `/app`'s first hop is Spring's own entry point, not Keycloak — §9 now
+  follows the chain to prove it terminates at the realm's authorization endpoint.
+
+**Verification.** Service `1/1`, task `Running`, spec healthcheck `null`, container `HEALTH=healthy`
+(FailingStreak 0). All five §9 checks pass: health `UP`; anonymous validate → `{"id": null, "valid":
+true}` (validated, not stored); landing `200`; `/app` → 2 redirects → Keycloak with
+`client_id=einvoice-web` and `code_challenge_method=S256`; HTTP → HTTPS. The fifth check now has its
+first production evidence — rate limited after 75 anonymous requests, and a forged
+`X-Forwarded-For` (single **and** chained) still answered `429`, confirming the `native` strategy
+holds behind the real Traefik.
+
+**Standing lesson.** A 502 is a statement about routing, never about the code — so when the
+application log is clean, stop reading it. The diagnostic order is Swarm replica count, then task
+state, then whether a health probe exists at all. And a health check defined in a UI text field is a
+second source of truth that the Dockerfile already owns; prefer the one under review.
+
 ## 2026-08-01 — Keycloak 502 during the live deployment: Dokploy's `Command` is the entrypoint
 
 The owner reached §7.3 and got a persistent `502` from `auth-einvoice.sebastiankern.net`, while
