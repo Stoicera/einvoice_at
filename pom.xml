@@ -144,18 +144,17 @@
     <bucket4j.version>8.10.1</bucket4j.version>
 
     <!-- OpenAPI documentation / Swagger UI for the REST API (app, T9). Version verified against
-         Maven Central maven-metadata.xml on 2026-07-24: 3.0.3 is both <latest> and <release>,
+         Maven Central maven-metadata.xml on 2026-08-06: 3.1.0 is both <latest> and <release>,
          groupId org.springdoc, artifactId springdoc-openapi-starter-webmvc-ui, Apache-2.0.
-         Boot-4.1 compatibility check: that artifact's POM parent (org.springdoc:springdoc-openapi:
-         3.0.3) itself pins spring-boot-starter-parent 4.0.5, i.e. spring-framework.version 7.0.6
-         (per spring-boot-dependencies 4.0.5's POM); this repo's parent is Boot 4.1.0, whose
-         spring-boot-dependencies POM pins spring-framework.version 7.0.8 — the same Framework
-         7.0.x line, a patch-only delta (7.0.6 -> 7.0.8), not a minor/major jump. No 3.0.x release
-         built against Boot 4.1 exists yet, but springdoc's webmvc integration only touches stable
-         Spring MVC / actuator SPI surfaces that do not change across a framework patch revision,
-         so 3.0.3 is the correct pin; empirically confirmed working via OpenApiIT (app/src/test/.../
-         api/OpenApiIT.java) against the real Boot 4.1.0 context. -->
-    <springdoc-openapi.version>3.0.3</springdoc-openapi.version>
+         Boot-4.1 compatibility check: springdoc-openapi 3.1.0's POM parent is
+         spring-boot-starter-parent 4.1.0 — exactly this repo's parent, so no framework delta at
+         all (3.0.3 was built against Boot 4.0.5 and needed a patch-revision argument here).
+         Why not stay on 3.0.3: it bundles swagger-ui 5.32.2, whose swagger-ui-bundle.js embeds
+         DOMPurify 3.3.2 — flagged by OWASP Dependency-Check (CVE-2026-65898 et al.) above the
+         CVSS 7.0 gate since 2026-08-01. 3.1.0 bundles swagger-ui 5.32.11, which embeds
+         DOMPurify 3.4.12 (verified by extracting the webjar); empirically confirmed working via
+         OpenApiIT (app/src/test/.../api/OpenApiIT.java) against the real Boot 4.1.0 context. -->
+    <springdoc-openapi.version>3.1.0</springdoc-openapi.version>
 
     <!-- Reactor-wide defaults for org.codehaus.mojo:exec-maven-plugin's `java` goal (used by the
          validation module's ValidationRunner CLI): skipped everywhere except where a module opts
