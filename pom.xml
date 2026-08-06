@@ -54,7 +54,7 @@
     <ph-ebinterface.version>8.1.0</ph-ebinterface.version>
     <ph-ubl.version>10.2.0</ph-ubl.version>
     <phive.version>12.1.0</phive.version>
-    <phive-rules.version>4.4.1</phive-rules.version>
+    <phive-rules.version>4.4.2</phive-rules.version>
 
     <!-- The ph-* stack depends on the Jakarta XML Binding API only (jakarta.xml.bind-api,
          pulled transitively at 4.0.x); a JAXB runtime provider must be supplied by the
