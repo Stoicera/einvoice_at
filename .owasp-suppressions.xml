@@ -89,4 +89,50 @@
     <cve>CVE-2026-53914</cve>
   </suppress>
 
+  <!--
+    CVE-2026-66299 (NVD CVSS 7.5, Apache severity: Low) against
+    org.apache.tomcat.embed:tomcat-embed-core 11.0.24, Spring Boot 4.1.0's managed Tomcat.
+
+    Added 2026-08-06, when the NVD published the CVE and turned the gate red on a repo whose code
+    had not changed (the second such event that week, after the DOMPurify batch handled by
+    upgrading springdoc — upgrade first, exactly as the header demands).
+
+    Why this is a wrong-component match: the advisory, per Apache's own security page, is an
+    unbounded buffer in the WEBSOCKET CHAT EXAMPLE — a page of tomcat.apache.org's distribution
+    ("Users who followed the security guidance to remove the examples web application are not
+    affected"). The examples webapp is part of the Tomcat DISTRIBUTION bundle; tomcat-embed-core
+    is the embeddable servlet engine and does not contain or deploy the examples application, and
+    a Spring Boot fat jar deploys no webapps at all. The vulnerable code cannot be present in this
+    artifact, let alone reachable. Dependency-Check matched on `cpe:/a:apache:tomcat` + version
+    range, which covers the whole product and so inherits an advisory about a part this jar does
+    not carry.
+
+    Why not simply upgrade, which is what the header demands first: the fix version is Tomcat
+    11.0.25, and as of 2026-08-06 Maven Central does not publish tomcat-embed-core 11.0.25
+    (directory 404), nor is there a Spring Boot 4.1.x patch managing it. When either appears,
+    Dependabot's weekly run will surface the bump and this entry must be deleted rather than
+    renewed by reflex.
+
+    Scoped to the whole org.apache.tomcat.embed GROUP, not one artifact, learned the concrete way:
+    the first version of this entry named tomcat-embed-core, and the very next scan raised the
+    same CVE against tomcat-embed-websocket — every embed artifact carries the product-wide
+    `cpe:/a:apache:tomcat` and so inherits every advisory about any part of the distribution. The
+    argument is identical for all of them: no embed jar ships the examples webapp. Still pinned to
+    this one CVE, so a genuine embed vulnerability is not maskable through this entry.
+
+    <until> is set deliberately and near, for the same reason as the entry above: the claim should
+    decay together with the release trains that make it moot.
+  -->
+  <suppress until="2026-10-31Z">
+    <notes><![CDATA[
+      False positive for these artifacts: CVE-2026-66299 is an unbounded buffer in the WebSocket
+      chat EXAMPLE application of the Tomcat distribution. No org.apache.tomcat.embed artifact
+      ships the examples webapp, and this Spring Boot application deploys no webapps. Fix version
+      11.0.25 is not on Maven Central as of 2026-08-06 and no Boot 4.1.x patch manages it yet.
+      See the block comment.
+    ]]></notes>
+    <packageUrl regex="true">^pkg:maven/org\.apache\.tomcat\.embed/tomcat-embed-.*@.*$</packageUrl>
+    <cve>CVE-2026-66299</cve>
+  </suppress>
+
 </suppressions>
