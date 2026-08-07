@@ -38,11 +38,19 @@ public class OpenApiConfig {
                 // sync manually, same as the other "no defaults, fail loud" choices in this
                 // module.
                 .version("v1")
+                // Kept to what the paths below actually offer. The previous wording announced UBL
+                // support as future work — written before M4 and never revisited — while this same
+                // document published /api/v1/convert and /api/v1/invoices/{id}/ubl. A description
+                // that contradicts its own paths is worse than a terse one, so
+                // theApiDescriptionDoesNotContradictTheEndpointsItPublishes now asserts it against
+                // the document rather than against a remembered string.
                 .description(
                     "REST API for generating, validating and converting Austrian e-invoices."
-                        + " The current focus is ebInterface 6.1 validation against the AT-B2G"
-                        + " Peppol rules; Peppol BIS Billing 3.0 UBL support follows in a later"
-                        + " milestone."))
+                        + " Validation covers ebInterface 6.1 against the AT-B2G business rules and"
+                        + " Peppol BIS Billing 3.0 (UBL) against the official OpenPeppol rule set,"
+                        + " executed unmodified at a pinned version. Conversion runs in both"
+                        + " directions through a canonical EN 16931 model and reports what the"
+                        + " target format cannot carry."))
         .components(
             new Components()
                 .addSecuritySchemes(
