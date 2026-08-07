@@ -1051,8 +1051,12 @@ Then create `/etc/cron.d/einvoice-backup`. It must end with a newline, or cron i
 without saying so:
 
 ```cron
-15 2 * * * root docker run --rm --network dokploy-network --env-file /opt/einvoice-at/backup.env -v /opt/einvoice-at/scripts:/scripts:ro -v /var/backups/einvoice:/backups postgres:17 /scripts/backup.sh /backups >> /var/log/einvoice-backup.log 2>&1
+15 2 * * * root docker run --rm --network dokploy-network --env-file /opt/einvoice-at/backup.env -v /opt/einvoice-at/scripts:/scripts:ro -v /var/backups/einvoice:/backups postgres:17 /scripts/backup.sh /backups >> /var/log/einvoice-backup.log 2>&1 && /opt/einvoice-at/scripts/offsite-sync.sh /var/backups/einvoice >> /var/log/einvoice-backup.log 2>&1
 ```
+
+The second half is the off-site copy of §10.4. It is chained with `&&` because syncing after a
+failed dump would only propagate the failure, and it exits `0` with a `NOT CONFIGURED` notice until
+you arm it — so this is the final line whether or not off-site storage exists yet.
 
 **Then rehearse a restore — into a fresh database, never over the live one.** This is the half that
 makes it a backup rather than a hope:
@@ -1083,10 +1087,81 @@ attachable; in that case run the same commands from a shell inside the running d
 instead (`docker exec -it $(docker ps -qf name=einvoice-db) bash`), writing the dump to a path you
 have bind-mounted. `could not translate host name` means the internal host from step 6 is wrong.
 
-> **A dump on the same disk as the database is a copy, not a backup.** Copy them off the machine —
-> a Hetzner Storage Box over `rclone`, or any S3 bucket. Hetzner's own server snapshots are worth
-> enabling too and are not a substitute: a snapshot restores a *machine*, `pg_dump` restores a
-> *database* into a machine you already trust.
+### 10.4 Copy the dumps off the machine
+
+**What this is.** One command that pushes `/var/backups/einvoice` to storage on a different machine,
+and then proves the copy is readable by downloading it again.
+
+**Why.** Everything up to here writes the dump to the same physical disk as the database it dumped.
+That survives a bad migration or a dropped table; it does not survive the single most likely event
+it exists for — that disk, that server, or that provider account going away. Until this step is
+done, there is exactly one copy of the data. Hetzner's own server snapshots are worth enabling as
+well and are **not** a substitute: a snapshot restores a *machine*, `pg_dump` restores a *database*
+into a machine you already trust.
+
+`scripts/offsite-sync.sh` is already installed and already in the nightly chain, disarmed. Arming it
+is one file; there is no code or cron change.
+
+**Do this.** Order a **Hetzner Storage Box BX11** (€3.20/month, 1 TB, no minimum term) in FSN1 and
+enable *SSH support* in its panel. Then, on the production server:
+
+```bash
+ssh-keygen -t ed25519 -f /root/.ssh/storagebox -N ""
+cat /root/.ssh/storagebox.pub          # register this key in the Storage Box panel
+```
+
+Hetzner's Storage Box listens on **port 23**, not 22. Write the config file:
+
+```bash
+cat > /opt/einvoice-at/offsite.env <<'EOF'
+OFFSITE_TARGET=uXXXXXX@uXXXXXX.your-storagebox.de:einvoice/
+OFFSITE_SSH_KEY=/root/.ssh/storagebox
+OFFSITE_SSH_PORT=23
+OFFSITE_REQUIRED=1
+EOF
+chmod 600 /opt/einvoice-at/offsite.env
+```
+
+`OFFSITE_REQUIRED=1` is the line that matters most. Without it, a typo in `OFFSITE_TARGET` and a
+missing `OFFSITE_TARGET` look identical in the log — both are a clean skip — and the mistake stays
+invisible until a restore. With it, anything short of a working off-site copy fails the nightly run.
+
+**Verify.** Run it by hand once:
+
+```bash
+/opt/einvoice-at/scripts/offsite-sync.sh /var/backups/einvoice
+```
+
+Expected — the last line is the one that counts, because it was produced by reading the file *back*
+from the Storage Box and comparing its SHA-256 against the local sidecar:
+
+```
+Syncing /var/backups/einvoice/ -> uXXXXXX@uXXXXXX.your-storagebox.de:einvoice/
+...
+Verifying einvoice-<stamp>.dump by reading it back from off-site storage
+OK: einvoice-<stamp>.dump verified off-site (sha256 matches); N dump(s) now stored remotely
+```
+
+Then close the loop the same way §10 taught: pull one dump down from the box on a *different*
+machine and restore it into a scratch database. A copy you have never restored from is a belief,
+not a backup.
+
+**If it fails.** `Permission denied (publickey)` — the key is not registered in the Storage Box
+panel, or you registered `storagebox` instead of `storagebox.pub`. `Connection refused` — you are on
+port 22; Storage Boxes use 23. `rsync: command not found` on the remote — enable SSH support in the
+panel; plain SFTP-only boxes cannot serve rsync. A SHA-256 mismatch is not a transfer glitch to
+retry past: it means the remote is storing something other than what was sent, and it should be
+investigated before that dump is trusted.
+
+**Two deliberate design choices in the script**, both of which differ from the obvious
+`rsync -a --delete` one-liner, because the obvious version can destroy what it protects:
+
+- **No `--delete`.** Mirroring means an emptied local directory — failed disk, wrong mount, a bad
+  `BACKUP_KEEP_DAYS`, a restore gone wrong — propagates that emptiness off-site on the next nightly
+  run and deletes the last surviving copy at the exact moment it is needed. Dumps are ~16 KB against
+  1 TB, so there is no capacity argument on the other side.
+- **An empty source directory is a hard error**, not a no-op. A backup directory with no dumps in it
+  is an upstream failure; reporting success would hide it for as long as nobody looks.
 
 ---
 
