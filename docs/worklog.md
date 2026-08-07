@@ -1,5 +1,59 @@
 # Worklog — einvoice-at
 
+## 2026-08-07 (afternoon) — Two more false claims, both found by reading the application's own output
+
+The morning's session ended with the API-docs links made conditional. Turning the docs **on** was the
+owner's decision (`API_DOCS_ENABLED=true`, recorded in `deployment.md` §8 with the reasoning: the
+annotations are already public in this repository, so publishing the rendered document discloses
+nothing, while the landing page's call to action is the point of the page). Screenshotting the result
+for the case study is what turned up the rest.
+
+**The OpenAPI description announced work it had already shipped.** `/v3/api-docs` opened with "the
+current focus is ebInterface 6.1 …; Peppol BIS Billing 3.0 UBL support follows in a later
+milestone" — written before M4 and never revisited, in the same document that publishes
+`/api/v1/convert` and `/api/v1/invoices/{id}/ubl`. The first paragraph an integrator reads
+contradicted the paths beneath it, and undersold the platform's headline capability. Caught because
+it would have gone into a marketing screenshot stating that the thing the case study is *about* is
+not built yet. The replacement is asserted **against the document's own paths**, not against a
+literal, so it stays a consistency check rather than another string somebody must remember (PR #28).
+
+**The privacy promise was not quite true.** The validator page says, in bold: *"kein Prüfbericht,
+kein Protokolleintrag, keine Datei auf einem Datenträger."* The last clause was false.
+`spring.servlet.multipart.file-size-threshold` defaults to `DataSize.ofBytes(0)` — read out of
+`MultipartProperties` in `spring-boot-servlet-4.1.0.jar`, not recalled — and this application set
+only the two size caps. A zero threshold streams every uploaded part straight to a temporary file.
+
+Observed rather than reasoned about: with a 1.9 MB upload in flight,
+`work/Tomcat/localhost/ROOT/upload_*.tmp` existed on disk. Tomcat removes it when the request ends,
+so nothing lingered — but an invoice payload had still been written to a disk, which is exactly what
+the sentence excluded. **On a platform that makes data protection a headline feature, the gap between
+the claim and the mechanism is the defect; the retention window is not the point.** Fixed by setting
+the threshold to the accepted maximum, so nothing the application will accept can exceed what it
+keeps in memory. Re-measured with the identical upload and watcher: `SPOOLED=1` before, `SPOOLED=0`
+after (PR #29).
+
+The test asserts the **bound**, not an absence, and the Javadoc says why: the spooled file exists
+only *during* the request, so "assert the directory is empty afterwards" would pass just as happily
+with the bug present. `threshold >= max-file-size` is what makes the promise true and is what a
+future change would break by raising the cap alone.
+
+**Marketing material is prepared and separated from the code.** The case-study fact base lives in the
+private SSOT repository as document 16 — every number with a source *and* a measurement date, eight
+Beweisstücke, a binding Sperrliste — with seven curated screenshots. Two claims were deliberately
+written **down** rather than up, because this project's whole message is verifiability: Lighthouse
+100/100/100/100 is a measurement while the CI gate is 95, and "zertifiziert / vom Bund geprüft" is
+not true where "executes the official OpenPeppol rule set unmodified" is.
+
+**Standing lesson, sharpened.** Every defect this session came from executing something and reading
+what came back — a browser on the live site, a rule-set upgrade against real artefacts, a temp
+directory watched during an upload. None came from reading code, and none would have been caught by
+adding coverage: each one lived in the gap between a *claim* and a *mechanism*, and a test suite only
+checks the claims somebody thought to write down. Three of the four claims that failed were written
+by this project about itself.
+
+**Verification.** `./mvnw verify` green throughout; PRs #28 and #29 CI-green and merged, each
+deployed and re-checked against the running instance.
+
 ## 2026-08-07 — Peppol 2026.5 ten days early, an off-site backup that reads itself back, and a dead button on the front page
 
 Four things closed today, and the most interesting one was found by a browser rather than by a test.
