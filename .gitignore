@@ -43,6 +43,11 @@ lighthouse-*.json
 # about, so it is fixed rather than reworded.
 !.superpowers/m*-hostile-review-findings.md
 
+# Same reasoning, different artefact: the handoff a session writes for the next one. It is the work
+# queue — re-verified findings, each with the failing test to write first — and it is worth more in
+# the repository than in a chat log nobody can find again.
+!.superpowers/next-session-findings.md
+
 # Playwright MCP scratch output (screenshots, snapshots) from local browser smoke runs.
 .playwright-mcp/
 
