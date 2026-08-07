@@ -29,7 +29,7 @@
         <a class="wordmark" th:href="@{/}">einvoice<span>-at</span></a>
         <nav>
           <a th:href="@{/validator}">Prüfer</a>
-          <a th:href="@{/swagger-ui.html}">API</a>
+          <a th:if="${apiDocsEnabled}" th:href="@{/swagger-ui.html}">API</a>
           <th:block sec:authorize="isAuthenticated()"
                     xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
             <a th:href="@{/app}">Dashboard</a>
