@@ -45,3 +45,13 @@ lighthouse-*.json
 
 # Playwright MCP scratch output (screenshots, snapshots) from local browser smoke runs.
 .playwright-mcp/
+
+# Internal go-to-market material. THIS REPOSITORY IS PUBLIC. docs/VERMARKTUNG.md is the marketing
+# and outreach plan: it names prospects by name, a named academic contact, a partner's separate
+# projects and the commercial angle behind each. None of that is portfolio evidence, and all of it
+# is damaging in the hands of the people it names.
+#
+# It is ignored rather than deleted because it is legitimate working material — it simply belongs in
+# ~/Work/single-source-of-truth, which is private and is the stated home for strategy and
+# positioning. Ignored here so that a `git add .` cannot publish it by accident.
+docs/VERMARKTUNG.md

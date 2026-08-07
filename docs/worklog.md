@@ -1,5 +1,103 @@
 # Worklog — einvoice-at
 
+## 2026-08-07 — Peppol 2026.5 ten days early, an off-site backup that reads itself back, and a dead button on the front page
+
+Four things closed today, and the most interesting one was found by a browser rather than by a test.
+
+**§11's CI half, finally proven.** Yesterday's entry left one loose end: the webhook's CI half was
+configured but unproven, because the GitHub Actions outage had starved the run's tail and the Deploy
+job never executed. Rerun today: all six jobs green, Deploy logged
+`{"message":"Application deployed successfully"}` at 06:42:57Z, and the container's `StartedAt` is
+**06:43:04Z**. Seven seconds is the causal link the earlier entry could not show. Auto-deploy is done.
+
+**Peppol 2026.5, adopted 2026-08-07 for a 2026-08-17 deadline — and no dependency bump was needed.**
+The already-pinned phive-rules 4.4.1 ships `PeppolValidation2026_05` and the whole 2026.5 artefact
+tree, verified by listing the jar rather than by recall. So the upgrade was a pure code diff, which
+made the corpus delta attributable to the rule set alone.
+
+The corpus stayed green, as predicted — 2026.5's added and escalated rules are scoped to Dutch and
+Danish schemes while the fixtures carry `schemeID="9915"` and `AT`. **What the corpus could not see
+is the part worth recording:**
+
+- `BR-CO-25` was deleted with no successor, and the German catalogue went on translating it. *Every
+  test stayed green.* `theCatalogCoversEveryPeppolSpecificRuleOfThePinnedRuleSet` reads as though it
+  checks the catalogue against the pinned rule set; it compares against a list typed into the test
+  file. The size test only compares the catalogue with itself. Two tests, both blind in the same
+  direction, and the name of the first is what made the gap invisible.
+- Two translations became *factually wrong*, not merely imprecise. R007's profile check is now a
+  closed allowlist admitting the two French billing profiles, so the old German — which promised a
+  `urn:…:billing:NN:1.0` format — would have sent a rejected filer off to construct an identifier
+  the rule set does not accept. R004 was always `starts-with`, never equality, and 2026.5 adds a
+  prohibition on `::`.
+
+Both are fixed, and both now have tests that read the shipped XSLT artefacts instead of a
+hand-maintained list. The next deadline no longer depends on anyone remembering it:
+`noNewerRuleSetIsAlreadyMandatory` enumerates the dated rule sets phive-rules publishes and fails the
+build the day one supersedes the pin, naming the version and the date. **Proven falsifiable** by
+rolling the pin back to 2025.5, which reports that 2025.11 became mandatory on 2026-02-23.
+
+Verified live after the merge, and not by inspecting the tag: a UBL invoice whose `CustomizationID`
+carries `::` — legal under 2025.11, rejected under 2026.5 — now comes back from production as
+`PEPPOL-EN16931-R004`, in the German wording written this morning.
+
+**A dead button on the landing page, live for a day.** Production runs `API_DOCS_ENABLED=false`, so
+`/swagger-ui.html` answers 404 — while `index.html` rendered a "REST-API ansehen" button pointing at
+it and the shared layout an "API" nav entry on every page. On the front page of a public portfolio
+repository, on the one thing an enterprise reviewer clicks first.
+
+No test caught it because none asserted anything about the *HTML* of a docs-disabled deployment.
+`OpenApiDisabledIT` even claimed in its own Javadoc that the docs were "genuinely gone, **not merely
+unlinked**" — the first half was tested and the second half was never true. `application.yml` had
+already written down the principle ("one flag drives both, so the document and the UI can never
+disagree about being exposed"); the templates were simply never part of that guarantee, and now are,
+via a `ControllerAdvice` rather than six `addAttribute` calls, because the link is in the layout
+fragment and one forgotten handler would restore the bug. Both directions are pinned — the
+disabled-side test alone would stay green if the wiring broke and the link vanished everywhere.
+
+**Off-site backups, and a recipe retracted.** The nightly dump lived on the same disk as the database
+it dumped. `scripts/offsite-sync.sh` closes that, chained into cron with `&&` so it can only run on a
+dump that succeeded, and it **verifies by reading back** — the newest dump is downloaded again and
+its SHA-256 compared against the sidecar, because an rsync exit code proves bytes were sent, not that
+they can be read. Falsifiability checked by truncating the remote copy and watching the comparison
+fail.
+
+The owner checklist's earlier `rsync -a --delete` recommendation is **retracted in place, with the
+reason**: mirroring propagates an emptied local directory off-site on the next nightly run and
+deletes the last surviving copy at exactly the moment it is needed. The script omits `--delete` and
+treats an empty source directory as a hard error. It ships disarmed — `NOT CONFIGURED`, exit 0 —
+so it could be installed and cron-wired before the storage account exists; `OFFSITE_REQUIRED=1`
+converts that skip into a failure once it does, because otherwise a typo'd target and a missing one
+look identical in the log until a restore.
+
+**Also:** `docs/VERMARKTUNG.md` sat untracked and un-ignored in a **public** repository, one
+`git add .` from publishing named prospects, a named academic contact and a partner's separate
+projects. Now ignored, with its home named (the private SSOT repo).
+
+**Standing lesson.** Two of today's four defects were invisible to a green build and were found by
+*executing the thing* — a browser on the live site, and a rule-set upgrade run against real
+artefacts. The other two were found by reading this repository's own documents as a hostile reviewer
+rather than as their author. A test suite proves the code does what the tests say; it cannot notice
+that a test's *name* is a claim nobody checks, or that a page links somewhere that does not exist.
+
+**Verification.** `./mvnw verify` green throughout (1080 tests at the session's start, **1084** after
+the Peppol work, plus the two link tests). CI green on PRs #25/#26/#27; #26 and #27 merged and both
+deployed themselves to production, each confirmed against the running instance rather than the panel.
+
+**Next**
+
+- Owner: order the Hetzner Storage Box and write `/opt/einvoice-at/offsite.env` — `deployment.md`
+  §10.4, four lines, no code or cron change after it.
+- Owner's call: whether `API_DOCS_ENABLED` should be `false` in production at all. The OpenAPI
+  annotations are already public in this repository, so publishing the rendered document leaks
+  nothing new, while the landing page's call to action is a real selling point. Both states are
+  correct now; only one shows the API.
+- Split `${phive-rules.version}`: `phive-rules-ebinterface` has moved to the `phive-rules-foundations`
+  project with no 4.5.x line, so the single shared property cannot go past 4.4.2.
+- The due-diligence pass run today produced findings beyond the four fixed here — the universal
+  round-trip claim in `README.md` is false for `corpus/valid/minimal.xml`, and `README`/`MILESTONES`
+  still say the live instance and the `v0.1.0` tag are outstanding. Both are recorded for the next
+  session.
+
 ## 2026-08-06 (evening) — The completion sprint: backups, hardening, and two CVE gates the world moved
 
 One autonomous session closed everything that stood between the morning's first login and a
