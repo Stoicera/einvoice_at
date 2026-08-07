@@ -10,7 +10,7 @@ import com.helger.phive.api.result.ValidationResult;
 import com.helger.phive.api.result.ValidationResultList;
 import com.helger.phive.api.validity.IValidityDeterminator;
 import com.helger.phive.peppol.PeppolValidation;
-import com.helger.phive.peppol.PeppolValidation2025_11;
+import com.helger.phive.peppol.PeppolValidation2026_05;
 import com.helger.phive.xml.source.IValidationSourceXML;
 import com.helger.phive.xml.source.ValidationSourceXML;
 import com.stoicera.einvoice.core.validation.Finding;
@@ -45,10 +45,12 @@ import org.w3c.dom.Document;
  * by on a dependency bump, and the same document would start or stop being valid without a single
  * line of this repository changing.
  *
- * <p><strong>{@value #RULE_SET_VERSION} is the version in force as this milestone shipped</strong>
- * (2026-07-25). Its successor 2026.5 is already published and becomes mandatory on 2026-08-17 —
- * both facts read off the artefacts themselves ({@code PeppolValidation2026_05.VALID_PER}), not off
- * a website. Upgrading is a deliberate, dated edit of two constants here plus a corpus re-run; the
+ * <p><strong>{@value #RULE_SET_VERSION} becomes mandatory on 2026-08-17</strong> and was adopted
+ * here on 2026-08-07, ahead of that date — read off the artefact itself ({@code
+ * PeppolValidation2026_05.VALID_PER}), not off a website. The next deadline is not left to a
+ * calendar reminder: {@code PeppolValidationStageTest.noNewerRuleSetIsAlreadyMandatory} enumerates
+ * the dated rule sets phive-rules publishes and fails the build on the day one of them supersedes
+ * this pin. Upgrading is a deliberate, dated edit of the constants here plus a corpus re-run; the
  * update procedure lives in ADR-0007.
  *
  * <p>{@link #isPinnedRuleSetRegistered()} exists so a test can fail loudly if a future phive-rules
@@ -68,7 +70,7 @@ public final class PeppolValidationStage implements ValidationStage {
    * The pinned OpenPeppol rule-set version — see the class Javadoc for why this is a constant and
    * not a library default.
    */
-  public static final String RULE_SET_VERSION = PeppolValidation2025_11.VERSION_STR;
+  public static final String RULE_SET_VERSION = PeppolValidation2026_05.VERSION_STR;
 
   private static final String GERMAN_LEAD_IN = "Peppol BIS Billing 3.0: ";
 
@@ -110,8 +112,8 @@ public final class PeppolValidationStage implements ValidationStage {
    */
   private static DVRCoordinate vesFor(DocumentFormat format) {
     return switch (format) {
-      case UBL_INVOICE -> PeppolValidation2025_11.VID_OPENPEPPOL_INVOICE_UBL_V3;
-      case UBL_CREDIT_NOTE -> PeppolValidation2025_11.VID_OPENPEPPOL_CREDIT_NOTE_UBL_V3;
+      case UBL_INVOICE -> PeppolValidation2026_05.VID_OPENPEPPOL_INVOICE_UBL_V3;
+      case UBL_CREDIT_NOTE -> PeppolValidation2026_05.VID_OPENPEPPOL_CREDIT_NOTE_UBL_V3;
       default ->
           throw new IllegalArgumentException(
               "Peppol validation applies to UBL documents only, not " + format);
@@ -189,10 +191,10 @@ public final class PeppolValidationStage implements ValidationStage {
    * upload.
    */
   static boolean isPinnedRuleSetRegistered() {
-    return RegistryHolder.REGISTRY.getOfID(PeppolValidation2025_11.VID_OPENPEPPOL_INVOICE_UBL_V3)
+    return RegistryHolder.REGISTRY.getOfID(PeppolValidation2026_05.VID_OPENPEPPOL_INVOICE_UBL_V3)
             != null
         && RegistryHolder.REGISTRY.getOfID(
-                PeppolValidation2025_11.VID_OPENPEPPOL_CREDIT_NOTE_UBL_V3)
+                PeppolValidation2026_05.VID_OPENPEPPOL_CREDIT_NOTE_UBL_V3)
             != null;
   }
 

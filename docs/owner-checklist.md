@@ -42,9 +42,22 @@ Alternative if you prefer clicking over cron: Dokploy → Settings → S3 Destin
 Object Storage bucket, then per-database scheduled backups in the panel. More moving parts, same
 result; the cron path reuses the dump-and-verify pipeline you have already rehearsed.
 
-### 2 · Peppol 2026.5 rule-set upgrade — next working session, before **2026-08-17**
+### 2 · Peppol 2026.5 rule-set upgrade — ✅ done 2026-08-07, ten days early
 
-The next hard date. A code change (phive rules bump plus a corpus re-run), not an ops task.
+No longer an owner item, and it needed **no dependency bump at all**: the already-pinned
+phive-rules 4.4.1 ships `PeppolValidation2026_05` and the full `2026.5` artefact tree. The upgrade
+was a code change plus a corpus re-run, exactly as ADR-0007 predicted.
+
+The corpus came through unchanged — 2026.5's new and escalated rules are scoped to Dutch and Danish
+schemes, and the fixtures are `schemeID="9915"` / `AT`. What the corpus could **not** see, and what
+no existing test caught, was that 2026.5 deleted `BR-CO-25` outright and rewrote two assertions whose
+German translations then described rules that no longer exist. Both are fixed, and both now have
+tests that read the shipped artefacts instead of a hand-typed list.
+
+**You no longer have to remember the next deadline.**
+`PeppolValidationStageTest.noNewerRuleSetIsAlreadyMandatory` enumerates the dated rule sets
+phive-rules publishes and fails the build on the day one of them supersedes the pin, naming the
+version and the date. Nothing about this line needs to be in your calendar any more.
 
 ### 3 · Dependabot PRs — 6 open, routine
 

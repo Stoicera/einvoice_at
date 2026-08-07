@@ -210,7 +210,8 @@ validator's unit tests was extended identically so the two stay mirrors of each 
 
 Three files judged not by this project's own rules but by the **official OpenPeppol rule set**,
 executed unmodified through phive at the version pinned in `PeppolValidationStage`
-(`2025.11` as of 2026-07-25). That difference matters for how they are maintained:
+(`2026.5` since 2026-08-07; `2025.11` before that). That difference matters for how they are
+maintained:
 
 - **`valid/peppol-ubl-invoice.xml`** and **`valid/peppol-ubl-creditnote.xml`** — output of the real
   chain (`PeppolFixtures` → `InvoiceToUblMapper` → the UBL strategy), the UBL counterpart of
