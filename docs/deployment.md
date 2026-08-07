@@ -751,8 +751,25 @@ SPRING_PROFILES_ACTIVE=prod
 # is the difference between a rate limit and the appearance of one.
 SERVER_FORWARD_HEADERS_STRATEGY=native
 
-# Do not publish the full machine-readable API description to anonymous callers.
-API_DOCS_ENABLED=false
+# Publish the OpenAPI document and Swagger UI to anonymous callers. Decided 2026-08-07, having
+# been `false` since the first deployment.
+#
+# WHY THIS IS SAFE HERE, AND WHERE IT WOULD NOT BE. The document is generated from annotations that
+# already sit in a public repository, so publishing the rendered version discloses nothing a reader
+# could not assemble from the source in five minutes. What it *adds* is a working "REST-API ansehen"
+# button on the landing page of a portfolio project whose second audience is software houses with
+# their own invoicing module. Hiding a description of an API whose source is public buys no secrecy
+# and costs the one thing the page is for.
+#
+# It is still a decision and not a default, which is why the flag exists at all. On a deployment
+# holding real customer data, `false` is the right answer: an API description is a map of the attack
+# surface, and Swagger UI is a JavaScript bundle that has had its own CVEs (this repository shipped
+# springdoc 3.1.0 in August 2026 for exactly that reason). Set it back to `false` for any instance
+# that is not a public demonstrator.
+#
+# The links follow the flag. `ApiDocsModelAdvice` publishes it to the templates, so with `false`
+# nothing advertises a page that answers 404 — the defect this line used to cause.
+API_DOCS_ENABLED=true
 
 # --- Identity: validating incoming tokens -----------------------------------
 OAUTH2_ISSUER_URI=https://auth-einvoice.sebastiankern.net/realms/einvoice
