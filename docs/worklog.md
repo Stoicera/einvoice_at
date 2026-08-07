@@ -1,5 +1,32 @@
 # Worklog — einvoice-at
 
+## 2026-08-07 (evening) — The API is on show, and the conditional links proved themselves in production
+
+The owner set `API_DOCS_ENABLED=true` in the Dokploy panel; the deploy was triggered by re-running
+the Deploy job of the last green `main` run, which re-fires the webhook without inventing a commit.
+Container rolled at 15:38:53Z, healthy, `1/1`, and `API_DOCS_ENABLED=true` confirmed **inside the
+running container** rather than only in the panel.
+
+**What this deployment actually tested.** `/swagger-ui.html` answers `302` to
+`/swagger-ui/index.html` (`200`), `/v3/api-docs` answers `200` — all three were `404` this morning.
+More interesting: **the links came back on their own.** Nobody edited a template. `ApiDocsModelAdvice`
+publishes `springdoc.swagger-ui.enabled` to the views, so flipping one environment variable restored
+the landing page's "REST-API ansehen" button and the nav entry. That is the enabled half of the pair
+`OpenApiIT.thePublicPagesLinkToTheApiDocs` pins, demonstrated on production instead of in a test.
+
+**Security posture re-checked with the docs now public**, because that is the direction the exposure
+changed: `/actuator/metrics` and `/actuator/env` still answer `401` anonymously, `/api/v1/invoices`
+still `401`, and the document declares `security: []` on `POST /api/v1/validate` only — the one route
+that really is public. A grep of the published document for credential-shaped strings returns exactly
+one hit, and it is the `GET /api/v1/api-keys` description promising the endpoint lists keys "without
+secrets". All five §9 checks and the Peppol 2026.5 probe still pass.
+
+**Follow-through on a promise the case study made about itself.** Its shot list carried a binding
+provenance note: screenshots 05–07 came from a local instance because production had the docs
+switched off, and the note said to retake them from production and delete the paragraph once that
+changed. Both done the same day, so every image in the marketing package is now from the live
+instance without qualification.
+
 ## 2026-08-07 (afternoon) — Two more false claims, both found by reading the application's own output
 
 The morning's session ended with the API-docs links made conditional. Turning the docs **on** was the
