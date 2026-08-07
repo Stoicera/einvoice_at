@@ -308,9 +308,20 @@ Custom format (`-Fc`) rather than plain SQL: it is compressed, it can be restore
 several times the size for no benefit.
 
 > **Copy the dumps off the machine.** A backup on the same disk as the database is a copy, not a
-> backup. Hetzner Storage Box over `rsync`/`rclone`, or any S3-compatible bucket, is enough — that
-> step is deliberately not scripted here because the destination is yours and a wrong one is worse
-> than none.
+> backup. This *is* scripted now — `scripts/offsite-sync.sh`, chained into the nightly cron after the
+> dump and walked through in `deployment.md` §10.4. It rsyncs to a Hetzner Storage Box (or any
+> rsync-over-SSH destination) and then verifies the copy by downloading the newest dump back and
+> comparing its SHA-256 against the sidecar, because an rsync exit code proves bytes were sent and
+> not that they can be read.
+>
+> The destination is still yours to choose, which is why the script ships **disarmed**: with no
+> `OFFSITE_TARGET` it reports `NOT CONFIGURED` and exits 0. Set `OFFSITE_REQUIRED=1` once storage
+> exists, or a typo'd destination and a missing one look identical in the log.
+>
+> Two things it deliberately does not do, because the obvious `rsync -a --delete` recipe can destroy
+> what it protects: it never passes `--delete` (an emptied local directory would otherwise propagate
+> off-site and delete the last surviving copy), and it refuses to sync an empty source directory at
+> all rather than reporting success over an upstream failure.
 >
 > Hetzner's own **snapshots and backups** are worth enabling as well, and are not a substitute: a
 > snapshot restores a machine, `pg_dump` restores a database into a machine you already trust.

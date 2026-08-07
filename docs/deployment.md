@@ -995,8 +995,13 @@ mkdir -p /opt/einvoice-at/scripts /var/backups/einvoice
 cd /opt/einvoice-at/scripts
 curl -fsSLO https://raw.githubusercontent.com/Stoicera/einvoice_at/main/scripts/backup.sh
 curl -fsSLO https://raw.githubusercontent.com/Stoicera/einvoice_at/main/scripts/restore.sh
-chmod +x backup.sh restore.sh
+curl -fsSLO https://raw.githubusercontent.com/Stoicera/einvoice_at/main/scripts/offsite-sync.sh
+chmod +x backup.sh restore.sh offsite-sync.sh
 ```
+
+`offsite-sync.sh` is installed now even though off-site storage may not exist yet (§10.4). It stays
+inert until it is configured, and installing it here means arming it later is one file rather than a
+second trip through this section.
 
 First confirm the network name and that the database answers to it from inside:
 
