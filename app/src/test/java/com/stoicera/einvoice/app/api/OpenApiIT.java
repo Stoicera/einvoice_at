@@ -32,6 +32,23 @@ class OpenApiIT extends AbstractPostgresIT {
   private final HttpClient http = HttpClient.newHttpClient();
   private final ObjectMapper json = new ObjectMapper();
 
+  /**
+   * The other direction of {@code OpenApiDisabledIT.thePublicPagesStopAdvertisingTheApiDocs}. The
+   * links are conditional now, and the condition fails closed — an absent {@code apiDocsEnabled}
+   * attribute hides the link. Without this test, breaking the wiring would silently remove the API
+   * link from every page and the disabled-side test would still be green, so the pair has to exist
+   * or the fix rots into a permanent omission.
+   */
+  @Test
+  void thePublicPagesLinkToTheApiDocs() throws Exception {
+    assertThat(get("/").body())
+        .as("with the docs enabled the landing page offers them")
+        .contains("/swagger-ui.html");
+    assertThat(get("/validator").body())
+        .as("with the docs enabled the validator page offers them")
+        .contains("/swagger-ui.html");
+  }
+
   @Test
   void apiDocsIsReachableAnonymouslyAndDescribesTheApi() throws Exception {
     HttpResponse<String> response = get("/v3/api-docs");

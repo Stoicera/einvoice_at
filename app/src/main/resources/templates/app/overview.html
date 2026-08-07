@@ -37,7 +37,7 @@
       <h2>Letzte Rechnungen</h2>
       <p class="muted" th:if="${#lists.isEmpty(invoices)}">
         Noch keine Rechnungen. Legen Sie Ihre erste über den Assistenten an — oder über die
-        <a th:href="@{/swagger-ui.html}">REST-API</a>.
+        <a th:href="@{/swagger-ui.html}" th:remove="${apiDocsEnabled} ? none : tag">REST-API</a>.
       </p>
       <!--/* th:unless must NOT sit on the same element as th:replace: th:replace has the higher
              precedence and runs first, so the condition would never be consulted and the table
