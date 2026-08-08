@@ -106,7 +106,7 @@
     <!-- OWASP Dependency-Check (ENGINEERING_STANDARDS §4 and §6: "Dependency-Scanning in CI:
          Dependabot + OWASP Dependency-Check"). Version verified against Maven Central
          maven-metadata.xml on 2026-07-25: 12.2.2 is both <latest> and <release>. -->
-    <dependency-check-maven.version>12.2.2</dependency-check-maven.version>
+    <dependency-check-maven.version>13.0.0</dependency-check-maven.version>
 
     <!-- Fail the security scan on anything CVSS 7.0 or above (the CVSS v3 "High" floor). Not 0:
          a gate that trips on every informational advisory gets switched off, which is worse than
