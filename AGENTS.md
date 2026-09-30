@@ -9,22 +9,24 @@ Two founders (Sebastian Kern, Raphael Lugmayr), Upper Austria. Brands: Stoicera 
 
 See `docs/00_ssot.md`. One sentence here: Austrian e-invoicing platform (ebInterface 6.1, Peppol BIS 3.0), for Austrian companies and integrators.
 Non-goals: <three bullets>.
-Active PRD: `docs/prd/NN_*.md` — read before building.
+Active PRD: `docs/PRD.md` — read before building.
 
 ## How we work here
 
 - Work = GitHub issue. Questions as issue comments, not chat.
 - Fresh git worktree per task from `origin/main` (never build on main), PR against `main` with `Closes #NN` and the template Intent · Gherkin · Evidence · Debt taken · Open. Small PRs. CI green before PR. Full loop: `ai/prompts/factory-feature.md`.
-- Build: `<cmd>` · Test: `<cmd>` · Lint/Typecheck: `<cmd>` · Migrate: `<cmd>`
-- Deploy: push to `main` → GitHub Actions → Coolify (`<app name>`) → smoke test → Sentry check. PostHog receives events from `main` (big products). Rollback: `<cmd>`.
-- Preview per PR at `<pattern>`.
+- Build: `./mvnw verify` (Spotless check + unit + integration tests; Testcontainers, needs Docker) · Test (fast): `./mvnw test -pl core` · E2E: `./mvnw -pl e2e verify -Pe2e` · Load: `./mvnw -pl e2e gatling:test -Pload` (needs a running stack)
+- Lint/Format: `./mvnw spotless:apply` (the check runs inside `./mvnw verify`) · Security: `./mvnw -Psecurity verify` (needs `NVD_API_KEY`) · Local stack: `docker compose up -d`
+- Migrate: Flyway runs on application start (`spring-boot-starter-flyway` in `app/pom.xml`); no separate command.
+- Deploy: push to `main` → `.github/workflows/ci.yml` → image to GHCR → job `Deploy (Dokploy webhook)` → smoke test per `docs/deployment.md` §9. Rollback: `<cmd>` (no manual command in the repo yet; a failed rollout reverts itself via Swarm `FailureAction: rollback`, `docs/deployment.md` §8.3).
+- No per-PR preview: the deploy job runs on push to `main` only.
 - Before you request review: check the result against the intent, fix deviations yourself. Copilot review runs automatically on every PR; a second model reviews security.
 - Decisions with reach → `docs/decisions/` (ADR, one page). Cycle memo → `docs/cycles/`.
 - After any production change: append one line to `ops/runlog.md` (date · agent · what · rollback).
 
 ## Conventions
 
-- Stack: <Next.js 15, TypeScript strict, Prisma, PostgreSQL 17, Tailwind, shadcn/ui>.
+- Stack: Java 25, Spring Boot 4.1, Maven multi-module (Maven Wrapper), Thymeleaf, Flyway, PostgreSQL 17, Keycloak, Docker Compose.
 - Money in cents (integer), time zone Europe/Vienna, tenant id on every table.
 - No new dependency without one sentence of justification in the PR. No speculative abstractions.
 - Tests: unit for logic, integration for API, one E2E per critical path. Synthetic data only.
