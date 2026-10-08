@@ -21,6 +21,9 @@
 #   OFFSITE_REQUIRED   set to 1 once off-site storage is armed; makes a missing OFFSITE_TARGET a
 #                      hard error instead of a clean skip.
 #   OFFSITE_VERIFY     set to 0 to skip the read-back verification (default 1; see VERIFICATION).
+#   OFFSITE_PATTERN    dump file glob to sync (default einvoice-*.dump); each product's cron line
+#                      passes its own (keycloak-*.dump, *.sql.gz for migration-lab). A .sha256
+#                      sidecar next to a dump is synced too; without one the local file is hashed.
 #
 # Cron: chained after the dump so it can only run on a dump that succeeded — docs/deployment.md §10.4
 # installs the exact line.
@@ -45,6 +48,7 @@
 # That catches a truncated upload, a wrong remote path, and a remote that silently accepts writes
 # it cannot serve.
 set -euo pipefail
+umask 077
 
 SOURCE_DIR="${1:-/var/backups/einvoice}"
 
@@ -66,6 +70,7 @@ OFFSITE_SSH_KEY="${OFFSITE_SSH_KEY:-/root/.ssh/storagebox}"
 OFFSITE_SSH_PORT="${OFFSITE_SSH_PORT:-23}"
 OFFSITE_REQUIRED="${OFFSITE_REQUIRED:-0}"
 OFFSITE_VERIFY="${OFFSITE_VERIFY:-1}"
+OFFSITE_PATTERN="${OFFSITE_PATTERN:-einvoice-*.dump}"
 
 # Not configured yet is a legitimate state: this script ships and is installed before the storage
 # account exists, so that arming it later is one env file and no code change. It must never be a
@@ -101,8 +106,8 @@ done
 
 # See departure 2 above. `find -print -quit` stops at the first hit rather than listing a directory
 # that may hold years of dumps.
-if [ -z "$(find "$SOURCE_DIR" -maxdepth 1 -name 'einvoice-*.dump' -type f -print -quit)" ]; then
-  echo "error: ${SOURCE_DIR} contains no einvoice-*.dump files — refusing to sync an empty source" >&2
+if [ -z "$(find "$SOURCE_DIR" -maxdepth 1 -name "$OFFSITE_PATTERN" -type f -print -quit)" ]; then
+  echo "error: ${SOURCE_DIR} contains no ${OFFSITE_PATTERN} files — refusing to sync an empty source" >&2
   echo "  (an empty backup directory is an upstream failure, not something to mirror off-site)" >&2
   exit 1
 fi
@@ -116,8 +121,8 @@ echo "Syncing ${SOURCE_DIR}/ -> ${OFFSITE_TARGET}"
 # completion) is the atomic behaviour we want.
 rsync --archive --human-readable --stats \
   -e "$SSH_CMD" \
-  --include='einvoice-*.dump' \
-  --include='einvoice-*.dump.sha256' \
+  --include="${OFFSITE_PATTERN}" \
+  --include="${OFFSITE_PATTERN}.sha256" \
   --exclude='*' \
   "${SOURCE_DIR}/" "${OFFSITE_TARGET}"
 
@@ -128,7 +133,7 @@ fi
 
 # Verify by reading back, not by trusting the exit code. The newest dump is the one a restore would
 # reach for, so it is the one worth proving.
-NEWEST="$(find "$SOURCE_DIR" -maxdepth 1 -name 'einvoice-*.dump' -type f -printf '%T@ %p\n' \
+NEWEST="$(find "$SOURCE_DIR" -maxdepth 1 -name "$OFFSITE_PATTERN" -type f -printf '%T@ %p\n' \
   | sort -rn | head -1 | cut -d' ' -f2-)"
 NEWEST_NAME="$(basename "$NEWEST")"
 
@@ -141,7 +146,11 @@ echo "Verifying ${NEWEST_NAME} by reading it back from off-site storage"
 rsync --archive -e "$SSH_CMD" \
   "${OFFSITE_TARGET%/}/${NEWEST_NAME}" "${TMP_DIR}/${NEWEST_NAME}"
 
-EXPECTED="$(cut -d' ' -f1 < "${NEWEST}.sha256")"
+if [ -r "${NEWEST}.sha256" ]; then
+  EXPECTED="$(cut -d' ' -f1 < "${NEWEST}.sha256")"
+else
+  EXPECTED="$(sha256sum "$NEWEST" | cut -d' ' -f1)"
+fi
 ACTUAL="$(sha256sum "${TMP_DIR}/${NEWEST_NAME}" | cut -d' ' -f1)"
 
 if [ "$EXPECTED" != "$ACTUAL" ]; then
@@ -151,5 +160,5 @@ if [ "$EXPECTED" != "$ACTUAL" ]; then
   exit 1
 fi
 
-REMOTE_COUNT="$($SSH_CMD "${OFFSITE_TARGET%%:*}" "ls ${OFFSITE_TARGET#*:} 2>/dev/null | grep -c '\.dump$'" 2>/dev/null || echo '?')"
+REMOTE_COUNT="$($SSH_CMD "${OFFSITE_TARGET%%:*}" "ls ${OFFSITE_TARGET#*:} 2>/dev/null | grep -c -v '\.sha256$'" 2>/dev/null || echo '?')"
 echo "OK: ${NEWEST_NAME} verified off-site (sha256 matches); ${REMOTE_COUNT} dump(s) now stored remotely"
