@@ -12,7 +12,9 @@ Status: 2026-07-27 · Milestone M6 · Applies to `main`
 
 Report privately, not as a public issue:
 
-- **E-mail:** security@stoicera-software.at
+- **Preferred:** GitHub private vulnerability reporting —
+  [open a draft advisory](https://github.com/Stoicera/einvoice_at/security/advisories/new).
+- **E-mail:** office@stoicera.com, subject starting with `[security] einvoice-at`.
 - Include: affected version or commit, reproduction steps, and what an attacker gains.
 - We acknowledge within **72 hours** and aim to have a fix or a stated position within **14 days**.
 - Please give us those 14 days before publishing. If a fix takes longer, we will say so and why.
