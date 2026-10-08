@@ -1,3 +1,5 @@
+@AGENTS.md
+
 # CLAUDE.md — einvoice-at
 
 You are working on **einvoice-at**: a production-grade Java/Spring Boot platform for generating, validating and converting Austrian e-invoices (ebInterface 6.1, Peppol BIS Billing 3.0 UBL). This repository is a public portfolio piece of the Stoicera Software Group — it must read like the work of a senior enterprise Java engineer. Quality over speed, always.
