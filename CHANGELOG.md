@@ -14,6 +14,46 @@ All notable changes to this project are documented here. The format follows
 
 Nothing yet.
 
+## [0.2.0] — 2026-10-09
+
+Maintenance and launch preparation since `v0.1.0`: the Peppol rule set 2026.5, a CVE dependency
+update, two privacy and security fixes, and problem `type` URIs that finally resolve.
+
+### Changed — API-visible
+
+- **Problem `type` URIs** now live under `https://einvoice.sebastiankern.net/problems/` instead of
+  `https://einvoice-at.stoicera.com/problems/`, a host that never resolved. The slugs are
+  unchanged, so a client that branches on the slug is unaffected; one that compares the full URI
+  must update it. The base is configurable (`PROBLEM_TYPE_BASE_URI`), and every
+  `/problems/<slug>` on the demo redirects to [docs/problems.md](docs/problems.md), which lists
+  all slugs. (#43)
+
+### Added
+
+- **Peppol BIS Billing 3.0 rule set 2026.5**, adopted ahead of OpenPeppol's 2026-08-17 date. (#26)
+- **Off-site copy of database dumps**, with a check that the copy is readable; the host backup
+  scripts are now the ones in this repository. (#25, #35)
+- `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, a question issue template and `llms.txt`. (#44)
+
+### Fixed
+
+- **Anonymous uploads stay in memory.** The public validator promised an upload never touches a
+  disk; with Boot's default multipart threshold it was briefly written to a temp file. (#29)
+- **ReDoS in the PII scrubber.** The e-mail pattern backtracked quadratically: 40,000 characters of
+  crafted text took about 7 s. Bounded to RFC 5321 lengths; CodeQL alert closed. (#42)
+- The OpenAPI description called UBL support future work although it had shipped (#28); the API
+  docs links disappear on deployments that switch the docs off (#27).
+
+### Security and dependencies
+
+- Spring Boot 4.1.1, Tomcat 11.0.26, Netty 4.2.19 (CVE fix). (#38)
+- phive-rules 4.4.2, jaxb-runtime 4.0.9, the `eclipse-temurin` base image, Spotless 3.9.0,
+  ArchUnit 1.5.0, and the `docker/login-action`, `actions/setup-java` and
+  `docker/setup-buildx-action` workflow actions. (#13, #16, #33, #15, #32, #12, #23, #34)
+- The OWASP Dependency-Check job is bounded to 90 minutes. (#41)
+- `SECURITY.md`: the disclosure address had no DNS; reports now go through GitHub private
+  vulnerability reporting or office@stoicera.com. (#40)
+
 ## [0.1.0] — 2026-07-27
 
 The first release. A self-hostable platform that generates, validates and converts Austrian
@@ -119,5 +159,6 @@ successes is marketing:
 - This platform is **not a certified Peppol Access Point** and sends invoices nowhere.
 - No ZUGFeRD/Factur-X hybrid PDF.
 
-[Unreleased]: https://github.com/Stoicera/einvoice_at/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Stoicera/einvoice_at/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Stoicera/einvoice_at/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Stoicera/einvoice_at/releases/tag/v0.1.0

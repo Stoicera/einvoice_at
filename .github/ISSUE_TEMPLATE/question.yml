@@ -1,0 +1,16 @@
+name: Question
+description: Ask how something works or whether it fits your use case
+labels: ["question"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What do you want to know? For e-invoice questions, name the format (ebInterface 6.1 or Peppol BIS 3.0).
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What you tried, which version or commit, links. No real invoices or personal data — use the files in samples/.
