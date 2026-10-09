@@ -1,7 +1,9 @@
 package com.stoicera.einvoice.aiassist.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -36,6 +38,28 @@ class PiiScrubberTest {
   void masksAnEmailAddress() {
     assertThat(PiiScrubber.scrub("Biller-E-Mail office@stoicera-software.at fehlt"))
         .isEqualTo("Biller-E-Mail [E-MAIL] fehlt");
+  }
+
+  @Test
+  void masksAnAddressAtTheRfc5321LengthLimits() {
+    String local = "a".repeat(64);
+    String domain = "b".repeat(60) + ".example.at";
+    assertThat(PiiScrubber.scrub("Kontakt " + local + "@" + domain + " fehlt"))
+        .isEqualTo("Kontakt [E-MAIL] fehlt");
+  }
+
+  /**
+   * CodeQL java/polynomial-redos. With unbounded quantifiers, 40,000 characters of {@code "b.b."}
+   * took about 7 seconds to scrub; the shapes below are the ones that were quadratic. The text is
+   * caller-supplied (the public report view posts a finding back), so this is a CPU lever, not a
+   * curiosity. Two seconds is generous for CI and far below what the unbounded pattern needed.
+   */
+  @Test
+  void scrubsAdversarialInputInLinearTime() {
+    for (String hostile :
+        List.of("b.".repeat(50_000), "a@" + "b.".repeat(50_000), "b-".repeat(50_000) + "@")) {
+      assertTimeoutPreemptively(Duration.ofSeconds(2), () -> PiiScrubber.scrub(hostile));
+    }
   }
 
   @Test
