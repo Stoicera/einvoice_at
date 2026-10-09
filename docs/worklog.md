@@ -1,5 +1,311 @@
 # Worklog — einvoice-at
 
+## 2026-08-07 (evening) — The API is on show, and the conditional links proved themselves in production
+
+The owner set `API_DOCS_ENABLED=true` in the Dokploy panel; the deploy was triggered by re-running
+the Deploy job of the last green `main` run, which re-fires the webhook without inventing a commit.
+Container rolled at 15:38:53Z, healthy, `1/1`, and `API_DOCS_ENABLED=true` confirmed **inside the
+running container** rather than only in the panel.
+
+**What this deployment actually tested.** `/swagger-ui.html` answers `302` to
+`/swagger-ui/index.html` (`200`), `/v3/api-docs` answers `200` — all three were `404` this morning.
+More interesting: **the links came back on their own.** Nobody edited a template. `ApiDocsModelAdvice`
+publishes `springdoc.swagger-ui.enabled` to the views, so flipping one environment variable restored
+the landing page's "REST-API ansehen" button and the nav entry. That is the enabled half of the pair
+`OpenApiIT.thePublicPagesLinkToTheApiDocs` pins, demonstrated on production instead of in a test.
+
+**Security posture re-checked with the docs now public**, because that is the direction the exposure
+changed: `/actuator/metrics` and `/actuator/env` still answer `401` anonymously, `/api/v1/invoices`
+still `401`, and the document declares `security: []` on `POST /api/v1/validate` only — the one route
+that really is public. A grep of the published document for credential-shaped strings returns exactly
+one hit, and it is the `GET /api/v1/api-keys` description promising the endpoint lists keys "without
+secrets". All five §9 checks and the Peppol 2026.5 probe still pass.
+
+**Follow-through on a promise the case study made about itself.** Its shot list carried a binding
+provenance note: screenshots 05–07 came from a local instance because production had the docs
+switched off, and the note said to retake them from production and delete the paragraph once that
+changed. Both done the same day, so every image in the marketing package is now from the live
+instance without qualification.
+
+## 2026-08-07 (afternoon) — Two more false claims, both found by reading the application's own output
+
+The morning's session ended with the API-docs links made conditional. Turning the docs **on** was the
+owner's decision (`API_DOCS_ENABLED=true`, recorded in `deployment.md` §8 with the reasoning: the
+annotations are already public in this repository, so publishing the rendered document discloses
+nothing, while the landing page's call to action is the point of the page). Screenshotting the result
+for the case study is what turned up the rest.
+
+**The OpenAPI description announced work it had already shipped.** `/v3/api-docs` opened with "the
+current focus is ebInterface 6.1 …; Peppol BIS Billing 3.0 UBL support follows in a later
+milestone" — written before M4 and never revisited, in the same document that publishes
+`/api/v1/convert` and `/api/v1/invoices/{id}/ubl`. The first paragraph an integrator reads
+contradicted the paths beneath it, and undersold the platform's headline capability. Caught because
+it would have gone into a marketing screenshot stating that the thing the case study is *about* is
+not built yet. The replacement is asserted **against the document's own paths**, not against a
+literal, so it stays a consistency check rather than another string somebody must remember (PR #28).
+
+**The privacy promise was not quite true.** The validator page says, in bold: *"kein Prüfbericht,
+kein Protokolleintrag, keine Datei auf einem Datenträger."* The last clause was false.
+`spring.servlet.multipart.file-size-threshold` defaults to `DataSize.ofBytes(0)` — read out of
+`MultipartProperties` in `spring-boot-servlet-4.1.0.jar`, not recalled — and this application set
+only the two size caps. A zero threshold streams every uploaded part straight to a temporary file.
+
+Observed rather than reasoned about: with a 1.9 MB upload in flight,
+`work/Tomcat/localhost/ROOT/upload_*.tmp` existed on disk. Tomcat removes it when the request ends,
+so nothing lingered — but an invoice payload had still been written to a disk, which is exactly what
+the sentence excluded. **On a platform that makes data protection a headline feature, the gap between
+the claim and the mechanism is the defect; the retention window is not the point.** Fixed by setting
+the threshold to the accepted maximum, so nothing the application will accept can exceed what it
+keeps in memory. Re-measured with the identical upload and watcher: `SPOOLED=1` before, `SPOOLED=0`
+after (PR #29).
+
+The test asserts the **bound**, not an absence, and the Javadoc says why: the spooled file exists
+only *during* the request, so "assert the directory is empty afterwards" would pass just as happily
+with the bug present. `threshold >= max-file-size` is what makes the promise true and is what a
+future change would break by raising the cap alone.
+
+**Marketing material is prepared and separated from the code.** The case-study fact base lives in the
+private SSOT repository as document 16 — every number with a source *and* a measurement date, eight
+Beweisstücke, a binding Sperrliste — with seven curated screenshots. Two claims were deliberately
+written **down** rather than up, because this project's whole message is verifiability: Lighthouse
+100/100/100/100 is a measurement while the CI gate is 95, and "zertifiziert / vom Bund geprüft" is
+not true where "executes the official OpenPeppol rule set unmodified" is.
+
+**Standing lesson, sharpened.** Every defect this session came from executing something and reading
+what came back — a browser on the live site, a rule-set upgrade against real artefacts, a temp
+directory watched during an upload. None came from reading code, and none would have been caught by
+adding coverage: each one lived in the gap between a *claim* and a *mechanism*, and a test suite only
+checks the claims somebody thought to write down. Three of the four claims that failed were written
+by this project about itself.
+
+**Verification.** `./mvnw verify` green throughout; PRs #28 and #29 CI-green and merged, each
+deployed and re-checked against the running instance.
+
+## 2026-08-07 — Peppol 2026.5 ten days early, an off-site backup that reads itself back, and a dead button on the front page
+
+Four things closed today, and the most interesting one was found by a browser rather than by a test.
+
+**§11's CI half, finally proven.** Yesterday's entry left one loose end: the webhook's CI half was
+configured but unproven, because the GitHub Actions outage had starved the run's tail and the Deploy
+job never executed. Rerun today: all six jobs green, Deploy logged
+`{"message":"Application deployed successfully"}` at 06:42:57Z, and the container's `StartedAt` is
+**06:43:04Z**. Seven seconds is the causal link the earlier entry could not show. Auto-deploy is done.
+
+**Peppol 2026.5, adopted 2026-08-07 for a 2026-08-17 deadline — and no dependency bump was needed.**
+The already-pinned phive-rules 4.4.1 ships `PeppolValidation2026_05` and the whole 2026.5 artefact
+tree, verified by listing the jar rather than by recall. So the upgrade was a pure code diff, which
+made the corpus delta attributable to the rule set alone.
+
+The corpus stayed green, as predicted — 2026.5's added and escalated rules are scoped to Dutch and
+Danish schemes while the fixtures carry `schemeID="9915"` and `AT`. **What the corpus could not see
+is the part worth recording:**
+
+- `BR-CO-25` was deleted with no successor, and the German catalogue went on translating it. *Every
+  test stayed green.* `theCatalogCoversEveryPeppolSpecificRuleOfThePinnedRuleSet` reads as though it
+  checks the catalogue against the pinned rule set; it compares against a list typed into the test
+  file. The size test only compares the catalogue with itself. Two tests, both blind in the same
+  direction, and the name of the first is what made the gap invisible.
+- Two translations became *factually wrong*, not merely imprecise. R007's profile check is now a
+  closed allowlist admitting the two French billing profiles, so the old German — which promised a
+  `urn:…:billing:NN:1.0` format — would have sent a rejected filer off to construct an identifier
+  the rule set does not accept. R004 was always `starts-with`, never equality, and 2026.5 adds a
+  prohibition on `::`.
+
+Both are fixed, and both now have tests that read the shipped XSLT artefacts instead of a
+hand-maintained list. The next deadline no longer depends on anyone remembering it:
+`noNewerRuleSetIsAlreadyMandatory` enumerates the dated rule sets phive-rules publishes and fails the
+build the day one supersedes the pin, naming the version and the date. **Proven falsifiable** by
+rolling the pin back to 2025.5, which reports that 2025.11 became mandatory on 2026-02-23.
+
+Verified live after the merge, and not by inspecting the tag: a UBL invoice whose `CustomizationID`
+carries `::` — legal under 2025.11, rejected under 2026.5 — now comes back from production as
+`PEPPOL-EN16931-R004`, in the German wording written this morning.
+
+**A dead button on the landing page, live for a day.** Production runs `API_DOCS_ENABLED=false`, so
+`/swagger-ui.html` answers 404 — while `index.html` rendered a "REST-API ansehen" button pointing at
+it and the shared layout an "API" nav entry on every page. On the front page of a public portfolio
+repository, on the one thing an enterprise reviewer clicks first.
+
+No test caught it because none asserted anything about the *HTML* of a docs-disabled deployment.
+`OpenApiDisabledIT` even claimed in its own Javadoc that the docs were "genuinely gone, **not merely
+unlinked**" — the first half was tested and the second half was never true. `application.yml` had
+already written down the principle ("one flag drives both, so the document and the UI can never
+disagree about being exposed"); the templates were simply never part of that guarantee, and now are,
+via a `ControllerAdvice` rather than six `addAttribute` calls, because the link is in the layout
+fragment and one forgotten handler would restore the bug. Both directions are pinned — the
+disabled-side test alone would stay green if the wiring broke and the link vanished everywhere.
+
+**Off-site backups, and a recipe retracted.** The nightly dump lived on the same disk as the database
+it dumped. `scripts/offsite-sync.sh` closes that, chained into cron with `&&` so it can only run on a
+dump that succeeded, and it **verifies by reading back** — the newest dump is downloaded again and
+its SHA-256 compared against the sidecar, because an rsync exit code proves bytes were sent, not that
+they can be read. Falsifiability checked by truncating the remote copy and watching the comparison
+fail.
+
+The owner checklist's earlier `rsync -a --delete` recommendation is **retracted in place, with the
+reason**: mirroring propagates an emptied local directory off-site on the next nightly run and
+deletes the last surviving copy at exactly the moment it is needed. The script omits `--delete` and
+treats an empty source directory as a hard error. It ships disarmed — `NOT CONFIGURED`, exit 0 —
+so it could be installed and cron-wired before the storage account exists; `OFFSITE_REQUIRED=1`
+converts that skip into a failure once it does, because otherwise a typo'd target and a missing one
+look identical in the log until a restore.
+
+**Also:** `docs/VERMARKTUNG.md` sat untracked and un-ignored in a **public** repository, one
+`git add .` from publishing named prospects, a named academic contact and a partner's separate
+projects. Now ignored, with its home named (the private SSOT repo).
+
+**Standing lesson.** Two of today's four defects were invisible to a green build and were found by
+*executing the thing* — a browser on the live site, and a rule-set upgrade run against real
+artefacts. The other two were found by reading this repository's own documents as a hostile reviewer
+rather than as their author. A test suite proves the code does what the tests say; it cannot notice
+that a test's *name* is a claim nobody checks, or that a page links somewhere that does not exist.
+
+**Verification.** `./mvnw verify` green throughout (1080 tests at the session's start, **1084** after
+the Peppol work, plus the two link tests). CI green on PRs #25/#26/#27; #26 and #27 merged and both
+deployed themselves to production, each confirmed against the running instance rather than the panel.
+
+**Next**
+
+- Owner: order the Hetzner Storage Box and write `/opt/einvoice-at/offsite.env` — `deployment.md`
+  §10.4, four lines, no code or cron change after it.
+- Owner's call: whether `API_DOCS_ENABLED` should be `false` in production at all. The OpenAPI
+  annotations are already public in this repository, so publishing the rendered document leaks
+  nothing new, while the landing page's call to action is a real selling point. Both states are
+  correct now; only one shows the API.
+- Split `${phive-rules.version}`: `phive-rules-ebinterface` has moved to the `phive-rules-foundations`
+  project with no 4.5.x line, so the single shared property cannot go past 4.4.2.
+- The due-diligence pass run today produced findings beyond the four fixed here — the universal
+  round-trip claim in `README.md` is false for `corpus/valid/minimal.xml`, and `README`/`MILESTONES`
+  still say the live instance and the `v0.1.0` tag are outstanding. Both are recorded for the next
+  session.
+
+## 2026-08-06 (evening) — The completion sprint: backups, hardening, and two CVE gates the world moved
+
+One autonomous session closed everything that stood between the morning's first login and a
+finished M6: deployment steps §10–§11, the owner checklist, and a CI that had been silently red
+on `main` since 2026-08-01 — through docs-only merges, so the code had not changed. The world had.
+
+**§10 backups, done and rehearsed.** Scripts installed to `/opt/einvoice-at/scripts` from `main`;
+first dump taken and archive-verified (16K, 31 entries); nightly cron at 02:15 with credentials in
+a root-only 0600 env file and the newline-terminated cron file; restore rehearsed into
+`einvoice_drill` — row counts matched the live database exactly (tenant 1, flyway 2, rest 0) —
+then dropped. The dump still lives on the same disk as the database; the off-site copy is the one
+open operational item (owner-checklist.md).
+
+**Hardening audit, all green.** fail2ban exempts the Dokploy panel (46.224.182.114) and is
+actively banning others (9 at audit time); external scan shows only 22/80/443 reachable
+(2377/3000/5432/8080/9000 closed); sshd is key-only; `KC_BOOTSTRAP_*` is gone from Keycloak's
+environment; unattended-upgrades on; no Swarm service publishes a port; the app service carries
+`start-first` + `rollback` and no health-check override.
+
+**§9 re-verified, and one check corrected.** All five pass, including a real Playwright browser
+login to the dashboard. The forged-`X-Forwarded-For` probe first answered `200` — and that was the
+*check* being wrong, not the defense: a single probe races the one-token-per-second refill. Five
+forged addresses back-to-back separated the outcomes (4×429, one refill 200, control 429);
+deployment.md §9 now documents the deterministic variant.
+
+**The red CI: three fixes, one PR (#18).**
+
+- *OWASP gate:* the NVD published a CVE batch against DOMPurify 3.3.2, embedded in swagger-ui
+  5.32.2, bundled by springdoc 3.0.3. Fixed by springdoc 3.1.0 — bundles swagger-ui 5.32.11 /
+  DOMPurify 3.4.12 (verified by extracting the webjar), and its POM parent is exactly this repo's
+  Boot 4.1.0.
+- *Mid-PR, the NVD moved again:* CVE-2026-66299 (7.5) against tomcat-embed 11.0.24 — an unbounded
+  buffer in the WebSocket chat **example** of the Tomcat distribution, a component no embed jar
+  ships. Tomcat 11.0.25 is not on Maven Central, so: documented suppression expiring 2026-10-31.
+  Its first version named `tomcat-embed-core`; the next scan raised the identical finding against
+  `tomcat-embed-websocket` — every embed artifact carries the product-wide `cpe:/a:apache:tomcat`.
+  Now scoped to `tomcat-embed-*`, still pinned to the one CVE.
+- *Browser E2E `logsOut`, failing 5/5 on the runner and passing locally with identical
+  digest-pinned images:* a diagnostics branch (#20) dumped the cookie jar and found
+  `KEYCLOAK_IDENTITY` back **immediately after `deleteAllCookies()`**. The account console is a
+  SPA whose check-SSO dance is still in flight on a slow machine when the deletion runs, and any
+  of its responses re-sets the SSO cookie; `/app` then re-authenticates silently and the test
+  hunts a login form on the dashboard, every log clean. Fix: delete cookies from the realm's
+  discovery document — same realm path, pure JSON, nothing in flight — and assert the jar is
+  empty so a regression fails at the cause. First green E2E run since 08-01.
+
+**Merged under a stated risk.** A GitHub Actions incident ("Partial System Outage") starved the
+last two jobs of the gate run for over an hour. #18 was merged with 4/6 green — the four included
+both previously-failing gates on the exact head SHA; the starved two (mutation tests over modules
+this PR does not touch; `verify`, green locally) could not be affected by the diff. The
+merge-triggered `main` run is the definitive record once GitHub recovers; anything it finds gets
+fixed forward.
+
+**Also:** `DOKPLOY_DEPLOY_WEBHOOK` set (§11); About box filled including the live website (A1);
+branch protection and the v0.1.0 release follow this entry's merge, in that order, so the tag
+carries the finished docs.
+
+**Standing lesson.** A pinned, reproducible build does not pin the *judgment* of the world about
+it: two CVE publications turned a green repo red in one week without a single changed line. The
+gate is doing exactly its job — the response discipline is upgrade first, suppress only what is
+provably unreachable, and give every suppression an expiry so the claim has to be re-argued.
+
+## 2026-08-06 — App 502 at §8.3: a malformed health check, and fail2ban banning Dokploy
+
+The owner reached §8.3 and got a persistent `502` from `einvoice.sebastiankern.net` for over an hour,
+with an application log that was clean to its last line — Tomcat on 8080, both Flyway migrations
+applied, `Started EinvoiceApplication in 6.534 seconds`, and nothing after it. Two independent
+faults were stacked, which is why nothing added up.
+
+**Root cause 1 — the health check produced no probe.** Dokploy's *Swarm Settings → Health Check* is a
+form with a **separate `Test` input**, and it wraps whatever is typed into a one-element array. §8.3
+told the owner to enter the Docker API's `["CMD", "wget", …]`, so dockerd received
+`Test: ["[\"CMD\", \"wget\", …]"]` — an array whose sole element is the literal text of an array.
+Docker requires `Test[0]` ∈ {`CMD`, `CMD-SHELL`, `NONE`}; it matched none, so the daemon logged
+`Unknown healthcheck type '["CMD", "wget", …]' (expected 'CMD')` and built **no probe at all**.
+
+With no probe the container never emits a `health_status` event, and Swarm waits for that event
+before promoting a task `Starting → Running`. The task sat in `Starting` for 52 minutes, the service
+stayed at `0/1`, the service VIP had no backend, and Traefik answered 502 in ~0.13 s. Every
+component was individually correct and silent: the Traefik route was right
+(`http://…-einvoiceapp-…:8080`, on `dokploy-network`), and `docker exec … wget -qO-
+http://localhost:8080/actuator/health/readiness` returned `{"status":"UP"}` throughout.
+
+**Root cause 2 — fail2ban banned the Dokploy control plane.** Mid-session Dokploy began reporting
+`SSH connection error: connect ECONNREFUSED …:22`. sshd was `active` and listening on `0.0.0.0:22`,
+`ufw` showed `22/tcp ALLOW IN Anywhere`, and an ordinary SSH login from the owner's laptop succeeded
+— because the ban is per source IP. Dokploy opens a burst of parallel SSH sessions per operation and
+drops the surplus pre-auth; the `sshd` jail runs `mode = aggressive`, which counts every `[preauth]`
+disconnect as a failure. Ban placed 10:55:02; `bantime.increment` plus an earlier flag on 08-02
+escalated it past the 1 h base. `banaction = nftables` rejects rather than drops, hence
+`ECONNREFUSED` and not a timeout.
+
+**Corroboration that excluded the alternatives.** `Config.Healthcheck` present while `State.Health`
+was `null` is only possible if dockerd refused to build the probe — confirmed directly by the daemon
+warning in `journalctl -u docker`. The application was excluded as a cause by the in-container
+`wget`, and the routing layer by reading the generated
+`/etc/dokploy/traefik/dynamic/…-einvoiceapp-….yml` (correct host, service, port 8080). For the ban,
+the timestamps are decisive on their own: banned at 10:55:02, first diagnostic login at 11:53:47.
+
+**What changed**
+
+- `deployment.md` §8.3: leave the Health Check fields **empty** — the image's `HEALTHCHECK` is in
+  version control, Swarm honours it identically, and one definition cannot disagree with itself. The
+  form-input mangling and the resulting silent `0/1` are written out so the advice is not "simplified"
+  back later.
+- `deployment.md` §8.3 troubleshooting: a row for *clean logs + 502*, plus a three-command routing
+  diagnostic (`docker service ls` → `docker service ps --no-trunc` → `.Config.Healthcheck` vs
+  `.State.Health`), and the note that a zero-task Swarm VIP refuses instantly rather than timing out.
+- `deployment.md` §2: a new subsection on exempting the Dokploy control plane from fail2ban before
+  the first deploy, with the `ignoreip` recipe and the reason `aggressive` mode catches it.
+- `deployment.md` §8.1 / §9: `/actuator/info` answers 401 anonymously (`SecurityConfig` permits only
+  `/actuator/health/**`), and `/app`'s first hop is Spring's own entry point, not Keycloak — §9 now
+  follows the chain to prove it terminates at the realm's authorization endpoint.
+
+**Verification.** Service `1/1`, task `Running`, spec healthcheck `null`, container `HEALTH=healthy`
+(FailingStreak 0). All five §9 checks pass: health `UP`; anonymous validate → `{"id": null, "valid":
+true}` (validated, not stored); landing `200`; `/app` → 2 redirects → Keycloak with
+`client_id=einvoice-web` and `code_challenge_method=S256`; HTTP → HTTPS. The fifth check now has its
+first production evidence — rate limited after 75 anonymous requests, and a forged
+`X-Forwarded-For` (single **and** chained) still answered `429`, confirming the `native` strategy
+holds behind the real Traefik.
+
+**Standing lesson.** A 502 is a statement about routing, never about the code — so when the
+application log is clean, stop reading it. The diagnostic order is Swarm replica count, then task
+state, then whether a health probe exists at all. And a health check defined in a UI text field is a
+second source of truth that the Dockerfile already owns; prefer the one under review.
+
 ## 2026-08-01 — Keycloak 502 during the live deployment: Dokploy's `Command` is the entrypoint
 
 The owner reached §7.3 and got a persistent `502` from `auth-einvoice.sebastiankern.net`, while

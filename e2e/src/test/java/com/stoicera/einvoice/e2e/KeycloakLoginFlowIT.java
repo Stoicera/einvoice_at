@@ -314,8 +314,26 @@ class KeycloakLoginFlowIT extends AbstractPostgresIT {
     // Drop the identity provider's cookies, so nothing but this application's own session could
     // authenticate the next request. The stale JSESSIONID is deliberately left in place — it is
     // precisely the credential under test.
-    driver.get(BROWSER_FACING_KEYCLOAK + "/realms/" + REALM + "/account");
+    //
+    // FROM AN INERT PAGE, DELIBERATELY. WebDriver can only delete cookies visible to the page it
+    // is on, so this must be a URL under /realms/<realm>/ — but it must NOT be the account
+    // console. The console is a SPA that runs a check-SSO dance (auth redirects, the
+    // 3p-cookies/step1.html iframe) for seconds after the document loads, and any of its
+    // in-flight responses re-sets KEYCLOAK_IDENTITY milliseconds after deleteAllCookies()
+    // removed it. On a fast machine the dance is over before the deletion and the race is
+    // invisible; on the CI runner it reliably is not, the resurrected SSO cookie silently
+    // re-authenticates /app, and the browser sits on the dashboard while the wait below hunts
+    // for a login form that will never come (5/5 CI failures, 2026-08-01 to 2026-08-06, all
+    // with clean logs — diagnosed by dumping the cookie jar, which still held
+    // KEYCLOAK_IDENTITY after the delete). The discovery document is same-realm-path, pure
+    // JSON, loads no script, and can race nothing.
+    driver.get(BROWSER_FACING_KEYCLOAK + "/realms/" + REALM + "/.well-known/openid-configuration");
     driver.manage().deleteAllCookies();
+    assertThat(driver.manage().getCookies())
+        .as(
+            "the IdP cookie jar must actually be empty — a surviving KEYCLOAK_IDENTITY means the"
+                + " next assertion tests the SSO session, not the application session")
+        .isEmpty();
 
     driver.get(appUrl("/app"));
     wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("username")));

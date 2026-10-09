@@ -191,6 +191,50 @@ always detach a firewall from the Hetzner console, which needs no SSH.
 > `22` open to the world and rely on key-only authentication (Hetzner's default with an SSH key) —
 > that is a reasonable trade for a demo instance.
 
+### If the server runs fail2ban, exempt Dokploy first
+
+**This will otherwise ban your own control plane, and it will do it mid-deployment.** Dokploy drives
+the server over SSH, and it opens a *burst* of parallel connections per operation, dropping the
+surplus before authenticating. `fail2ban`'s `sshd` filter in `mode = aggressive` counts every
+`[preauth]` disconnect as a failed attempt, so five of them inside `findtime` are enough — even
+though every real authentication *succeeded*. On 2026-08-06 that banned this project's Dokploy host
+at 10:55:02, and because `bantime.increment` was on and the IP had been flagged before, the ban
+escalated well past the one-hour base.
+
+The symptom is unmistakable once you know it, and baffling if you do not: Dokploy reports
+
+```
+SSH connection error: connect ECONNREFUSED <PRODUCTION_IP>:22
+```
+
+`ECONNREFUSED` and not a timeout, because fail2ban's `nftables` action *rejects* rather than drops.
+Meanwhile `ufw` still shows `22/tcp ALLOW IN Anywhere`, sshd is `active` and listening, and **you can
+still SSH in yourself** — because the ban is per source IP and yours is not the banned one. Every
+check you would naturally run says the server is fine.
+
+Add the exemption before your first deploy:
+
+```bash
+ssh <production-server>
+
+# Is the control plane already banned?
+fail2ban-client status sshd | grep -i banned
+
+# Exempt it permanently, then release it if it is already caught.
+sed -i '0,/^\[DEFAULT\]/s//[DEFAULT]\nignoreip = 127.0.0.1\/8 ::1 <DOKPLOY_CONTROL_PLANE_IP>/' \
+  /etc/fail2ban/jail.local
+fail2ban-client set sshd unbanip <DOKPLOY_CONTROL_PLANE_IP>
+fail2ban-client reload
+
+# Verify: the IP must appear here, and must NOT appear in the banned list.
+fail2ban-client get sshd ignoreip
+fail2ban-client status sshd | grep -i banned
+```
+
+Keep `mode = aggressive` for everything else. A public VPS takes a constant beating — this one had
+logged 6591 failed attempts and 374 bans — and that hardening is worth keeping. Exempt only the one
+host that is supposed to be opening many SSH sessions on purpose.
+
 ---
 
 ## 3. Make the container image pullable
@@ -678,7 +722,9 @@ credentials live in the database, not the environment.
 > both tags and then calls Dokploy's webhook, but a webhook only says "redeploy" — it cannot change
 > which tag Dokploy pulls. With `main`, every merge is live about six minutes later with no clicking.
 > You do not lose the ability to answer "which build is running": `/actuator/info` reports the exact
-> commit, and a CI check proves the image can identify itself. If you ever want a pinned tag instead,
+> commit, and a CI check proves the image can identify itself. Note that it answers **401** to an
+> anonymous caller — `SecurityConfig` permits only `/actuator/health/**` — so read it with a
+> credential, or from inside the container. If you ever want a pinned tag instead,
 > [deployment-reference.md](deployment-reference.md#pinning-an-exact-build) has the swap.
 
 ### 8.2 Environment
@@ -705,8 +751,25 @@ SPRING_PROFILES_ACTIVE=prod
 # is the difference between a rate limit and the appearance of one.
 SERVER_FORWARD_HEADERS_STRATEGY=native
 
-# Do not publish the full machine-readable API description to anonymous callers.
-API_DOCS_ENABLED=false
+# Publish the OpenAPI document and Swagger UI to anonymous callers. Decided 2026-08-07, having
+# been `false` since the first deployment.
+#
+# WHY THIS IS SAFE HERE, AND WHERE IT WOULD NOT BE. The document is generated from annotations that
+# already sit in a public repository, so publishing the rendered version discloses nothing a reader
+# could not assemble from the source in five minutes. What it *adds* is a working "REST-API ansehen"
+# button on the landing page of a portfolio project whose second audience is software houses with
+# their own invoicing module. Hiding a description of an API whose source is public buys no secrecy
+# and costs the one thing the page is for.
+#
+# It is still a decision and not a default, which is why the flag exists at all. On a deployment
+# holding real customer data, `false` is the right answer: an API description is a map of the attack
+# surface, and Swagger UI is a JavaScript bundle that has had its own CVEs (this repository shipped
+# springdoc 3.1.0 in August 2026 for exactly that reason). Set it back to `false` for any instance
+# that is not a public demonstrator.
+#
+# The links follow the flag. `ApiDocsModelAdvice` publishes it to the templates, so with `false`
+# nothing advertises a page that answers 404 — the defect this line used to cause.
+API_DOCS_ENABLED=true
 
 # --- Identity: validating incoming tokens -----------------------------------
 OAUTH2_ISSUER_URI=https://auth-einvoice.sebastiankern.net/realms/einvoice
@@ -759,23 +822,28 @@ FEATURES_AI_EXPLANATIONS=false
 | HTTPS | **on** |
 | Certificate | **Let's Encrypt** |
 
-**Advanced** tab → *Cluster Settings* / *Swarm Settings* → Health Check. Dokploy's production guide
-recommends this and it is worth the two minutes: it is what makes a broken deploy roll back instead
-of replacing a working container with a crashing one.
+**Advanced** tab → *Cluster Settings* / *Swarm Settings* → Health Check.
 
-```json
-{
-  "Test": ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health/readiness"],
-  "Interval": 10000000000,
-  "Timeout": 5000000000,
-  "StartPeriod": 60000000000,
-  "Retries": 5
-}
-```
+> **Leave the Health Check fields EMPTY.** The image already defines one (`Dockerfile`, the
+> `HEALTHCHECK` instruction), Swarm honours an image health check exactly like a service-level one,
+> and a health check that lives in version control cannot silently disagree with a UI text field.
+>
+> This is not a style preference — filling that form in is what broke the first production
+> deployment of this application, on 2026-08-06, for roughly an hour. Dokploy's Health Check is a
+> **form with a separate `Test` input**, and whatever you type there is wrapped into a one-element
+> array. Pasting the Docker API's `["CMD", "wget", …]` therefore reaches dockerd as
+> `Test: ["[\"CMD\", \"wget\", …]"]` — an array whose first element is the literal text of an array.
+> Docker requires `Test[0]` to be `CMD`, `CMD-SHELL` or `NONE`, so it logs
+> `Unknown healthcheck type … (expected 'CMD')` and builds **no probe at all**.
+>
+> The failure that follows is silent and deeply misleading. The container runs perfectly and its
+> logs are clean to the last line — but with no probe it never emits a `health_status` event, and
+> Swarm waits for that event before promoting a task from `Starting` to `Running`. The task hangs in
+> `Starting` forever, the service stays at `0/1`, the service VIP has no backend, and Traefik answers
+> **502** to every request. Nothing anywhere reports an error, because from each component's own
+> point of view nothing went wrong.
 
-(Those are nanoseconds — Docker's Swarm API takes durations that way. 10 s / 5 s / 60 s / 5 tries.)
-
-And in *Update Config*, so a bad build reverts itself:
+*Update Config*, on the other hand, you do want — so a bad build reverts itself:
 
 ```json
 { "Parallelism": 1, "Order": "start-first", "FailureAction": "rollback" }
@@ -800,7 +868,36 @@ Expected: `UP`.
 | `ClientRegistrations.fromIssuerLocation` | You added a provider `issuer-uri`. Remove it |
 | Flyway `Validate failed` | The database is not empty and does not match. On a first deploy this means you pointed at the wrong database |
 | Container starts then Traefik says 502 | Container Port is not `8080`, or the health check is failing — check `/actuator/health` from inside the container |
+| Logs are **clean** and the app is up, but Traefik still says 502 | Swarm never promoted the task. Do not read the application log — it will tell you nothing. Run the three commands below |
 | `AI_API_KEY` complaint at startup | `FEATURES_AI_EXPLANATIONS=true` with no key. The app refuses to start rather than pretend the feature works. Set it to `false` |
+
+**Diagnosing a 502 that the logs cannot explain.** A 502 is a statement about *routing*, never about
+your code, so read the routing layer rather than the application. Three commands, in this order —
+each one either clears a component or convicts it:
+
+```bash
+ssh <production-server>
+
+# 1. Does Swarm believe the app is running? "0/1" here is the whole answer.
+docker service ls | grep einvoiceapp
+
+# 2. If 0/1: why is the task not promoted? Look for a task stuck in "Starting".
+docker service ps <app-service> --no-trunc
+
+# 3. Is there a health probe at all, and did dockerd refuse to build one?
+docker inspect <app-container> --format '{{json .Config.Healthcheck}}{{"\n"}}{{json .State.Health}}'
+journalctl -u docker --since "1 hour ago" | grep -i healthcheck
+```
+
+`State.Health: null` on a container whose spec *has* a `Healthcheck` is the signature of a malformed
+`Test`: dockerd parsed the spec, rejected the command form, and created no probe. Confirm with the
+`Unknown healthcheck type` warning in the daemon log, then clear the Health Check fields as above.
+
+Two facts worth internalising, because they are what make this failure so confusing: a Swarm service
+VIP with zero running tasks refuses connections *immediately*, so Traefik's 502 arrives in
+milliseconds and looks nothing like a timeout — and the container serves traffic perfectly the whole
+time, so `docker exec <container> wget -qO- http://localhost:8080/actuator/health` answers `UP`
+while the public URL answers 502.
 
 ---
 
@@ -814,7 +911,7 @@ Run them from your laptop, in the repository directory (check 2 uploads a sample
 ```bash
 BASE=https://einvoice.sebastiankern.net
 
-# 1. Alive, and which build is this?
+# 1. Alive? (For "which build is this?" see /actuator/info — it needs a credential, see step 8.1.)
 curl -fsS $BASE/actuator/health | jq -r .status          # -> UP
 
 # 2. The public validator works with NO credential, and stores nothing.
@@ -824,7 +921,11 @@ curl -fsS -F "file=@samples/invoice-b2g-sample.ebinterface.xml" \
 
 # 3. The landing page renders, and the dashboard redirects to the real Keycloak.
 curl -fsS -o /dev/null -w '%{http_code}\n' $BASE/                      # -> 200
-curl -fsS -o /dev/null -w '%{http_code} %{redirect_url}\n' $BASE/app   # -> 302 https://auth-einvoice...
+curl -fsS -o /dev/null -w '%{http_code} %{redirect_url}\n' $BASE/app   # -> 302 $BASE/oauth2/authorization/keycloak
+# That first hop is Spring Security's own entry point, NOT Keycloak. Follow the chain to prove the
+# flow actually terminates at the IdP — two redirects, ending on the realm's authorization endpoint
+# with client_id=einvoice-web and code_challenge_method=S256.
+curl -fsS -o /dev/null -L -w '%{num_redirects} %{url_effective}\n' $BASE/app
 
 # 4. HTTP is redirected to HTTPS.
 curl -sSI http://einvoice.sebastiankern.net | grep -i '^location'      # -> https://...
@@ -853,16 +954,26 @@ done
 #   -> "rate limited after N requests".  If the loop finishes without printing that, the limiter
 #      is not engaging at all — check RATE_LIMIT_VALIDATE_* in step 8.
 
-# 2. Immediately claim to be someone else. If forging worked, this would be a fresh bucket.
-curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Forwarded-For: 198.51.100.1' \
-  -F "file=@$SAMPLE" $BASE/api/v1/validate
-#   -> 429.  A 200 here would mean anyone can mint themselves unlimited allowance.
+# 2. Immediately claim to be several other people. If forging worked, EACH address would be a
+#    fresh 60-request bucket and every one of these would answer 200.
+for n in 1 2 3 4 5; do
+  printf 'forged-%s: %s\n' "$n" "$(curl -s -o /dev/null -w '%{http_code}' \
+    -H "X-Forwarded-For: 198.51.100.$n" -F "file=@$SAMPLE" $BASE/api/v1/validate)"
+done
+#   -> 429 on (at least) four of the five.
 ```
 
-Run the second command **right after** the first: the bucket refills at one token per second, so a
-minute's pause would hand you a `200` for an innocent reason and make the check meaningless.
+**Expected: `429` across the board, with at most ONE `200`.** Why the tolerance, and why five
+requests rather than the single forged request an earlier version of this document used: the bucket
+refills at one token per second, and the seconds it takes to observe the 429 and fire the next
+request are enough for one token to drip back in. A single forged request can therefore catch that
+token and print `200` while the defense is working perfectly — it happened on this project's own
+§9 run on 2026-08-06, and it reads exactly like the vulnerability it is not. Five forged addresses
+back-to-back make the two outcomes unmistakable: a real forgery hands every address its own full
+bucket (five `200`s), while an intact defense has all five drawing on the same empty bucket, so at
+most one inherits the lone refilled token.
 
-**Expected: `429`.** If you get `200`, something upstream is trusting client headers — check that you
+If you see **two or more `200`s**, something upstream is trusting client headers — check that you
 did not enable `forwardedHeaders.insecure` in Traefik and that the Cloudflare records are still grey.
 
 Finally, log in through the browser once: open `https://einvoice.sebastiankern.net/app`, sign in as
@@ -901,8 +1012,13 @@ mkdir -p /opt/einvoice-at/scripts /var/backups/einvoice
 cd /opt/einvoice-at/scripts
 curl -fsSLO https://raw.githubusercontent.com/Stoicera/einvoice_at/main/scripts/backup.sh
 curl -fsSLO https://raw.githubusercontent.com/Stoicera/einvoice_at/main/scripts/restore.sh
-chmod +x backup.sh restore.sh
+curl -fsSLO https://raw.githubusercontent.com/Stoicera/einvoice_at/main/scripts/offsite-sync.sh
+chmod +x backup.sh restore.sh offsite-sync.sh
 ```
+
+`offsite-sync.sh` is installed now even though off-site storage may not exist yet (§10.4). It stays
+inert until it is configured, and installing it here means arming it later is one file rather than a
+second trip through this section.
 
 First confirm the network name and that the database answers to it from inside:
 
@@ -957,8 +1073,12 @@ Then create `/etc/cron.d/einvoice-backup`. It must end with a newline, or cron i
 without saying so:
 
 ```cron
-15 2 * * * root docker run --rm --network dokploy-network --env-file /opt/einvoice-at/backup.env -v /opt/einvoice-at/scripts:/scripts:ro -v /var/backups/einvoice:/backups postgres:17 /scripts/backup.sh /backups >> /var/log/einvoice-backup.log 2>&1
+15 2 * * * root docker run --rm --network dokploy-network --env-file /opt/einvoice-at/backup.env -v /opt/einvoice-at/scripts:/scripts:ro -v /var/backups/einvoice:/backups postgres:17 /scripts/backup.sh /backups >> /var/log/einvoice-backup.log 2>&1 && /opt/einvoice-at/scripts/offsite-sync.sh /var/backups/einvoice >> /var/log/einvoice-backup.log 2>&1
 ```
+
+The second half is the off-site copy of §10.4. It is chained with `&&` because syncing after a
+failed dump would only propagate the failure, and it exits `0` with a `NOT CONFIGURED` notice until
+you arm it — so this is the final line whether or not off-site storage exists yet.
 
 **Then rehearse a restore — into a fresh database, never over the live one.** This is the half that
 makes it a backup rather than a hope:
@@ -989,10 +1109,110 @@ attachable; in that case run the same commands from a shell inside the running d
 instead (`docker exec -it $(docker ps -qf name=einvoice-db) bash`), writing the dump to a path you
 have bind-mounted. `could not translate host name` means the internal host from step 6 is wrong.
 
-> **A dump on the same disk as the database is a copy, not a backup.** Copy them off the machine —
-> a Hetzner Storage Box over `rclone`, or any S3 bucket. Hetzner's own server snapshots are worth
-> enabling too and are not a substitute: a snapshot restores a *machine*, `pg_dump` restores a
-> *database* into a machine you already trust.
+### 10.4 Copy the dumps off the machine
+
+**What this is.** One command that pushes `/var/backups/einvoice` to storage on a different machine,
+and then proves the copy is readable by downloading it again.
+
+**Why.** Everything up to here writes the dump to the same physical disk as the database it dumped.
+That survives a bad migration or a dropped table; it does not survive the single most likely event
+it exists for — that disk, that server, or that provider account going away. Until this step is
+done, there is exactly one copy of the data. Hetzner's own server snapshots are worth enabling as
+well and are **not** a substitute: a snapshot restores a *machine*, `pg_dump` restores a *database*
+into a machine you already trust.
+
+`scripts/offsite-sync.sh` is installed and in the nightly chain. Arming it is one file; there is no
+code change.
+
+**State on this fleet (armed 2026-09-23).** The target is not a Storage Box yet but the Dokploy panel
+host, over the private network `dokploy-net` (prod 10.10.1.2 → panel 10.10.1.1). On the panel a
+system user `backupsink` (password locked) accepts exactly one key with a forced command:
+`restrict,from="10.10.1.2",command="/usr/bin/rrsync -no-del /srv/backup/skdevserver1" <key>`.
+`-no-del` refuses `--delete` and still allows the read-back below. `/opt/einvoice-at/offsite.env`
+(0600):
+
+```bash
+OFFSITE_TARGET="backupsink@10.10.1.1:${OFFSITE_SUBDIR:-einvoice}/"
+OFFSITE_SSH_KEY=/root/.ssh/offsite_ed25519
+OFFSITE_SSH_PORT=22
+OFFSITE_REQUIRED=1
+OFFSITE_VERIFY=1
+```
+
+Each product's cron line sets `OFFSITE_SUBDIR` and, where its files are not `einvoice-*.dump`,
+`OFFSITE_PATTERN`. Keycloak's database is backed up with the same `backup.sh`
+(`BACKUP_PREFIX=keycloak` in the root-only `/opt/einvoice-at/backup-keycloak.env`), in
+`/etc/cron.d/keycloak-backup`:
+
+```cron
+20 2 * * * root docker run --rm --network dokploy-network --env-file /opt/einvoice-at/backup-keycloak.env -v /opt/einvoice-at/scripts:/scripts:ro -v /var/backups/keycloak:/backups postgres:17 /scripts/backup.sh /backups >> /var/log/keycloak-backup.log 2>&1 && OFFSITE_SUBDIR=keycloak OFFSITE_PATTERN="keycloak-*.dump" /opt/einvoice-at/scripts/offsite-sync.sh /var/backups/keycloak >> /var/log/keycloak-backup.log 2>&1
+```
+
+migration-lab chains the same script at 02:45 with `OFFSITE_SUBDIR=migration-lab
+OFFSITE_PATTERN='*.sql.gz'`. The panel and prod are in one Hetzner account and region: this covers
+the loss of the server, not of the account. The Storage Box below is the step that adds a location
+outside it (owner decision, it costs money).
+
+**Do this.** Order a **Hetzner Storage Box BX11** (€3.20/month, 1 TB, no minimum term) in FSN1 and
+enable *SSH support* in its panel. Then, on the production server:
+
+```bash
+ssh-keygen -t ed25519 -f /root/.ssh/storagebox -N ""
+cat /root/.ssh/storagebox.pub          # register this key in the Storage Box panel
+```
+
+Hetzner's Storage Box listens on **port 23**, not 22. Write the config file:
+
+```bash
+cat > /opt/einvoice-at/offsite.env <<'EOF'
+OFFSITE_TARGET=uXXXXXX@uXXXXXX.your-storagebox.de:einvoice/
+OFFSITE_SSH_KEY=/root/.ssh/storagebox
+OFFSITE_SSH_PORT=23
+OFFSITE_REQUIRED=1
+EOF
+chmod 600 /opt/einvoice-at/offsite.env
+```
+
+`OFFSITE_REQUIRED=1` is the line that matters most. Without it, a typo in `OFFSITE_TARGET` and a
+missing `OFFSITE_TARGET` look identical in the log — both are a clean skip — and the mistake stays
+invisible until a restore. With it, anything short of a working off-site copy fails the nightly run.
+
+**Verify.** Run it by hand once:
+
+```bash
+/opt/einvoice-at/scripts/offsite-sync.sh /var/backups/einvoice
+```
+
+Expected — the last line is the one that counts, because it was produced by reading the file *back*
+from the Storage Box and comparing its SHA-256 against the local sidecar:
+
+```
+Syncing /var/backups/einvoice/ -> uXXXXXX@uXXXXXX.your-storagebox.de:einvoice/
+...
+Verifying einvoice-<stamp>.dump by reading it back from off-site storage
+OK: einvoice-<stamp>.dump verified off-site (sha256 matches); N dump(s) now stored remotely
+```
+
+Then close the loop the same way §10 taught: pull one dump down from the box on a *different*
+machine and restore it into a scratch database. A copy you have never restored from is a belief,
+not a backup.
+
+**If it fails.** `Permission denied (publickey)` — the key is not registered in the Storage Box
+panel, or you registered `storagebox` instead of `storagebox.pub`. `Connection refused` — you are on
+port 22; Storage Boxes use 23. `rsync: command not found` on the remote — enable SSH support in the
+panel; plain SFTP-only boxes cannot serve rsync. A SHA-256 mismatch is not a transfer glitch to
+retry past: it means the remote is storing something other than what was sent, and it should be
+investigated before that dump is trusted.
+
+**Two deliberate design choices in the script**, both of which differ from the obvious
+`rsync -a --delete` one-liner, because the obvious version can destroy what it protects:
+
+- **No `--delete`.** Mirroring means an emptied local directory — failed disk, wrong mount, a bad
+  `BACKUP_KEEP_DAYS`, a restore gone wrong — propagates that emptiness off-site on the next nightly
+  run and deletes the last surviving copy at the exact moment it is needed. Dumps are ~16 KB against
+  1 TB, so there is no capacity argument on the other side.
+- **An empty source directory is a hard error**, not a no-op. A backup directory with no dumps in it
+  is an upstream failure; reporting success would hide it for as long as nobody looks.
 
 ---
 
