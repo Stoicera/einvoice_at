@@ -39,7 +39,7 @@
         der öffentlichen Prüfer-Seite sind hier nicht enthalten, weil sie nicht gespeichert werden.
       </p>
       <p class="muted">
-        Ihre Daten sind jederzeit über die <a th:href="@{/swagger-ui.html}">REST-API</a> abrufbar
+        Ihre Daten sind jederzeit über die <a th:href="@{/swagger-ui.html}" th:remove="${apiDocsEnabled} ? none : tag">REST-API</a> abrufbar
         (<code>GET /api/v1/invoices</code>, <code>GET /api/v1/reports</code>) — Auskunft nach Art. 15
         DSGVO ohne Umweg über uns.
       </p>

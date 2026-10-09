@@ -45,6 +45,32 @@ class OpenApiDisabledIT extends AbstractPostgresIT {
     assertThat(get("/swagger-ui/index.html").statusCode()).isEqualTo(404);
   }
 
+  /**
+   * "Not merely unlinked" is what this class has claimed since M3, and it was the one half that was
+   * never true: with the docs switched off, six Thymeleaf templates went on rendering {@code
+   * /swagger-ui.html}. Production runs with {@code API_DOCS_ENABLED=false}, so the public landing
+   * page of a portfolio repository shipped a "REST-API ansehen" button that answered 404 — the
+   * first thing an enterprise reviewer clicks.
+   *
+   * <p>The switch's own configuration comment states the principle this restores: one flag drives
+   * the document and the UI "so they can never disagree about being exposed". The links were simply
+   * never part of that guarantee.
+   */
+  @Test
+  void thePublicPagesStopAdvertisingTheApiDocs() throws Exception {
+    HttpResponse<String> landing = get("/");
+    assertThat(landing.statusCode()).isEqualTo(200);
+    assertThat(landing.body())
+        .as("the landing page must not link to a Swagger UI that is switched off")
+        .doesNotContain("/swagger-ui");
+
+    HttpResponse<String> validator = get("/validator");
+    assertThat(validator.statusCode()).isEqualTo(200);
+    assertThat(validator.body())
+        .as("the validator page must not link to a Swagger UI that is switched off")
+        .doesNotContain("/swagger-ui");
+  }
+
   @Test
   void theApplicationItselfKeepsWorking() throws Exception {
     assertThat(get("/actuator/health").statusCode()).isEqualTo(200);

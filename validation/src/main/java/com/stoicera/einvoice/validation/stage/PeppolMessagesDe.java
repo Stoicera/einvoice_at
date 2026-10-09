@@ -56,7 +56,7 @@ final class PeppolMessagesDe {
    * mandatory 2026-08-17 upgrade to Peppol 2026.5 — so the wrong count was the count a future
    * maintainer would have re-verified the translations against.
    */
-  static final String SIZE_NOTE = "80 of them";
+  static final String SIZE_NOTE = "79 of them";
 
   private PeppolMessagesDe() {}
 
@@ -79,18 +79,20 @@ final class PeppolMessagesDe {
                   + " angegeben werden."),
           Map.entry(
               "PEPPOL-EN16931-R004",
-              "Die Spezifikationskennung (BT-24) muss den Wert"
+              // Prefix, not equality — the rule has always been starts-with, and 2026.5 added the
+              // '::' prohibition. The previous wording claimed an exact value and named neither.
+              "Die Spezifikationskennung (BT-24) muss mit"
                   + " 'urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0'"
-                  + " haben."),
+                  + " beginnen und darf kein '::' enthalten."),
           Map.entry(
               "PEPPOL-EN16931-R005",
               "Der Code der USt-Abrechnungswährung (BT-6) muss sich vom Code der"
                   + " Rechnungswährung (BT-5) unterscheiden, wenn er angegeben ist."),
           Map.entry(
               "PEPPOL-EN16931-R007",
-              "Der Geschäftsprozess muss das Format"
-                  + " 'urn:fdc:peppol.eu:2017:poacc:billing:NN:1.0' haben, wobei NN die"
-                  + " Prozessnummer ist."),
+              // 2026.5 replaced the NN-pattern with a closed allowlist that also admits the two
+              // French billing profiles, so naming a required format would now misdirect the filer.
+              "Der Geschäftsprozess (BT-23) muss eine von OpenPeppol zugelassene Kennung sein."),
           Map.entry("PEPPOL-EN16931-R008", "Das Dokument darf keine leeren Elemente enthalten."),
           Map.entry(
               "PEPPOL-EN16931-R010",
@@ -262,11 +264,10 @@ final class PeppolMessagesDe {
               "Der fällige Zahlungsbetrag (BT-115) muss der Gesamtsumme mit USt (BT-112)"
                   + " abzüglich des bereits bezahlten Betrags (BT-113) zuzüglich des"
                   + " Rundungsbetrags (BT-114) entsprechen."),
-          Map.entry(
-              "BR-CO-25",
-              "Ist der fällige Zahlungsbetrag (BT-115) positiv, muss entweder ein"
-                  + " Fälligkeitsdatum (BT-9) oder es müssen Zahlungsbedingungen (BT-20)"
-                  + " angegeben sein."),
+          // BR-CO-25 was translated here until the 2026.5 upgrade (2026-08-07) removed the rule
+          // from the OpenPeppol rule set without a successor. The entry is deleted rather than kept
+          // "in case it comes back": a message that can never be rendered is not coverage, and
+          // everyCatalogueEntryNamesARuleThePinnedRuleSetStillDeclares now fails on any such entry.
           Map.entry(
               "BR-DEC-14",
               "Die Gesamtsumme mit USt (BT-112) darf höchstens zwei Dezimalstellen haben."),

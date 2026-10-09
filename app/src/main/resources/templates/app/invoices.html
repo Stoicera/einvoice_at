@@ -19,7 +19,7 @@
 
       <p class="muted spaced" th:if="${#lists.isEmpty(invoices)}">
         Noch keine Rechnungen. Legen Sie Ihre erste über den Assistenten an — oder über die
-        <a th:href="@{/swagger-ui.html}">REST-API</a>.
+        <a th:href="@{/swagger-ui.html}" th:remove="${apiDocsEnabled} ? none : tag">REST-API</a>.
       </p>
 
       <!--/* th:unless must not share an element with th:replace (precedence); see overview.html. */-->

@@ -7,7 +7,7 @@
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>4.1.0</version>
+    <version>4.1.1</version>
     <relativePath/>
   </parent>
 
@@ -54,33 +54,32 @@
     <ph-ebinterface.version>8.1.0</ph-ebinterface.version>
     <ph-ubl.version>10.2.0</ph-ubl.version>
     <phive.version>12.1.0</phive.version>
-    <phive-rules.version>4.4.1</phive-rules.version>
+    <phive-rules.version>4.4.2</phive-rules.version>
 
     <!-- The ph-* stack depends on the Jakarta XML Binding API only (jakarta.xml.bind-api,
          pulled transitively at 4.0.x); a JAXB runtime provider must be supplied by the
          consuming module. glassfish jaxb-runtime 4.0.5 matches the jakarta.xml.bind-api 4.0.5
          that ph-jaxb 12.1.0 brings in. -->
-    <jaxb-runtime.version>4.0.5</jaxb-runtime.version>
+    <jaxb-runtime.version>4.0.9</jaxb-runtime.version>
 
-    <!-- SECURITY OVERRIDES of versions spring-boot-dependencies 4.1.0 manages.
+    <!-- SECURITY OVERRIDE of a version spring-boot-dependencies 4.1.1 manages.
 
-         Both raise a dependency the OWASP scan flagged at CVSS >= 7 on the first run after the
-         NVD_API_KEY secret was configured (2026-07-25) — i.e. the gate's first real verdict, not a
-         hypothetical. Upgrading is the required first response; suppressing a genuine finding to
-         get a green build is what .owasp-suppressions.xml's own policy forbids.
+         Introduced 2026-07-25 when the OWASP scan first flagged tomcat (and postgresql) at
+         CVSS >= 7. Upgrading is the required first response; suppressing a genuine finding to get
+         a green build is what .owasp-suppressions.xml's own policy forbids.
 
-         Boot 4.1.0 is the newest release at this date, so there is no parent bump that carries
-         these fixes; the properties are overridden here instead, which is the mechanism
-         spring-boot-dependencies documents for exactly this. Both versions verified against Maven
-         Central maven-metadata.xml on 2026-07-25 as <latest> and <release>. Drop these overrides
-         once a Boot release manages versions at least this high — leaving them pinned below Boot's
+         2026-10-07: parent raised 4.1.0 -> 4.1.1 (newest 4.1.x on Maven Central). Boot 4.1.1
+         manages postgresql 42.7.13 itself, so that override is dropped. It still manages
+         tomcat 11.0.24, which the scan flags with nine CVSS >= 7 advisories (CVE-2026-65905,
+         CVE-2026-65637, CVE-2026-68525, CVE-2026-65182, ...), so tomcat stays overridden at
+         11.0.26, the newest 11.0.x per Maven Central maven-metadata.xml on 2026-10-07. Drop this
+         override once a Boot release manages 11.0.26 or higher — leaving it pinned below Boot's
          own floor would silently downgrade. -->
-    <postgresql.version>42.7.13</postgresql.version>
-    <tomcat.version>11.0.24</tomcat.version>
+    <tomcat.version>11.0.26</tomcat.version>
 
     <!-- Same mechanism, same reason, one milestone later: see the netty-bom import in
          <dependencyManagement> for why this exists and when to drop it. -->
-    <netty.version>4.2.16.Final</netty.version>
+    <netty.version>4.2.19.Final</netty.version>
 
     <!-- Same mechanism again, M6, and this one is this milestone's own doing.
          spring-boot-starter-opentelemetry brings io.opentelemetry.semconv:opentelemetry-semconv at
@@ -120,11 +119,11 @@
          rather than in app/pom.xml so every plugin version in this build lives in one file. -->
     <git-commit-id-maven-plugin.version>10.0.0</git-commit-id-maven-plugin.version>
 
-    <spotless-maven-plugin.version>3.8.0</spotless-maven-plugin.version>
+    <spotless-maven-plugin.version>3.9.0</spotless-maven-plugin.version>
     <google-java-format.version>1.35.0</google-java-format.version>
     <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
     <jqwik.version>1.10.1</jqwik.version>
-    <archunit.version>1.4.2</archunit.version>
+    <archunit.version>1.5.0</archunit.version>
     <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
 
     <!-- Mutation testing. Versions verified against Maven Central maven-metadata.xml
@@ -144,18 +143,17 @@
     <bucket4j.version>8.10.1</bucket4j.version>
 
     <!-- OpenAPI documentation / Swagger UI for the REST API (app, T9). Version verified against
-         Maven Central maven-metadata.xml on 2026-07-24: 3.0.3 is both <latest> and <release>,
+         Maven Central maven-metadata.xml on 2026-08-06: 3.1.0 is both <latest> and <release>,
          groupId org.springdoc, artifactId springdoc-openapi-starter-webmvc-ui, Apache-2.0.
-         Boot-4.1 compatibility check: that artifact's POM parent (org.springdoc:springdoc-openapi:
-         3.0.3) itself pins spring-boot-starter-parent 4.0.5, i.e. spring-framework.version 7.0.6
-         (per spring-boot-dependencies 4.0.5's POM); this repo's parent is Boot 4.1.0, whose
-         spring-boot-dependencies POM pins spring-framework.version 7.0.8 — the same Framework
-         7.0.x line, a patch-only delta (7.0.6 -> 7.0.8), not a minor/major jump. No 3.0.x release
-         built against Boot 4.1 exists yet, but springdoc's webmvc integration only touches stable
-         Spring MVC / actuator SPI surfaces that do not change across a framework patch revision,
-         so 3.0.3 is the correct pin; empirically confirmed working via OpenApiIT (app/src/test/.../
-         api/OpenApiIT.java) against the real Boot 4.1.0 context. -->
-    <springdoc-openapi.version>3.0.3</springdoc-openapi.version>
+         Boot-4.1 compatibility check: springdoc-openapi 3.1.0's POM parent is
+         spring-boot-starter-parent 4.1.0 — exactly this repo's parent, so no framework delta at
+         all (3.0.3 was built against Boot 4.0.5 and needed a patch-revision argument here).
+         Why not stay on 3.0.3: it bundles swagger-ui 5.32.2, whose swagger-ui-bundle.js embeds
+         DOMPurify 3.3.2 — flagged by OWASP Dependency-Check (CVE-2026-65898 et al.) above the
+         CVSS 7.0 gate since 2026-08-01. 3.1.0 bundles swagger-ui 5.32.11, which embeds
+         DOMPurify 3.4.12 (verified by extracting the webjar); empirically confirmed working via
+         OpenApiIT (app/src/test/.../api/OpenApiIT.java) against the real Boot 4.1.0 context. -->
+    <springdoc-openapi.version>3.1.0</springdoc-openapi.version>
 
     <!-- Reactor-wide defaults for org.codehaus.mojo:exec-maven-plugin's `java` goal (used by the
          validation module's ValidationRunner CLI): skipped everywhere except where a module opts
@@ -259,9 +257,12 @@
            deployed — and that is exactly the argument a suppression policy exists to refuse when a
            fixed release is one patch version away.
 
-           4.2.16.Final verified against Maven Central maven-metadata.xml on 2026-07-26 as the
+           4.2.19.Final verified against Maven Central maven-metadata.xml on 2026-10-07 as the
            newest 4.2.x release (<latest>/<release> there name the 5.0.0.Alpha line, which is not a
-           stable series and not what Gatling is built against). Drop this import once Gatling ships
+           stable series and not what Gatling is built against). Raised from 4.2.16.Final, which
+           the scan flagged with CVE-2026-75595, CVE-2026-75596, CVE-2026-59902, CVE-2026-59903.
+           Boot 4.1.1 itself manages only 4.2.17.Final, so the property also lifts Boot's own
+           netty management. Drop this import once Gatling ships
            a release that already resolves at or above it. -->
       <dependency>
         <groupId>io.netty</groupId>

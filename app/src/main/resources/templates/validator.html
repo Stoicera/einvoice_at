@@ -86,7 +86,7 @@
           <p class="muted">
             Ja — ebInterface ↔ UBL in beide Richtungen, mit einem Bericht darüber, was das Zielformat
             nicht tragen kann. Das läuft über die
-            <a th:href="@{/swagger-ui.html}">REST-API</a>.
+            <a th:href="@{/swagger-ui.html}" th:remove="${apiDocsEnabled} ? none : tag">REST-API</a>.
           </p>
         </div>
       </div>
