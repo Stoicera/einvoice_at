@@ -120,7 +120,7 @@ services:
       #
       # `native` and NOT `framework`: a proxy appends to X-Forwarded-For, so the rightmost entry is
       # the only trustworthy one, and Spring's ForwardedHeaderFilter (the `framework` strategy)
-      # reads the leftmost. See application.yml and docs/deployment.md §4 (M6 review, F1).
+      # reads the leftmost. See application.yml and docs/deployment-reference.md §2 (M6 review, F1).
       SERVER_FORWARD_HEADERS_STRATEGY: ${SERVER_FORWARD_HEADERS_STRATEGY:-none}
     ports:
       - "${APP_PORT:-8080}:8080"

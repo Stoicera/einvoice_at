@@ -19,7 +19,7 @@
 
       <div class="row spaced-lg">
         <a class="button" th:href="@{/validator}">Rechnung kostenlos prüfen</a>
-        <a class="button secondary" th:href="@{/swagger-ui.html}">REST-API ansehen</a>
+        <a class="button secondary" th:if="${apiDocsEnabled}" th:href="@{/swagger-ui.html}">REST-API ansehen</a>
       </div>
 
       <div class="grid">

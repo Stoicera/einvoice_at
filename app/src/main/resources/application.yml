@@ -32,6 +32,19 @@ spring:
     multipart:
       max-file-size: 2MB
       max-request-size: 2MB
+      # KEEP THIS >= max-file-size. Boot's default is 0 B, which means every uploaded part is
+      # streamed straight to a temporary file — and the public validator page promises in bold that
+      # an anonymous upload leaves "keine Datei auf einem Datenträger". With the default, that
+      # sentence was false: an upload_*.tmp appeared under Tomcat's work directory for the life of
+      # the request (observed on the running stack, not inferred). Tomcat deletes it afterwards, so
+      # nothing lingered — but an invoice payload had still been written to a disk, which is exactly
+      # what the page said would not happen.
+      #
+      # At this value nothing the application is willing to accept can exceed it, so accepted
+      # uploads stay in memory end to end. The cost is bounded and small: at most 2 MB per in-flight
+      # anonymous request, and that route is rate-limited per client address.
+      # AnonymousUploadNeverReachesDiskIT fails if the two ever drift apart again.
+      file-size-threshold: 2MB
 
 # OAuth2 resource-server (Keycloak) settings, consumed by SecurityConfig's JwtDecoder. Both come
 # from the environment; the compose stack sets OAUTH2_ISSUER_URI to the Keycloak realm. When an
