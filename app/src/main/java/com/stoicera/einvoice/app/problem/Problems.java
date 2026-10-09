@@ -25,14 +25,53 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class Problems {
 
-  /** Every {@code type} URI the API emits is this base plus one stable per-condition slug. */
-  public static final String BASE = "https://einvoice-at.stoicera.com/problems/";
+  /**
+   * The base when nothing is configured: the public demo, which answers every {@code
+   * /problems/{slug}} with a redirect to that slug's entry in {@code docs/problems.md} ({@code
+   * ProblemTypeController}). Until 2026-10 this was {@code einvoice-at.stoicera.com}, a host that
+   * never resolved, so no {@code type} URI the API emitted could be followed.
+   */
+  static final String DEFAULT_BASE = "https://einvoice.sebastiankern.net/problems/";
+
+  /** Overrides {@link #DEFAULT_BASE}, so a self-hosted instance can point at its own host. */
+  static final String BASE_ENV = "PROBLEM_TYPE_BASE_URI";
+
+  /**
+   * Every {@code type} URI the API emits is this base plus one stable per-condition slug.
+   *
+   * <p>Read from the environment once, at class initialisation, rather than injected from Spring
+   * configuration: the servlet filters write problems by hand through the static {@link #write},
+   * and a value that could differ between the MVC handler and a filter would be exactly the "two
+   * copies of one contract" this class exists to prevent. A deployment sets it once and restarts.
+   */
+  public static final String BASE = resolveBase(System.getenv(BASE_ENV));
 
   // Same construction idiom as the services' private findingsMapper: a local Jackson 3 mapper, not
   // a Spring-managed bean — the map written below has no configuration-sensitive content.
   private static final JsonMapper JSON = JsonMapper.builder().build();
 
   private Problems() {}
+
+  /**
+   * The configured base, or {@link #DEFAULT_BASE} when it is blank. It must be an absolute http(s)
+   * URI — a relative or malformed one fails startup instead of producing {@code type} values a
+   * client cannot resolve — and it always ends in {@code /}, so {@code BASE + slug} stays a path
+   * segment whether or not the operator typed the trailing slash.
+   */
+  static String resolveBase(String configured) {
+    if (configured == null || configured.isBlank()) {
+      return DEFAULT_BASE;
+    }
+    String base = configured.strip();
+    URI uri = URI.create(base);
+    if (!uri.isAbsolute()
+        || !("https".equals(uri.getScheme()) || "http".equals(uri.getScheme()))
+        || uri.getHost() == null) {
+      throw new IllegalArgumentException(
+          BASE_ENV + " must be an absolute http(s) URI, got: " + configured);
+    }
+    return base.endsWith("/") ? base : base + "/";
+  }
 
   /** The stable {@code type} URI for a condition slug (e.g. {@code "duplicate-invoice"}). */
   public static URI type(String slug) {

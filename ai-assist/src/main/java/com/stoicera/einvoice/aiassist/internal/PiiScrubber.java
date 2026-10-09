@@ -74,9 +74,17 @@ public final class PiiScrubber {
   /**
    * An e-mail address — deliberately loose. Precision costs nothing here and a false positive only
    * masks something that looked like an address.
+   *
+   * <p><strong>Bounded, and that is load-bearing.</strong> With unbounded {@code +} quantifiers the
+   * domain part ({@code [A-Za-z0-9.-]+\.}) backtracks across every dot in its run, from every word
+   * boundary: 40,000 characters of {@code "b.b.b."} took about 7 seconds (CodeQL alert
+   * java/polynomial-redos, measured 2026-10-09). The text comes from the caller — on the public
+   * report view it is a finding posted back by the browser — so that was a CPU lever for anyone.
+   * The bounds are RFC 5321's own limits (local part 64, domain 255) and RFC 1034's label length
+   * (63) for the top-level domain, so no valid address is lost.
    */
   private static final Pattern EMAIL =
-      Pattern.compile("\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b");
+      Pattern.compile("\\b[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\\.[A-Za-z]{2,63}\\b");
 
   /**
    * An EU VAT id: a country prefix and its national number, including Austria's {@code ATU} + 8

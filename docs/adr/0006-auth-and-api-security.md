@@ -96,7 +96,9 @@ system reaching anonymous callers should be a decision. `API_DOCS_ENABLED=false`
 flag, so the document and the UI can never disagree about being exposed).
 
 **One problem vocabulary.** Every error is RFC 9457 `application/problem+json` with a stable `type`
-URI under `https://einvoice-at.stoicera.com/problems/` — one slug per condition (`invalid-json`,
+URI under `https://einvoice.sebastiankern.net/problems/` (amended 2026-10-09: the original
+`einvoice-at.stoicera.com` never resolved; the base is now `PROBLEM_TYPE_BASE_URI`, the slugs are
+unchanged and listed in `docs/problems.md`) — one slug per condition (`invalid-json`,
 `invalid-invoice`, `invoice-not-found`, `report-not-found`, `api-key-not-found`,
 `duplicate-invoice`, `api-key-limit-reached`, `content-too-large`, `multiple-credentials`,
 `rate-limited`, …). `ApiExceptionHandler` also stamps this namespace onto Spring MVC's own framework

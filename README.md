@@ -157,7 +157,8 @@ name this API — off by default for the single-audience dev realm, recommended 
 nothing) plus the `ValidationReport`.
 
 **Errors.** Every error is RFC 9457 `application/problem+json`; each `type` is a stable URI under
-`https://einvoice-at.stoicera.com/problems/`.
+`https://einvoice.sebastiankern.net/problems/` (override with `PROBLEM_TYPE_BASE_URI`). Following
+one leads to its entry in [docs/problems.md](docs/problems.md), which lists every slug.
 
 ```bash
 # 1. Fetch a dev access token from the compose Keycloak (dev-realm client, password grant).

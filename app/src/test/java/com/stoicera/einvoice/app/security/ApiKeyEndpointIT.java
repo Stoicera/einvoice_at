@@ -29,7 +29,7 @@ class ApiKeyEndpointIT extends AbstractKeycloakIT {
 
   private static final String API_KEYS = "/api/v1/api-keys";
   private static final String PROTECTED_ROUTE = "/api/v1/invoices";
-  private static final String PROBLEM_BASE = "https://einvoice-at.stoicera.com/problems/";
+  private static final String PROBLEM_BASE = "https://einvoice.sebastiankern.net/problems/";
 
   @LocalServerPort private int port;
   @Autowired private TenantRepository tenants;

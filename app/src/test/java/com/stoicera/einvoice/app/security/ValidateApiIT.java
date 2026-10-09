@@ -41,7 +41,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 class ValidateApiIT extends AbstractKeycloakIT {
 
   private static final String VALIDATE = "/api/v1/validate";
-  private static final String PROBLEM_BASE = "https://einvoice-at.stoicera.com/problems/";
+  private static final String PROBLEM_BASE = "https://einvoice.sebastiankern.net/problems/";
 
   @LocalServerPort private int port;
   @Autowired private TenantRepository tenants;
