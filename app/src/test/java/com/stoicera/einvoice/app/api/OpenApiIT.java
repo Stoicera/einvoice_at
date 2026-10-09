@@ -32,6 +32,47 @@ class OpenApiIT extends AbstractPostgresIT {
   private final HttpClient http = HttpClient.newHttpClient();
   private final ObjectMapper json = new ObjectMapper();
 
+  /**
+   * The other direction of {@code OpenApiDisabledIT.thePublicPagesStopAdvertisingTheApiDocs}. The
+   * links are conditional now, and the condition fails closed — an absent {@code apiDocsEnabled}
+   * attribute hides the link. Without this test, breaking the wiring would silently remove the API
+   * link from every page and the disabled-side test would still be green, so the pair has to exist
+   * or the fix rots into a permanent omission.
+   */
+  @Test
+  void thePublicPagesLinkToTheApiDocs() throws Exception {
+    assertThat(get("/").body())
+        .as("with the docs enabled the landing page offers them")
+        .contains("/swagger-ui.html");
+    assertThat(get("/validator").body())
+        .as("with the docs enabled the validator page offers them")
+        .contains("/swagger-ui.html");
+  }
+
+  /**
+   * The published description is the first paragraph a prospective integrator reads, and it went
+   * stale in the direction that undersells the platform: it announced that "Peppol BIS Billing 3.0
+   * UBL support follows in a later milestone" while M4 had already shipped it, and while this very
+   * document lists {@code /api/v1/convert} and {@code /api/v1/invoices/{id}/ubl}. A description
+   * that contradicts the paths beneath it is worse than a terse one.
+   *
+   * <p>Asserted against the document's own paths rather than against a fixed string, so it stays a
+   * consistency check instead of becoming another literal that has to be remembered.
+   */
+  @Test
+  void theApiDescriptionDoesNotContradictTheEndpointsItPublishes() throws Exception {
+    JsonNode doc = json.readTree(get("/v3/api-docs").body());
+    String description = doc.get("info").get("description").asText();
+
+    assertThat(doc.get("paths").has("/api/v1/convert"))
+        .as("precondition: the document publishes the UBL conversion endpoint")
+        .isTrue();
+    assertThat(description)
+        .as("the description must not announce UBL support as future work while publishing it")
+        .doesNotContainIgnoringCase("later milestone")
+        .doesNotContainIgnoringCase("follows in a");
+  }
+
   @Test
   void apiDocsIsReachableAnonymouslyAndDescribesTheApi() throws Exception {
     HttpResponse<String> response = get("/v3/api-docs");

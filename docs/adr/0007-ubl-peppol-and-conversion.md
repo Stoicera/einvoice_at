@@ -47,22 +47,36 @@ für aktuell hält" würde bedeuten, dass ein Dependency-Bump still ändert, nac
 Rechnung beurteilt wird — dieselbe Rechnung würde gültig oder ungültig, ohne dass sich eine Zeile
 dieses Repositories ändert.
 
-Stand 2026-07-25 ist **2025.11** die in Kraft befindliche Version. Der Nachfolger 2026.5 ist bereits
-veröffentlicht und wird am **2026-08-17** verbindlich; beides ist aus den Artefakten selbst
-abgelesen (`PeppolValidation2026_05.VALID_PER`), nicht von einer Webseite.
+**Stand 2026-08-07 ist 2026.5 gepinnt** — zehn Tage vor dem **2026-08-17**, an dem OpenPeppol den
+Satz verbindlich macht. Das Datum ist aus dem Artefakt selbst abgelesen
+(`PeppolValidation2026_05.VALID_PER`), nicht von einer Webseite. Ein Nachfolger von 2026.5 ist zum
+Zeitpunkt dieses Eintrags nicht veröffentlicht; sobald einer erscheint, meldet sich der Build von
+selbst (Schritt 0 unten).
 
 ### Update-Prozedur (verbindlich)
 
-1. `PeppolValidationStage`: `PeppolValidation2025_11` → die neue Versionsklasse (drei Stellen: die
-   Konstante und die beiden VES-Koordinaten).
+0. **Man muss nicht daran denken.** `PeppolValidationStageTest.noNewerRuleSetIsAlreadyMandatory`
+   liest die datierten Regelsätze aus dem phive-rules-Artefakt und lässt den Build an dem Tag
+   fehlschlagen, an dem einer davon den Pin überholt — mit Versionsnummer und Stichtag in der
+   Fehlermeldung. Vorher stand dieser Termin nur in `owner-checklist.md` und im Kopf des Owners.
+1. `PeppolValidationStage`: die alte Versionsklasse → die neue (fünf Stellen: Import, die Konstante,
+   die beiden VES-Koordinaten in `vesFor` und die beiden in `isPinnedRuleSetRegistered`).
 2. `PeppolValidationStageTest.thePinnedRuleSetIsRegistered` anpassen — der Test schlägt sonst fehl,
    und genau das ist seine Aufgabe.
-3. `CorpusTest` laufen lassen. **Erwartungswerte ändern sich unter Umständen, und das ist der
+3. **Den Übersetzungskatalog gegen den neuen Satz prüfen**, und zwar in beide Richtungen:
+   `everyCatalogueEntryNamesARuleThePinnedRuleSetStillDeclares` fängt gelöschte Regeln automatisch
+   (2026.5 hat `BR-CO-25` ersatzlos entfernt); *geänderte Assertion-Texte* fängt kein Test — die
+   betroffenen Einträge sind von Hand zu lesen. Beim Upgrade auf 2026.5 waren das `PEPPOL-EN16931-
+   R004` (aus `starts-with` wurde `starts-with` **und** kein `::`) und `PEPPOL-EN16931-R007` (aus
+   dem `NN`-Muster wurde eine geschlossene Allowlist inkl. der beiden französischen Profile).
+   Danach `SIZE_NOTE` und `theDocumentedCatalogueSizeIsTheActualCatalogueSize` nachziehen.
+4. `CorpusTest` laufen lassen. **Erwartungswerte ändern sich unter Umständen, und das ist der
    Sinn der Sache** — ein stiller Wechsel würde bedeuten, dass dieselbe Rechnung plötzlich anders
    beurteilt wird, ohne dass es jemand bemerkt. Änderungen bewusst übernehmen, nicht wegdrücken.
-4. `UblEndToEndGenerationTest` laufen lassen: die Muster-Rechnung muss weiterhin ohne Findings
+5. `UblEndToEndGenerationTest` laufen lassen: die Muster-Rechnung muss weiterhin ohne Findings
    durchgehen.
-5. Datum und Version in diesem ADR und im Worklog nachziehen.
+6. Datum und Version in diesem ADR, in `README.md`, `docs/SPEC.md`,
+   `validation/src/test/resources/corpus/README.md` und im Worklog nachziehen.
 
 ## Entscheidung 3 — Konvertiert wird durch das kanonische Modell, nie Syntax zu Syntax
 
@@ -163,11 +177,31 @@ je nachdem, was zuerst fertig wird. Nach diesem Datum würde die Plattform Dokum
 Regelsatz beurteilen, den der Empfänger nicht mehr anwendet, und ein „gültig" von uns wäre dann
 schlimmer als kein Urteil: es wäre ein falsches.
 
-**Die 78 deutschen Übersetzungen aus M5 sind dabei mitzuprüfen.** Sie sind gegen die 2025.11-Artefakte
-geschrieben; ändert 2026.5 einen Assertion-Text, ist die zugehörige Übersetzung inhaltlich zu
-kontrollieren, nicht nur zu übernehmen. Das ist der Preis dafür, dass wir übersetzen — und er ist
-gering, weil die Zuordnung über die Assertion-ID läuft und ein Eintrag ohne Treffer schlicht auf den
-deutschen Rahmen um englischen Text zurückfällt (`PeppolMessagesDe`).
+**Die deutschen Übersetzungen aus M5 sind dabei mitzuprüfen.** Sie waren gegen die
+2025.11-Artefakte geschrieben; ändert ein neuer Satz einen Assertion-Text, ist die zugehörige
+Übersetzung inhaltlich zu kontrollieren, nicht nur zu übernehmen. Das ist der Preis dafür, dass wir
+übersetzen — und er ist gering, weil die Zuordnung über die Assertion-ID läuft und ein Eintrag ohne
+Treffer schlicht auf den deutschen Rahmen um englischen Text zurückfällt (`PeppolMessagesDe`).
+
+**Nachtrag 2026-08-07 — durchgeführt, und die Vorhersage war zu optimistisch.** Der Upgrade fand am
+2026-08-07 statt, zehn Tage vor dem Stichtag. Der Korpus blieb unverändert grün, wie erwartet: die
+neuen und verschärften Regeln von 2026.5 betreffen niederländische und dänische Schemata, die
+Muster-Rechnungen tragen `schemeID="9915"` und `AT`. Nicht erwartet war der Rest:
+
+- `BR-CO-25` wurde **ersatzlos gestrichen**. Der Katalog trug die Übersetzung weiter, und *kein
+  einziger Test schlug an* — `theCatalogCoversEveryPeppolSpecificRuleOfThePinnedRuleSet` prüft
+  gegen eine in die Testdatei getippte Liste, nicht gegen den Regelsatz, und die Größenprüfung
+  vergleicht den Katalog nur mit sich selbst. Deshalb gibt es jetzt
+  `everyCatalogueEntryNamesARuleThePinnedRuleSetStillDeclares`, das die zulässigen IDs aus den
+  ausgelieferten XSLT-Artefakten liest.
+- Zwei Übersetzungen waren nach dem Upgrade **inhaltlich falsch**, nicht bloß ungenau (R004, R007 —
+  siehe Schritt 3 oben). Eine falsche Übersetzung ist schlechter als der englische Rückfall, weil
+  sie den Einreicher in die falsche Richtung schickt.
+
+Die Zahl „78" stand bis zu diesem Nachtrag in diesem Absatz, obwohl der Katalog längst 80 Einträge
+hatte — ausgerechnet in dem Satz, an dem ein Maintainer beim Upgrade entlanggeht. Nach dem Entfernen
+von `BR-CO-25` sind es **79**; die Zahl steht ab jetzt nur noch in `PeppolMessagesDe.SIZE_NOTE`, wo
+ein Test sie festnagelt.
 
 ## Entscheidung 9 — `ConversionLosses` bleibt bei vier Fällen (Nachtrag 2026-07-26)
 
