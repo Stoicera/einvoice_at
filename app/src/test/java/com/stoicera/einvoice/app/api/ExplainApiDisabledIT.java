@@ -38,7 +38,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class ExplainApiDisabledIT extends AbstractPostgresIT {
 
-  private static final String PROBLEM_BASE = "https://einvoice-at.stoicera.com/problems/";
+  private static final String PROBLEM_BASE = "https://einvoice.sebastiankern.net/problems/";
 
   @LocalServerPort private int port;
 

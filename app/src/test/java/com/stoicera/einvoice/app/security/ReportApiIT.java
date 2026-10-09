@@ -36,7 +36,7 @@ class ReportApiIT extends AbstractKeycloakIT {
   private static final String REPORTS = "/api/v1/reports";
   private static final String VALIDATE = "/api/v1/validate";
   private static final String INVOICES = "/api/v1/invoices";
-  private static final String PROBLEM_BASE = "https://einvoice-at.stoicera.com/problems/";
+  private static final String PROBLEM_BASE = "https://einvoice.sebastiankern.net/problems/";
 
   @LocalServerPort private int port;
   @Autowired private TenantRepository tenants;

@@ -28,7 +28,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 class ConvertApiIT extends AbstractKeycloakIT {
 
   private static final String CONVERT = "/api/v1/convert";
-  private static final String PROBLEM_BASE = "https://einvoice-at.stoicera.com/problems/";
+  private static final String PROBLEM_BASE = "https://einvoice.sebastiankern.net/problems/";
 
   @LocalServerPort private int port;
   @Autowired private AuditEventRepository auditEvents;

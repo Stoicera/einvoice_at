@@ -75,7 +75,7 @@ class RateLimitIT extends AbstractKeycloakIT {
   // (400, see class Javadoc), so this never reaches RateLimitFilter at all on this branch's
   // defaults.
   private static final String VALIDATE_MATRIX_PARAM = "/api/v1/validate;x=y";
-  private static final String PROBLEM_BASE = "https://einvoice-at.stoicera.com/problems/";
+  private static final String PROBLEM_BASE = "https://einvoice.sebastiankern.net/problems/";
   private static final int CAPACITY = 3;
 
   @LocalServerPort private int port;

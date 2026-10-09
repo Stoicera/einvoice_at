@@ -91,7 +91,7 @@ class RateLimitFilterTest {
 
     JsonNode problem = JSON.readTree(blocked.getContentAsString());
     assertThat(problem.get("type").asText())
-        .isEqualTo("https://einvoice-at.stoicera.com/problems/rate-limited");
+        .isEqualTo("https://einvoice.sebastiankern.net/problems/rate-limited");
     assertThat(problem.get("title").asText()).isNotBlank();
     assertThat(problem.get("status").asInt()).isEqualTo(429);
     assertThat(problem.get("detail").asText()).isNotBlank();

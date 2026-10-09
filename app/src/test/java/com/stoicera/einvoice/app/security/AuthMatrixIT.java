@@ -171,7 +171,7 @@ class AuthMatrixIT extends AbstractKeycloakIT {
     assertThat(response.statusCode()).isEqualTo(400);
     JsonNode problem = new ObjectMapper().readTree(response.body());
     assertThat(problem.get("type").asText())
-        .isEqualTo("https://einvoice-at.stoicera.com/problems/multiple-credentials");
+        .isEqualTo("https://einvoice.sebastiankern.net/problems/multiple-credentials");
   }
 
   @Test
