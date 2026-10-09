@@ -170,6 +170,10 @@ public class SecurityConfig {
                     // to it, holds no server state, and is rate-limited like the upload itself.
                     .requestMatchers(HttpMethod.POST, "/validator/erklaeren")
                     .permitAll()
+                    // The API's problem `type` URIs point here (ProblemTypeController); a client
+                    // following one must reach the documentation, not a login page.
+                    .requestMatchers(HttpMethod.GET, "/problems", "/problems/", "/problems/*")
+                    .permitAll()
                     // The static assets the public pages need. /favicon.ico is listed although no
                     // such file exists and none is intended: the icon is favicon.svg, declared in
                     // the layout, but browsers and bookmark handlers still probe /favicon.ico
