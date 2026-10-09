@@ -54,13 +54,13 @@
     <ph-ebinterface.version>8.1.0</ph-ebinterface.version>
     <ph-ubl.version>10.2.0</ph-ubl.version>
     <phive.version>12.1.0</phive.version>
-    <phive-rules.version>4.4.1</phive-rules.version>
+    <phive-rules.version>4.4.2</phive-rules.version>
 
     <!-- The ph-* stack depends on the Jakarta XML Binding API only (jakarta.xml.bind-api,
          pulled transitively at 4.0.x); a JAXB runtime provider must be supplied by the
          consuming module. glassfish jaxb-runtime 4.0.5 matches the jakarta.xml.bind-api 4.0.5
          that ph-jaxb 12.1.0 brings in. -->
-    <jaxb-runtime.version>4.0.5</jaxb-runtime.version>
+    <jaxb-runtime.version>4.0.9</jaxb-runtime.version>
 
     <!-- SECURITY OVERRIDE of a version spring-boot-dependencies 4.1.1 manages.
 
@@ -119,11 +119,11 @@
          rather than in app/pom.xml so every plugin version in this build lives in one file. -->
     <git-commit-id-maven-plugin.version>10.0.0</git-commit-id-maven-plugin.version>
 
-    <spotless-maven-plugin.version>3.8.0</spotless-maven-plugin.version>
+    <spotless-maven-plugin.version>3.9.0</spotless-maven-plugin.version>
     <google-java-format.version>1.35.0</google-java-format.version>
     <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
     <jqwik.version>1.10.1</jqwik.version>
-    <archunit.version>1.4.2</archunit.version>
+    <archunit.version>1.5.0</archunit.version>
     <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
 
     <!-- Mutation testing. Versions verified against Maven Central maven-metadata.xml
