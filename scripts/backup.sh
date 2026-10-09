@@ -12,6 +12,7 @@
 # Environment (all optional; defaults match docker-compose.yml / .env.example):
 #   POSTGRES_HOST  POSTGRES_PORT  POSTGRES_DB  POSTGRES_USER  PGPASSWORD
 #   BACKUP_KEEP_DAYS   delete dumps older than this (default 30; 0 disables pruning)
+#   BACKUP_PREFIX      dump file prefix (default einvoice; keycloak uses keycloak) — also scopes pruning
 #
 # Cron (docs/deployment.md installs exactly this line):
 #   15 2 * * *  cd /opt/einvoice-at && PGPASSWORD=... scripts/backup.sh /var/backups/einvoice
@@ -21,6 +22,8 @@
 # step below is checked, and the dump is verified by reading it back with pg_restore --list before
 # the script reports success.
 set -euo pipefail
+# dumps hold personal data: owner-only files, whatever the caller's umask
+umask 077
 
 TARGET_DIR="${1:-./backups}"
 
@@ -29,6 +32,7 @@ POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 POSTGRES_DB="${POSTGRES_DB:-einvoice}"
 POSTGRES_USER="${POSTGRES_USER:-einvoice}"
 BACKUP_KEEP_DAYS="${BACKUP_KEEP_DAYS:-30}"
+BACKUP_PREFIX="${BACKUP_PREFIX:-einvoice}"
 
 command -v pg_dump >/dev/null 2>&1 || {
   echo "error: pg_dump is not on PATH (install postgresql-client)" >&2
@@ -40,7 +44,7 @@ mkdir -p "$TARGET_DIR"
 # UTC and a sortable name, so `ls` is chronological and a server that changes timezone does not
 # produce two dumps that look like the same minute.
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-DUMP="${TARGET_DIR}/einvoice-${STAMP}.dump"
+DUMP="${TARGET_DIR}/${BACKUP_PREFIX}-${STAMP}.dump"
 
 echo "Dumping ${POSTGRES_DB}@${POSTGRES_HOST}:${POSTGRES_PORT} -> ${DUMP}"
 pg_dump \
@@ -67,15 +71,17 @@ fi
 # A checksum beside the dump, so a later restore can prove it is reading the same bytes that were
 # written. Cheap, and the alternative is trusting a filesystem you are restoring *because* you
 # stopped trusting it.
-sha256sum "$DUMP" > "${DUMP}.sha256"
+# Relative file name, so `sha256sum --check` works wherever the directory is mounted (the dump
+# is written inside a container at /backups, but checked on the host and off-site).
+(cd "$TARGET_DIR" && sha256sum "$(basename "$DUMP")") > "${DUMP}.sha256"
 
 SIZE="$(du -h "$DUMP" | cut -f1)"
 echo "OK: ${DUMP} (${SIZE}, ${ENTRIES} entries)"
 
 if [ "$BACKUP_KEEP_DAYS" -gt 0 ]; then
   echo "Pruning dumps older than ${BACKUP_KEEP_DAYS} days in ${TARGET_DIR}"
-  find "$TARGET_DIR" -maxdepth 1 -name 'einvoice-*.dump' -type f \
+  find "$TARGET_DIR" -maxdepth 1 -name "${BACKUP_PREFIX}-*.dump" -type f \
     -mtime "+${BACKUP_KEEP_DAYS}" -print -delete
-  find "$TARGET_DIR" -maxdepth 1 -name 'einvoice-*.dump.sha256' -type f \
+  find "$TARGET_DIR" -maxdepth 1 -name "${BACKUP_PREFIX}-*.dump.sha256" -type f \
     -mtime "+${BACKUP_KEEP_DAYS}" -delete
 fi
