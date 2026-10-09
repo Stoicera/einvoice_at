@@ -99,6 +99,24 @@ class PublicWebIT extends AbstractPostgresIT {
     assertThat(get("/validator").body()).contains("Der Upload wird nicht gespeichert");
   }
 
+  /**
+   * The API's problem {@code type} URIs point at {@code /problems/{slug}} on this host. Following
+   * one must lead an anonymous client to the documentation — not to a login page, which is where
+   * the web chain's catch-all would send it — and a path that is not slug-shaped must not be
+   * reflected into the redirect.
+   */
+  @Test
+  void aProblemTypeUriRedirectsAnonymouslyToItsDocumentation() throws Exception {
+    HttpResponse<String> response = get("/problems/rate-limited");
+
+    assertThat(response.statusCode()).isEqualTo(302);
+    assertThat(response.headers().firstValue("Location"))
+        .contains(
+            "https://github.com/Stoicera/einvoice_at/blob/main/docs/problems.md#rate-limited");
+    assertThat(get("/problems").statusCode()).isEqualTo(302);
+    assertThat(get("/problems/Not_A_Slug").statusCode()).isEqualTo(404);
+  }
+
   @Test
   void theStylesheetAndScriptAreServedAnonymously() throws Exception {
     assertThat(get("/app.css").statusCode()).isEqualTo(200);

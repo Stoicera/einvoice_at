@@ -771,6 +771,11 @@ SERVER_FORWARD_HEADERS_STRATEGY=native
 # nothing advertises a page that answers 404 — the defect this line used to cause.
 API_DOCS_ENABLED=true
 
+# Base of every problem+json `type` URI. Left unset here on purpose: the default IS this host
+# (https://einvoice.sebastiankern.net/problems/), whose /problems/<slug> redirects to
+# docs/problems.md. A self-hosted instance on another host sets its own, absolute http(s) URI.
+# PROBLEM_TYPE_BASE_URI=https://<your-host>/problems/
+
 # --- Identity: validating incoming tokens -----------------------------------
 OAUTH2_ISSUER_URI=https://auth-einvoice.sebastiankern.net/realms/einvoice
 OAUTH2_JWK_SET_URI=https://auth-einvoice.sebastiankern.net/realms/einvoice/protocol/openid-connect/certs
@@ -1121,8 +1126,37 @@ done, there is exactly one copy of the data. Hetzner's own server snapshots are 
 well and are **not** a substitute: a snapshot restores a *machine*, `pg_dump` restores a *database*
 into a machine you already trust.
 
-`scripts/offsite-sync.sh` is already installed and already in the nightly chain, disarmed. Arming it
-is one file; there is no code or cron change.
+`scripts/offsite-sync.sh` is installed and in the nightly chain. Arming it is one file; there is no
+code change.
+
+**State on this fleet (armed 2026-09-23).** The target is not a Storage Box yet but the Dokploy panel
+host, over the private network `dokploy-net` (prod 10.10.1.2 → panel 10.10.1.1). On the panel a
+system user `backupsink` (password locked) accepts exactly one key with a forced command:
+`restrict,from="10.10.1.2",command="/usr/bin/rrsync -no-del /srv/backup/skdevserver1" <key>`.
+`-no-del` refuses `--delete` and still allows the read-back below. `/opt/einvoice-at/offsite.env`
+(0600):
+
+```bash
+OFFSITE_TARGET="backupsink@10.10.1.1:${OFFSITE_SUBDIR:-einvoice}/"
+OFFSITE_SSH_KEY=/root/.ssh/offsite_ed25519
+OFFSITE_SSH_PORT=22
+OFFSITE_REQUIRED=1
+OFFSITE_VERIFY=1
+```
+
+Each product's cron line sets `OFFSITE_SUBDIR` and, where its files are not `einvoice-*.dump`,
+`OFFSITE_PATTERN`. Keycloak's database is backed up with the same `backup.sh`
+(`BACKUP_PREFIX=keycloak` in the root-only `/opt/einvoice-at/backup-keycloak.env`), in
+`/etc/cron.d/keycloak-backup`:
+
+```cron
+20 2 * * * root docker run --rm --network dokploy-network --env-file /opt/einvoice-at/backup-keycloak.env -v /opt/einvoice-at/scripts:/scripts:ro -v /var/backups/keycloak:/backups postgres:17 /scripts/backup.sh /backups >> /var/log/keycloak-backup.log 2>&1 && OFFSITE_SUBDIR=keycloak OFFSITE_PATTERN="keycloak-*.dump" /opt/einvoice-at/scripts/offsite-sync.sh /var/backups/keycloak >> /var/log/keycloak-backup.log 2>&1
+```
+
+migration-lab chains the same script at 02:45 with `OFFSITE_SUBDIR=migration-lab
+OFFSITE_PATTERN='*.sql.gz'`. The panel and prod are in one Hetzner account and region: this covers
+the loss of the server, not of the account. The Storage Box below is the step that adds a location
+outside it (owner decision, it costs money).
 
 **Do this.** Order a **Hetzner Storage Box BX11** (€3.20/month, 1 TB, no minimum term) in FSN1 and
 enable *SSH support* in its panel. Then, on the production server:
