@@ -771,6 +771,11 @@ SERVER_FORWARD_HEADERS_STRATEGY=native
 # nothing advertises a page that answers 404 — the defect this line used to cause.
 API_DOCS_ENABLED=true
 
+# Base of every problem+json `type` URI. Left unset here on purpose: the default IS this host
+# (https://einvoice.sebastiankern.net/problems/), whose /problems/<slug> redirects to
+# docs/problems.md. A self-hosted instance on another host sets its own, absolute http(s) URI.
+# PROBLEM_TYPE_BASE_URI=https://<your-host>/problems/
+
 # --- Identity: validating incoming tokens -----------------------------------
 OAUTH2_ISSUER_URI=https://auth-einvoice.sebastiankern.net/realms/einvoice
 OAUTH2_JWK_SET_URI=https://auth-einvoice.sebastiankern.net/realms/einvoice/protocol/openid-connect/certs
