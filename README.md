@@ -5,6 +5,14 @@
 
 **Austrian e-invoicing platform: generate, validate and convert ebInterface 6.1 and Peppol BIS Billing 3.0 (UBL) — with human-readable German validation reports.**
 
+**Live demo:** <https://einvoice.sebastiankern.net> — the [public validator](https://einvoice.sebastiankern.net/validator) needs no account, and the [API docs](https://einvoice.sebastiankern.net/swagger-ui.html) are open. Run it yourself (Docker with Compose; details in [Quickstart](#quickstart)):
+
+```bash
+git clone https://github.com/Stoicera/einvoice_at.git && cd einvoice_at
+cp .env.example .env   # set POSTGRES_PASSWORD, KEYCLOAK_ADMIN, KEYCLOAK_ADMIN_PASSWORD
+docker compose up -d   # then open http://localhost:8080/validator
+```
+
 A self-hostable Java 25 / Spring Boot platform built by [Stoicera Software Group](https://stoicera.com) as a production-grade reference system. Austria's federal government only accepts structured e-invoices (ebInterface or Peppol BIS) via e-rechnung.gv.at — and rejected invoices come back with Schematron output that non-technical users cannot read. This platform closes that gap.
 
 > **Status: Milestone M6 complete — operations and polish.** On top of M5's browser surface, the
@@ -42,7 +50,7 @@ reach the tracer through a plain-Java port ([ADR-0012](docs/adr/0012-observabili
 
 ## Deutsche Kurzfassung
 
-**einvoice-at** ist eine selbst hostbare Plattform für die österreichische E-Rechnung: Sie **erzeugt** ebInterface 6.1 und Peppol BIS Billing 3.0 (UBL) aus strukturierten Rechnungsdaten, **validiert** hochgeladene XML-Rechnungen gegen XSD, Schematron und österreichische Geschäftsregeln — mit einem menschenlesbaren, deutschen Prüfbericht — und **konvertiert** zwischen beiden Formaten mit dokumentierten Mapping-Grenzen. Ein abschaltbarer KI-Assistent erklärt jeden Befund auf Wunsch in einfacher Sprache; personenbezogene Daten werden vorher maskiert und das geprüfte Dokument verlässt die Plattform nie ([docs/privacy.md](docs/privacy.md)). Angemeldete Nutzer:innen verwalten ihre Rechnungen, Prüfberichte und API-Schlüssel im Dashboard, erstellen Rechnungen über einen vierstufigen Assistenten und können ihr Konto samt aller Daten jederzeit vollständig löschen (Art. 17 DSGVO). Rechnungen werden dabei **nie** automatisch gelöscht — § 132 BAO verpflichtet Sie zu sieben Jahren Aufbewahrung ([ADR-0011](docs/adr/0011-retention-and-erasure.md)). Betrieb und Observability sind mit M6 fertig: OpenTelemetry-Traces über die Pipeline-Stufen, ein Compose-Profil zum Anschauen, ein Deployment-Leitfaden für Hetzner + Dokploy, Backup- und Restore-Skripte samt automatisierter Probe, und ein STRIDE-light-Bedrohungsmodell in [SECURITY.md](SECURITY.md). Aktueller Stand: **Milestone M6 abgeschlossen** — bis auf die Live-Instanz und das `v0.1.0`-Tag, die beide eine Maschine bzw. einen Knopfdruck brauchen.
+**einvoice-at** ist eine selbst hostbare Plattform für die österreichische E-Rechnung: Sie **erzeugt** ebInterface 6.1 und Peppol BIS Billing 3.0 (UBL) aus strukturierten Rechnungsdaten, **validiert** hochgeladene XML-Rechnungen gegen XSD, Schematron und österreichische Geschäftsregeln — mit einem menschenlesbaren, deutschen Prüfbericht — und **konvertiert** zwischen beiden Formaten mit dokumentierten Mapping-Grenzen. Ein abschaltbarer KI-Assistent erklärt jeden Befund auf Wunsch in einfacher Sprache; personenbezogene Daten werden vorher maskiert und das geprüfte Dokument verlässt die Plattform nie ([docs/privacy.md](docs/privacy.md)). Angemeldete Nutzer:innen verwalten ihre Rechnungen, Prüfberichte und API-Schlüssel im Dashboard, erstellen Rechnungen über einen vierstufigen Assistenten und können ihr Konto samt aller Daten jederzeit vollständig löschen (Art. 17 DSGVO). Rechnungen werden dabei **nie** automatisch gelöscht — § 132 BAO verpflichtet Sie zu sieben Jahren Aufbewahrung ([ADR-0011](docs/adr/0011-retention-and-erasure.md)). Betrieb und Observability sind mit M6 fertig: OpenTelemetry-Traces über die Pipeline-Stufen, ein Compose-Profil zum Anschauen, ein Deployment-Leitfaden für Hetzner + Dokploy, Backup- und Restore-Skripte samt automatisierter Probe, und ein STRIDE-light-Bedrohungsmodell in [SECURITY.md](SECURITY.md). Aktueller Stand: **Milestone M6 abgeschlossen**. Die Live-Demo läuft unter <https://einvoice.sebastiankern.net> (der öffentliche Prüfer braucht kein Konto), die Versionen stehen unter [Releases](https://github.com/Stoicera/einvoice_at/releases).
 
 ## Architecture
 
@@ -523,6 +531,13 @@ platform is not a Peppol Access Point.
 XSD and Schematron handling for ebInterface and Peppol builds on the excellent open-source work of [Philip Helger](https://github.com/phax): [ph-ebinterface](https://github.com/phax/ph-ebinterface), [ph-ubl](https://github.com/phax/ph-ubl), [phive](https://github.com/phax/phive) and [phive-rules](https://github.com/phax/phive-rules) (Apache-2.0/MIT). PDF rendering uses [Apache PDFBox](https://pdfbox.apache.org/) (Apache-2.0).
 
 ebInterface is a standard of [AUSTRIAPRO](https://www.austriapro.at/); Peppol BIS Billing 3.0 is maintained by [OpenPeppol](https://peppol.org/). The split in how the two are validated here is worth stating plainly: the **Peppol rule sets are OpenPeppol's own, executed unmodified** at a pinned version — this project runs them, it does not reimplement them. The **AT-B2G Schematron rules** (`validation/src/main/resources/schematron/`) are original to this repository, because ebInterface ships no official Schematron at all and there is no AUSTRIAPRO artefact to build them on.
+
+## Contributing
+
+Issues and pull requests are welcome — [CONTRIBUTING.md](CONTRIBUTING.md) says how to build, what
+gets merged and how fast we answer. Participation follows the [Code of Conduct](CODE_OF_CONDUCT.md).
+Security reports go through [SECURITY.md](SECURITY.md), not public issues. For tools and language
+models, [llms.txt](llms.txt) is a short map of this repository.
 
 ## License
 

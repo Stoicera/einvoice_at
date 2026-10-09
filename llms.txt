@@ -1,0 +1,30 @@
+# einvoice-at
+
+> Self-hostable Austrian e-invoicing platform (Java 25, Spring Boot 4.1, PostgreSQL): generate, validate and convert ebInterface 6.1 and Peppol BIS Billing 3.0 (UBL) invoices, with human-readable German validation reports. Apache-2.0. Live demo: https://einvoice.sebastiankern.net
+
+Not a Peppol access point, no automatic upload to e-rechnung.gv.at, no bookkeeping or tax (docs/PRD.md §5).
+
+## Start here
+
+- [README](https://github.com/Stoicera/einvoice_at/blob/main/README.md): what it does, quickstart, REST API, validation pipeline, deployment
+- [Live demo](https://einvoice.sebastiankern.net/validator): public validator, no account needed
+- [API docs (OpenAPI)](https://einvoice.sebastiankern.net/v3/api-docs): machine-readable API description of the demo
+- [Problem types](https://github.com/Stoicera/einvoice_at/blob/main/docs/problems.md): every RFC 9457 error slug the API returns
+
+## Design
+
+- [Product requirements](https://github.com/Stoicera/einvoice_at/blob/main/docs/PRD.md): scope and non-goals
+- [Specification](https://github.com/Stoicera/einvoice_at/blob/main/docs/SPEC.md): modules, API, data model
+- [Architecture decisions](https://github.com/Stoicera/einvoice_at/tree/main/docs/adr): one ADR per decision with reach
+- [Glossary](https://github.com/Stoicera/einvoice_at/blob/main/docs/glossary.md): ebInterface, EN 16931, Peppol terms
+
+## Examples
+
+- [Samples](https://github.com/Stoicera/einvoice_at/tree/main/samples): one synthetic B2G invoice as canonical JSON, ebInterface XML and UBL XML
+- [Golden-file corpus](https://github.com/Stoicera/einvoice_at/tree/main/validation/src/test/resources/corpus): valid and deliberately broken documents, one defect per file
+
+## Operations
+
+- [Deployment walkthrough](https://github.com/Stoicera/einvoice_at/blob/main/docs/deployment.md): Hetzner + Dokploy, step by step
+- [Security](https://github.com/Stoicera/einvoice_at/blob/main/SECURITY.md): disclosure policy and threat model
+- [Changelog](https://github.com/Stoicera/einvoice_at/blob/main/CHANGELOG.md)
