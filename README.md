@@ -52,6 +52,73 @@ reach the tracer through a plain-Java port ([ADR-0012](docs/adr/0012-observabili
 
 **einvoice-at** ist eine selbst hostbare Plattform für die österreichische E-Rechnung: Sie **erzeugt** ebInterface 6.1 und Peppol BIS Billing 3.0 (UBL) aus strukturierten Rechnungsdaten, **validiert** hochgeladene XML-Rechnungen gegen XSD, Schematron und österreichische Geschäftsregeln — mit einem menschenlesbaren, deutschen Prüfbericht — und **konvertiert** zwischen beiden Formaten mit dokumentierten Mapping-Grenzen. Ein abschaltbarer KI-Assistent erklärt jeden Befund auf Wunsch in einfacher Sprache; personenbezogene Daten werden vorher maskiert und das geprüfte Dokument verlässt die Plattform nie ([docs/privacy.md](docs/privacy.md)). Angemeldete Nutzer:innen verwalten ihre Rechnungen, Prüfberichte und API-Schlüssel im Dashboard, erstellen Rechnungen über einen vierstufigen Assistenten und können ihr Konto samt aller Daten jederzeit vollständig löschen (Art. 17 DSGVO). Rechnungen werden dabei **nie** automatisch gelöscht — § 132 BAO verpflichtet Sie zu sieben Jahren Aufbewahrung ([ADR-0011](docs/adr/0011-retention-and-erasure.md)). Betrieb und Observability sind mit M6 fertig: OpenTelemetry-Traces über die Pipeline-Stufen, ein Compose-Profil zum Anschauen, ein Deployment-Leitfaden für Hetzner + Dokploy, Backup- und Restore-Skripte samt automatisierter Probe, und ein STRIDE-light-Bedrohungsmodell in [SECURITY.md](SECURITY.md). Aktueller Stand: **Milestone M6 abgeschlossen**. Die Live-Demo läuft unter <https://einvoice.sebastiankern.net> (der öffentliche Prüfer braucht kein Konto), die Versionen stehen unter [Releases](https://github.com/Stoicera/einvoice_at/releases).
 
+## Why this exists
+
+Invoices to Austrian federal bodies have to be structured — ebInterface or Peppol BIS Billing 3.0 —
+and a rejected one comes back as Schematron output: an English rule text, an XPath, an assertion
+id. For the person who has to fix the invoice that is a wall, not a hint. Three things make it
+harder than it sounds: the federal profile has mandatory fields (Auftragsreferenz,
+Lieferantennummer) that international ERP systems do not know about, so "supports Peppol" is not
+"accepted by the Bund"; AUSTRIAPRO publishes no Schematron for ebInterface at all, so anyone who
+wants to check the Austrian business rules by machine has to write them and then prove they are
+right; and every one of those checks has to answer in German.
+
+So this project does exactly that, and nothing around it. Where an official rule set exists
+(Peppol) it is executed unmodified at a version pinned in code, with a build test that fails the
+day OpenPeppol supersedes the pin. Where none exists (ebInterface) the rules are written here and
+published in this repository so they can be checked. Every finding carries a German message, the
+rule id and the location; the English original stays underneath. The public validator needs no
+account and keeps nothing. It is also a public reference system of how we build — code, tests,
+decisions and the findings of our own reviews are all in the open.
+
+## How it compares
+
+Honest, and naming what each alternative does better. No vendor names.
+
+| Alternative | What it does better | What this project adds |
+|---|---|---|
+| **The upload check at e-rechnung.gv.at** (and the public ebInterface form check) | It *is* the recipient. Its verdict is the one that counts, and it covers the submission itself — account, transport, status — which this project deliberately does not. | A check you can run *before* submission, from your own system over an API or self-hosted, with no account; a German message, rule id and location per finding; an upload that is never stored. |
+| **phive-based validators** (the engine this project runs the Peppol rules through, and the validators built on it) | Far broader coverage — many more rule sets across countries and formats, maintained by the engine's author and carrying new releases as they are published; embeddable as a plain library with no server at all. | German messages for the 79 Peppol rules an Austrian filer realistically trips (as of 2026-10-01), AT-B2G rules for ebInterface where no official Schematron exists, a UI and REST API with API keys and tenants, conversion with a loss report, a PDF view, persistence and GDPR erasure. This project only *runs* the Peppol rules; it does not reimplement them. |
+| **Commercial e-invoicing services and Peppol access points** | They *send*: certified network access, delivery, receipt and status tracking, inbound processing, archiving, ERP connectors, support with contractual service levels, often tax expertise. | Self-hostable and open source (Apache-2.0): your data stays where you run it, every rule is readable, and the validation can sit inside your own invoicing before a document goes to any provider. Not an access point, no sending, no inbound — see the non-goals. |
+
+## Roadmap and non-goals
+
+**Will not be in scope** ([PRD §5](docs/PRD.md), decided and documented):
+
+- No Peppol access point of our own — the architecture only provides the handover point.
+- No inbound invoice processing; outbound and validation of any file only.
+- No bookkeeping, no tax — documents are generated and checked, not posted.
+- No legal or tax advice. The platform's own footer says so.
+
+**Possible, not scheduled:**
+
+- An e-rechnung.gv.at web-service upload behind a feature flag, or a documented Peppol handover —
+  [MILESTONES M7](docs/MILESTONES.md), a stretch goal "only if time remains".
+- **ebInterface 7.0: observed, not promised.** The format layer has a version strategy so a new
+  version must not touch `core` ([SPEC §1](docs/SPEC.md)); we track AUSTRIAPRO's publication and
+  commit to no date.
+- A distributed rate-limit store, only if a multi-replica deployment ever needs it
+  ([SECURITY.md](SECURITY.md), known limits).
+
+**Maintenance that is ongoing by construction:** Peppol rule-set upgrades as OpenPeppol publishes
+them (the build fails when the pin is superseded; 2026.5 adopted 2026-08-07, ten days before it
+became mandatory), dependency updates through Dependabot behind the OWASP gate, and the
+[CHANGELOG](CHANGELOG.md). Open launch items as of 2026-10-13 are listed in
+[docs/PORTFOLIO-READINESS.md](docs/PORTFOLIO-READINESS.md).
+
+## For companies / Für Unternehmen
+
+Two documents for a company evaluating or buying this, both in German because that is the language
+of the conversation they are written for:
+
+- **[docs/enterprise.md](docs/enterprise.md)** (Deutsch) — *einvoice-at im Unternehmen*: drei
+  Betriebsmodelle (selbst gehostet · von Stoicera betrieben auf EU-Infrastruktur · Integration über
+  die REST-API), was dazugehört (Sicherheit, Datenschutz, Sicherung, Updates, Servicezeiten),
+  Grenzen, ein Integrationspfad in fünf Schritten und eine Checkliste für die IT.
+- **[docs/demo.md](docs/demo.md)** (Deutsch) — das Regiebuch für eine Demo von zehn Minuten vor
+  Geschäftsführung oder IT-Leitung, mit Beispieldateien, Sprechtext, Zahlen mit Messdatum und den
+  Antworten auf die üblichen Einwände.
+
 ## Architecture
 
 Modular monolith, Maven multi-module; boundary rules are enforced by ArchUnit as each module gains code — the `core`-is-JDK-only rule is active since M1, and the cross-module rules (only `app` knows the database; `formats-*`/`mapping` never import Spring) landed with M3. See [ADR-0002](docs/adr/0002-modular-monolith.md).
@@ -239,7 +306,9 @@ red. The job is not a no-op even then: it still asserts the scan binds exactly o
 
 JUnit 5 + AssertJ + Mockito for unit tests, ArchUnit for module-boundary rules, Testcontainers for integration tests, **Selenium** for the browser flow and **Gatling** for the load scenario — built out milestone by milestone per [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md).
 
-**1080 tests** in a clean `./mvnw verify`, plus 5 browser E2E tests under `-Pe2e`.
+**1 095 tests** (881 unit, 214 integration) in a clean `./mvnw verify` — CI run
+[38353291491](https://github.com/Stoicera/einvoice_at/actions/runs/38353291491), 2026-10-13 — plus
+5 browser E2E tests under `-Pe2e`.
 
 **The `e2e` module, and what a green build does and does not mean.** Selenium and Gatling live in their own module because neither belongs on `app`'s test classpath, and because a Chrome image and a load profile do not belong in every developer's inner loop. Its tests are always *compiled* — a module whose tests are never built is a module that quietly stops compiling — but they only *run* under `-Pe2e` (browser) and `-Pload` (Gatling), in a dedicated CI job alongside the existing mutation and security jobs. Stated plainly rather than implied: **a green plain `./mvnw verify` does not mean the browser flow works; the `e2e` job is what means that.**
 

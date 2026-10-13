@@ -21,6 +21,18 @@ All notable changes to this project are documented here. The format follows
   served as `text/plain;charset=utf-8` (`PlainTextCharsetConfig`), the media type RFC 9116 §3
   requires; before, the container answered a bare `text/plain`. Covered by an integration test in
   `PublicWebIT`.
+- **`docs/enterprise.md`** (German): einvoice-at im Unternehmen — three operating models
+  (self-hosted via Docker Compose, operated by Stoicera on EU infrastructure, REST-API integration),
+  what each includes (security properties as measured, privacy per `docs/privacy.md`, backup with
+  read-back, updates and the rule-set guard, service hours), limits and non-goals, a five-step
+  integration path and an IT checklist. No prices.
+- **`docs/demo.md`** (German): the script for a ten-minute demo to a company's management or IT
+  lead — sample files from `samples/` and the golden-file corpus with their expected verdicts,
+  three core scenes, a numbers sheet with measurement dates, twelve objections with answers, and
+  what is deliberately not shown or promised.
+- README sections **Why this exists**, **How it compares**, **Roadmap and non-goals** and
+  **For companies / Für Unternehmen**, as the launch checklist requires
+  (`docs/PORTFOLIO-READINESS.md` item 7).
 
 ### Changed
 
