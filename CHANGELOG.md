@@ -20,6 +20,13 @@ All notable changes to this project are documented here. The format follows
   answered a redirect to the Keycloak login (checked live 2026-10-13). Covered by an integration
   test in `PublicWebIT`.
 
+### Changed
+
+- **CI: the OWASP Dependency-Check job also runs on a weekly schedule** (Monday 03:00 UTC, on
+  `main`, that job alone) so the week-scoped NVD cache is warm before the first pull request of the
+  week — a cold sync took 57 min on 2026-10-08, a warm one 1–3 min
+  (`docs/PORTFOLIO-READINESS.md` item 10).
+
 ## [0.2.0] — 2026-10-09
 
 Maintenance and launch preparation since `v0.1.0`: the Peppol rule set 2026.5, a CVE dependency

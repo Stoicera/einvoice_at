@@ -4,6 +4,17 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Weekly cache warm-up for the OWASP scan, and nothing else: on a `schedule` event every job
+  # except `security-scan` is skipped (each carries `if: github.event_name != 'schedule'`).
+  #
+  # Why: the NVD cache below is keyed on the ISO week, and a cache written on `main` is the one
+  # every pull-request branch can restore — a PR cannot share its own cache with `main`. Without
+  # this, the first run of the week pays the cold sync (~57 min on `main`, 2026-10-08) wherever it
+  # happens to land. Monday 03:00 UTC is the first hours of the new ISO week, before anybody opens
+  # a PR, so the warm 1-3 min path is what the week's PRs get. A scheduled run executes on the
+  # default branch, which is exactly where the cache has to be written.
+  schedule:
+    - cron: "0 3 * * 1"
 
 permissions:
   contents: read
@@ -15,6 +26,8 @@ concurrency:
 jobs:
   build:
     name: Build, lint, test
+    # The weekly `schedule` event exists only to warm the security-scan cache (see `on:` above).
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -35,6 +48,7 @@ jobs:
 
   mutation:
     name: Mutation tests (core, mapping, validation, formats-ebinterface, formats-ubl, ai-assist)
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -166,6 +180,7 @@ jobs:
   # flow works. This job is what means that.
   e2e:
     name: Browser E2E + load scenario
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     # The three variables docker-compose.yml declares with the `:?` form, i.e. the ones that make
     # interpolation of the whole file fail when they are absent. They live at JOB level rather than
@@ -327,6 +342,7 @@ jobs:
 
   docker:
     name: Docker image build and publish
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     permissions:
       contents: read
