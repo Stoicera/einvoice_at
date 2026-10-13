@@ -12,7 +12,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`/.well-known/security.txt`** (RFC 9116) on the public host, naming the same two contacts as
+  `SECURITY.md` (GitHub private vulnerability reporting, office@stoicera.com), with `Expires`
+  2027-10-01. The web filter chain now permits `/.well-known/**` anonymously; before, the URL
+  answered a redirect to the Keycloak login (checked live 2026-10-13). `.txt` static files are now
+  served as `text/plain;charset=utf-8` (`PlainTextCharsetConfig`), the media type RFC 9116 §3
+  requires; before, the container answered a bare `text/plain`. Covered by an integration test in
+  `PublicWebIT`.
+
+### Changed
+
+- **CI: the OWASP Dependency-Check job also runs on a weekly schedule** (Monday 03:00 UTC, on
+  `main`, that job alone) so the week-scoped NVD cache is warm before the first pull request of the
+  week — a cold sync took 57 min on 2026-10-08, a warm one 1–3 min
+  (`docs/PORTFOLIO-READINESS.md` item 10).
 
 ## [0.2.0] — 2026-10-09
 
