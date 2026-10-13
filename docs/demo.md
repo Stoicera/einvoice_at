@@ -51,8 +51,7 @@ curl -sS -X POST https://einvoice.sebastiankern.net/api/v1/validate -F file=@dem
 #   "findings":[{"severity":"ERROR","ruleId":"PEPPOL-EN16931-R020", … }, … ],"valid":false}}
 ```
 
-Antwortet eine Adresse nicht: zwei Minuten warten, erneut versuchen. Keine Demo vor 09:00 ansetzen —
-am frühen Morgen liegt das Wartungsfenster der Hosts, in dem eine Adresse kurz nicht antworten kann.
+Antwortet eine Adresse nicht: zwei Minuten warten, erneut versuchen. Keine Demo vor 09:00 ansetzen.
 
 ### 1.3 Browser und Bildschirm
 
@@ -73,8 +72,9 @@ am frühen Morgen liegt das Wartungsfenster der Hosts, in dem eine Adresse kurz 
   `.env.example`). Die Demo braucht vier bis fünf Uploads; nicht hektisch wiederholen. Ein 429
   trägt `Retry-After`.
 - Dateien bis 2 MB.
-- Die KI-Erklärung („Fehler erklären") ist in der Produktion abgeschaltet (Stand 2026-10-08,
-  [PORTFOLIO-READINESS](PORTFOLIO-READINESS.md)). Sie wird erwähnt, nicht vorgeführt.
+- Die KI-Erklärung („Fehler erklären") ist in der Produktion abgeschaltet (geprüft 2026-10-13: der
+  Prüfbericht der Live-Instanz zeigt den Knopf nicht; Schalter `FEATURES_AI_EXPLANATIONS`, Standard
+  `false` in `.env.example`). Sie wird erwähnt, nicht vorgeführt.
 
 ---
 
@@ -106,7 +106,7 @@ gespeicherten Berichte unverändert ist."
 
 **Klick 1:** „Datei auswählen" → `03-peppol-ohne-adressen.xml` → „Rechnung prüfen".
 
-**Der Zuschauer sieht (unter einer Sekunde später):** Ein roter Balken „Diese Datei ist nicht
+**Der Zuschauer sieht (nach ein bis zwei Sekunden):** Ein roter Balken „Diese Datei ist nicht
 gültig." mit „2 Fehler", daneben der Dateiname · `ubl-invoice-2.1` · Profil
 `peppol-bis-billing-3.0`. Darunter der Abschnitt „Fehler — diese verhindern die Annahme" mit zwei
 Karten:
@@ -196,7 +196,7 @@ Archiv, und er hängt allein daran, ob ein Credential mitgeschickt wurde."
 **Der Zuschauer sieht:** Prüfergebnis, Berichtshistorie, die strukturierten Rechnungsdaten, drei
 Downloads: ebInterface · UBL · PDF.
 
-**Klick 2:** „PDF" — öffnet in einem neuen Tab.
+**Klick 2:** „PDF" — mit Strg+Klick in einem neuen Tab öffnen, damit das Dashboard offen bleibt.
 
 **Der Zuschauer sieht:** Eine deutsche A4-Druckansicht — Absender, Empfänger, Positionen, die
 USt-Aufschlüsselung je Satz als eigene Tabelle, Summen, Zahlungsdaten.
@@ -213,8 +213,8 @@ das Konto löschen."
 
 **Klick 4:** Reiter „Konto" — nur zeigen, die Löschung nicht ausführen.
 
-**Der Zuschauer sieht:** „Was gespeichert ist" mit der Anzahl je Kategorie; darunter die
-Löschzone mit Bestätigungsfeld.
+**Der Zuschauer sieht:** „Gespeicherte Daten" mit der Anzahl je Kategorie; darunter „Konto und
+alle Daten löschen" mit Bestätigungsfeld.
 
 **Sprechtext:** „Auskunft und Löschung nach DSGVO ohne Umweg über uns: Ein Vorgang löscht
 Rechnungen, Berichte, Schlüssel und Protokoll in einer Transaktion. Das Gegenteil ist genauso
@@ -243,7 +243,8 @@ Jede Zahl mit Messdatum. Was nicht gemessen ist, wird nicht gesagt.
 
 | Aussage | Wert | Gemessen | Quelle |
 |---|---|---|---|
-| Automatisierte Tests | 1 088, 0 Fehler (875 Unit, 213 Integration gegen echte PostgreSQL und Keycloak); dazu 5 Browser-E2E-Tests | 2026-10-01 lokal, 2026-09-30 CI (Lauf 36708543504) | Summe der `Tests run:`-Zeilen je Modul |
+| Automatisierte Tests | 1 095, 0 Fehler (881 Unit, 214 Integration gegen echte PostgreSQL und Keycloak); dazu 5 Browser-E2E-Tests | 2026-10-13 CI (Lauf 38353291491, Code identisch mit `main`) | Summe der `Tests run:`-Zeilen je Modul |
+| Antwortzeit der Live-Instanz, `POST /api/v1/validate` von außen | 0,2–1,8 s je Anfrage, drei Messungen inkl. Verbindungsaufbau | 2026-10-13 | `curl -w '%{time_total}'` gegen die Live-Instanz |
 | Peppol-Regelsatz | 2026.5 — umgestellt 2026-08-07, verbindlich seit 2026-08-17 | 2026-10-01 | `PeppolValidationStage.RULE_SET_VERSION` |
 | Deutsche Übersetzungen der Peppol-Regeln | 79 | 2026-10-01 | `PeppolMessagesDe`, per Test festgenagelt |
 | Golden-File-Korpus | 6 gültige, 10 gezielt kaputte Dokumente | 2026-10-01 | `validation/src/test/resources/corpus/` |

@@ -99,8 +99,8 @@ Bedrohung → Kontrolle → Test steht in [SECURITY.md](../SECURITY.md).
   Schutzgrenze im Prüfmodul selbst.
 - **Mandantentrennung.** Jede Abfrage ist mandantengebunden; eine fremde Ressource ist von einer
   nicht existierenden nicht zu unterscheiden (404). Getestet für Rechnungen, Berichte und Schlüssel.
-- **Nachvollziehbarkeit.** Append-only-Protokoll je Erzeugung, Prüfung, Konvertierung und Löschung —
-  mit dem SHA-256 des Payloads, nie dem Payload.
+- **Nachvollziehbarkeit.** Append-only-Protokoll je Erzeugung, Prüfung und Konvertierung sowie je
+  Anlage und Widerruf eines API-Schlüssels — mit dem SHA-256 des Payloads, nie dem Payload.
 - **Lieferkette.** OWASP Dependency-Check als Build-Gate ab CVSS 7,0 (auf `main` grün, 2026-10-08),
   Dependabot für Maven, Actions und Docker, CodeQL; Container-Images per Tag und Digest, Actions per
   Commit-SHA festgelegt.
@@ -131,8 +131,8 @@ Jede Nacht ein komprimierter Dump, der mit `pg_restore --list` zurückgelesen wi
 erfolgreich nennt, mit SHA-256-Prüfsumme daneben. Das Wiederherstellungsskript prüft die Prüfsumme,
 nennt die Zieldatenbank und verlangt eine ausdrückliche Bestätigung. Die Wiederherstellung ist
 nicht nur dokumentiert, sondern geprobt: `BackupRestoreDrillIT` führt sie in jedem Build durch —
-Dump, Wiederherstellung in eine zweite Datenbank, Vergleich jeder Tabelle und des Inhalts der
-Rechnungsspalte.
+Dump, Wiederherstellung in eine zweite Datenbank, Abgleich der Zeilenzahl jeder Tabelle und
+Rücklesen einer Rechnung mit Inhalt.
 
 Die Sicherungen werden jede Nacht auf einen zweiten Server kopiert und von dort zurückgelesen,
 bevor der Lauf als erfolgreich gilt. Ein leeres Quellverzeichnis ist dabei ein harter Fehler, kein
@@ -154,7 +154,7 @@ Zwei Dinge bewegen sich unter einer E-Rechnungs-Plattform: die Regelwerke und di
   noch übersetzte. Ein Termin, an den man denken muss, ist kein Termin, sondern ein Risiko.
 - **ebInterface.** Version 6.1. Die Architektur ist auf eine weitere Version vorbereitet;
   ebInterface 7.0 wird beobachtet und ist nicht zugesagt.
-- **Bibliotheken.** Dependabot öffnet die Updates, der Abhängigkeits-Scan gate-t ab CVSS 7,0. Jede
+- **Bibliotheken.** Dependabot öffnet die Updates, der Abhängigkeits-Scan blockiert den Build ab CVSS 7,0. Jede
   Unterdrückung trägt eine Begründung und ein Ablaufdatum.
 - **Ausrollen (Modell B).** Jeder Merge auf `main` baut das Image und rollt es aus; ein
   fehlgeschlagener Rollout nimmt sich selbst zurück; ein Rollback ist das vorherige
@@ -230,13 +230,13 @@ Keycloak erprobt.
 - [ ] Reverse Proxy mit TLS vor der Anwendung; nur 80/443 (und Ihr Administrationszugang) von außen
       erreichbar. Die Anwendung selbst spricht intern HTTP auf 8080.
 - [ ] `.env` vollständig: jedes Passwort generiert, keines der Entwicklungswerte
-      (`openssl rand -base64 24`). `.env.example` ist die vollständige Liste.
+      (`openssl rand -base64 24`). `.env.example` ist die vollständige Liste der Anwendungsvariablen.
 - [ ] `SERVER_FORWARD_HEADERS_STRATEGY=native` hinter dem Proxy — und **nicht** `framework`
       (`docs/deployment-reference.md` §2 erklärt, warum). Ohne Proxy: nicht setzen.
 - [ ] Keycloak im Produktionsmodus mit eigener Datenbank und echtem Hostname, nicht `start-dev`;
       Bootstrap-Zugangsdaten nach der Einrichtung entfernen (`docs/deployment.md` §7).
 - [ ] `OAUTH2_AUDIENCE` gesetzt, sobald der Realm mehr als einen Client hat.
-- [ ] `SPRING_PROFILES_ACTIVE=prod` für JSON-Logs; Log-Senke festgelegt.
+- [ ] `SPRING_PROFILES_ACTIVE=prod` für JSON-Logs (`docs/deployment.md` §8); Log-Senke festgelegt.
 - [ ] `API_DOCS_ENABLED` entschieden: `false`, wenn die API-Beschreibung nicht öffentlich sein soll.
 - [ ] `FEATURES_AI_EXPLANATIONS` bleibt `false`, bis die Entscheidung über den Anbieter gefallen ist.
 - [ ] `OTEL_ENABLED` bleibt `false`, solange kein eigener Collector steht. Das
