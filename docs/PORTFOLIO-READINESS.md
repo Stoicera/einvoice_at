@@ -80,6 +80,21 @@ Effort: S = under 1 hour, M = half a day, L = more than a day.
 | 9 | Repo furniture | `llms.txt` done (#44); social preview open |
 | 10 | Bound the OWASP job | timeout done (#41); scheduled cache warm-up on `main` open |
 
+## Status 2026-10-13
+
+| # | Item | State |
+|---|---|---|
+| 7 | README launch sections | done (this PR): "Why this exists", "How it compares", "Roadmap and non-goals", plus "For companies / Für Unternehmen" linking `docs/enterprise.md` and `docs/demo.md`. Not done: the quickstart from a fresh clone on a clean machine (still "not verified here") |
+| 9 | Repo furniture | `llms.txt` done (#44); **social preview still open** — `scripts/social-preview.mjs` does not exist yet, GitHub shows the default image |
+
+Added in the same PR, outside the numbered list: `docs/demo.md` (ten-minute demo script) and
+`docs/enterprise.md` (operating models, security and privacy properties, backup, service hours,
+limits, integration path, IT checklist) — the two documents a company visitor or a sales
+conversation needs. Live checks on 2026-10-13: `/actuator/health` `UP`, `/validator` 200,
+`/swagger-ui.html` 200, `/v3/api-docs` 15 operations on 13 paths, anonymous validate of both samples
+`valid: true`, the broken Peppol corpus file two findings `R020`/`R010` with German messages,
+`/api/v1/reports` without credential 401, `/app` 302 to login, security headers present.
+
 Owner decision, taken 2026-10-09: the demo **stays** on `einvoice.sebastiankern.net` (personal OSS
 portfolio domain) — no move, no broken links. `stoicera.com` is not used for lab projects.
 
