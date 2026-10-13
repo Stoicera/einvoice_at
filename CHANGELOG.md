@@ -12,7 +12,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`/.well-known/security.txt`** (RFC 9116) on the public host, naming the same two contacts as
+  `SECURITY.md` (GitHub private vulnerability reporting, office@stoicera.com), with `Expires`
+  2027-10-13. The web filter chain now permits `/.well-known/**` anonymously; before, the URL
+  answered a redirect to the Keycloak login (checked live 2026-10-13). Covered by an integration
+  test in `PublicWebIT`.
 
 ## [0.2.0] — 2026-10-09
 

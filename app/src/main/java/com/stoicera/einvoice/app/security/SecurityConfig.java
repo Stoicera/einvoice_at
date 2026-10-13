@@ -183,6 +183,14 @@ public class SecurityConfig {
                     .requestMatchers(
                         "/app.css", "/app.js", "/favicon.svg", "/favicon.ico", "/robots.txt")
                     .permitAll()
+                    // RFC 9116: /.well-known/security.txt tells whoever found a vulnerability
+                    // where to report it. It is a static file (resources/static/.well-known/), and
+                    // until this rule existed the catch-all answered the probe with a redirect to
+                    // the Keycloak login — a security contact behind a login page is no contact.
+                    // The whole prefix is permitted so a further well-known file needs no change
+                    // here; a path with no file behind it falls through to /error and 404s.
+                    .requestMatchers("/.well-known/**")
+                    .permitAll()
                     // Boot's error dispatch forwards to /error; the AuthorizationFilter runs on
                     // that
                     // dispatch too, so /error must be permitted or a permitted path's 404 would be
