@@ -1,10 +1,10 @@
-# einvoice-at — security contact, RFC 9116.
+# einvoice-at - security contact, RFC 9116.
 #
 # Found something? Report it privately, not as a public issue. The policy linked below says what
 # is in scope, what is not, and how fast we answer (acknowledgement within 72 hours).
 Contact: https://github.com/Stoicera/einvoice_at/security/advisories/new
 Contact: mailto:office@stoicera.com
-Expires: 2027-10-13T00:00:00.000Z
+Expires: 2027-10-01T00:00:00.000Z
 Preferred-Languages: de, en
 Canonical: https://einvoice.sebastiankern.net/.well-known/security.txt
 Policy: https://github.com/Stoicera/einvoice_at/blob/main/SECURITY.md

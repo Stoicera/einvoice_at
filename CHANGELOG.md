@@ -16,9 +16,11 @@ All notable changes to this project are documented here. The format follows
 
 - **`/.well-known/security.txt`** (RFC 9116) on the public host, naming the same two contacts as
   `SECURITY.md` (GitHub private vulnerability reporting, office@stoicera.com), with `Expires`
-  2027-10-13. The web filter chain now permits `/.well-known/**` anonymously; before, the URL
-  answered a redirect to the Keycloak login (checked live 2026-10-13). Covered by an integration
-  test in `PublicWebIT`.
+  2027-10-01. The web filter chain now permits `/.well-known/**` anonymously; before, the URL
+  answered a redirect to the Keycloak login (checked live 2026-10-13). `.txt` static files are now
+  served as `text/plain;charset=utf-8` (`PlainTextCharsetConfig`), the media type RFC 9116 §3
+  requires; before, the container answered a bare `text/plain`. Covered by an integration test in
+  `PublicWebIT`.
 
 ### Changed
 

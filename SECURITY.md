@@ -18,8 +18,8 @@ Report privately, not as a public issue:
 - The same contacts are published machine-readably at
   <https://einvoice.sebastiankern.net/.well-known/security.txt>
   ([RFC 9116](https://www.rfc-editor.org/rfc/rfc9116); source
-  `app/src/main/resources/static/.well-known/security.txt`, whose `Expires` is one year from its
-  last edit and is renewed with it).
+  `app/src/main/resources/static/.well-known/security.txt`, whose `Expires` is set under a year
+  ahead at each edit — the RFC recommends less than a year — and is renewed with it).
 - Include: affected version or commit, reproduction steps, and what an attacker gains.
 - We acknowledge within **72 hours** and aim to have a fix or a stated position within **14 days**.
 - Please give us those 14 days before publishing. If a fix takes longer, we will say so and why.

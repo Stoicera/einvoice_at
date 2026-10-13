@@ -142,15 +142,18 @@ class PublicWebIT extends AbstractPostgresIT {
    * RFC 9116: the contact SECURITY.md names is also published machine-readably at {@code
    * /.well-known/security.txt}. Before the web chain permitted the prefix, the live demo answered
    * that URL with a redirect to the Keycloak login (checked 2026-10-13) — the one visitor who most
-   * needs an answer was the one asked to log in. This asserts the file is served, as plain text,
-   * and that it names a contact.
+   * needs an answer was the one asked to log in. This asserts the file is served, as plain text
+   * with the {@code utf-8} charset RFC 9116 §3 requires ({@code PlainTextCharsetConfig}), and that
+   * it names a contact.
    */
   @Test
   void theSecurityContactIsServedAnonymouslyAsPlainText() throws Exception {
     HttpResponse<String> response = get("/.well-known/security.txt");
 
     assertThat(response.statusCode()).isEqualTo(200);
-    assertThat(response.headers().firstValue("Content-Type").orElse("")).startsWith("text/plain");
+    assertThat(response.headers().firstValue("Content-Type").orElse(""))
+        .startsWith("text/plain")
+        .containsIgnoringCase("charset=utf-8");
     assertThat(response.body()).contains("Contact:").contains("Expires:");
   }
 
