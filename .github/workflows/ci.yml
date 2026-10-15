@@ -357,7 +357,7 @@ jobs:
           # resolution. actions/checkout's default shallow clone is enough for the commit id itself,
           # but fetch-depth 0 removes the whole class of "works locally, empty in the image".
           fetch-depth: 0
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # Publishing happens on main only. A pull request still BUILDS the image — that is the check
       # worth having on every change — it simply does not push one.
