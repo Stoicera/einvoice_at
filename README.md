@@ -2,16 +2,40 @@
 
 [![CI](https://github.com/Stoicera/einvoice_at/actions/workflows/ci.yml/badge.svg)](https://github.com/Stoicera/einvoice_at/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/Stoicera/einvoice_at?label=release)](https://github.com/Stoicera/einvoice_at/releases/latest)
 
 **Austrian e-invoicing platform: generate, validate and convert ebInterface 6.1 and Peppol BIS Billing 3.0 (UBL) — with human-readable German validation reports.**
 
-**Live demo:** <https://einvoice.sebastiankern.net> — the [public validator](https://einvoice.sebastiankern.net/validator) needs no account, and the [API docs](https://einvoice.sebastiankern.net/swagger-ui.html) are open. Run it yourself (Docker with Compose; details in [Quickstart](#quickstart)):
+[![The public validator rejecting an ebInterface invoice to a federal body: rule AT-B2G-01, order reference missing, German message first, English underneath, location /eb:Invoice](docs/screenshots/00-report-hero.png)](https://einvoice.sebastiankern.net/validator)
+
+*The public validator on a test invoice from the [golden-file corpus](validation/src/test/resources/corpus/) that lacks the order reference federal bodies require. Deutsch: [Kurzfassung](#deutsche-kurzfassung).*
+
+## Try it in 30 seconds
+
+**In the browser:** open the [public validator](https://einvoice.sebastiankern.net/validator) and upload
+an ebInterface 6.1 or Peppol BIS 3.0 XML file. No account; the upload is checked in memory and not
+stored. The [API docs](https://einvoice.sebastiankern.net/swagger-ui.html) are open as well.
+
+**From a terminal** (curl and jq) — the same test invoice, sent to the live API:
+
+```bash
+curl -sL https://raw.githubusercontent.com/Stoicera/einvoice_at/main/validation/src/test/resources/corpus/invalid/at-b2g-01-missing-order-reference.xml \
+  | curl -s -F 'file=@-;filename=invoice.xml' https://einvoice.sebastiankern.net/api/v1/validate \
+  | jq '.report | {valid, findings: [.findings[] | {ruleId, location, messageDe}]}'
+```
+
+It answers `"valid": false` with one finding, `AT-B2G-01` at `/eb:Invoice`, *„Auftragsreferenz fehlt:
+…"* (checked 2026-10-15: 0.5 s and 2.2 s round trip in two runs).
+
+**On your own machine** (Docker with Compose; details in [Quickstart](#quickstart)):
 
 ```bash
 git clone https://github.com/Stoicera/einvoice_at.git && cd einvoice_at
 cp .env.example .env   # set POSTGRES_PASSWORD, KEYCLOAK_ADMIN, KEYCLOAK_ADMIN_PASSWORD
 docker compose up -d   # then open http://localhost:8080/validator
 ```
+
+## What this is
 
 A self-hostable Java 25 / Spring Boot platform built by [Stoicera Software Group](https://stoicera.com) as a production-grade reference system. Austria's federal government only accepts structured e-invoices (ebInterface or Peppol BIS) via e-rechnung.gv.at — and rejected invoices come back with Schematron output that non-technical users cannot read. This platform closes that gap.
 
