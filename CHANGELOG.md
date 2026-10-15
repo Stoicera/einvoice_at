@@ -14,6 +14,23 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **SEO on the two public pages** (`/`, `/validator`): canonical link, `og:url`, `og:image`
+  (`/og-image.png`, 1200×630, generated from the site's own wordmark and tagline), a JSON-LD
+  `SoftwareApplication` block (price 0 for the public validator, which needs no account), and
+  `lang="de-AT"`. The page titles are shortened to at most 60 characters. `/sitemap.xml` lists the
+  two pages; `robots.txt` names it. Both are rendered by `CrawlerController` from the new
+  `APP_PUBLIC_BASE_URL` (blank = the public demo host), because the `Sitemap:` directive and every
+  `<loc>` have to be absolute URLs. All of it is anonymous and asserted in `PublicWebIT`.
+
+### Changed
+
+- **Unknown paths answer 404, not a login redirect.** The browser filter chain's authentication
+  entry point is now split by path: under `/app/**` the redirect into Keycloak as before (for every
+  client, as `OAuth2ClientWiringIT` and `SecurityChainRoutingIT` pin); anywhere else a plain 404
+  through the error page. The authorization rules are untouched — nothing became reachable, only
+  the shape of the refusal changed. Before, the live demo sent `/wp-login.php` and every other
+  crawler or scanner probe to the Keycloak login form (checked 2026-10-15).
+
 - **`/.well-known/security.txt`** (RFC 9116) on the public host, naming the same two contacts as
   `SECURITY.md` (GitHub private vulnerability reporting, office@stoicera.com), with `Expires`
   2027-10-01. The web filter chain now permits `/.well-known/**` anonymously; before, the URL

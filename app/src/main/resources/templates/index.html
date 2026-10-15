@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org" lang="de">
+<html xmlns:th="http://www.thymeleaf.org" lang="de-AT">
   <head
     th:replace="~{fragments/layout :: head(
-      'E-Rechnung Österreich: ebInterface 6.1 und Peppol BIS 3.0 erzeugen, prüfen, konvertieren',
-      'Self-hostbare Plattform für die österreichische E-Rechnung: ebInterface 6.1 und Peppol BIS Billing 3.0 (UBL) erzeugen, validieren und konvertieren — mit deutschem Prüfbericht und REST-API.')}"
+      'E-Rechnung Österreich prüfen und erzeugen',
+      ${appDescription})}"
   ></head>
   <body>
     <div th:replace="~{fragments/layout :: masthead}"></div>
