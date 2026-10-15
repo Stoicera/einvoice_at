@@ -63,6 +63,12 @@ app:
     # See ADR-0006 and JwtDecoderTest.
     audience: ${OAUTH2_AUDIENCE:}
 
+  # The absolute URL the public pages are published under (PublicSite): canonical link, og:url,
+  # og:image and the sitemap's <loc> entries are built from it. Configured rather than read from the
+  # request, because behind the proxy the request's scheme and host are whatever was (or was not)
+  # forwarded. Blank = the public demo. Must be an absolute http(s) URI or startup fails.
+  public-base-url: ${APP_PUBLIC_BASE_URL:}
+
   # Application-layer cap on any NON-multipart request body (RequestBodySizeLimitFilter). Multipart
   # uploads are bounded by spring.servlet.multipart.* above; nothing in Boot or Tomcat bounds an
   # ordinary body (server.tomcat.max-http-form-post-size is form-encoded only), and POST

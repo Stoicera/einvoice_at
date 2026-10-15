@@ -10,7 +10,9 @@ import com.stoicera.einvoice.core.text.Texts;
 import com.stoicera.einvoice.core.validation.Finding;
 import com.stoicera.einvoice.core.validation.Severity;
 import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The public pages: the landing page and the "Österreichischer E-Rechnungs-Prüfer" (PRD §2's lead
@@ -55,27 +58,85 @@ public class PublicWebController {
 
   private static final Logger log = LoggerFactory.getLogger(PublicWebController.class);
 
+  /**
+   * What the application is, in one sentence: the landing page's meta description and the {@code
+   * description} of the JSON-LD block on both public pages. One constant so the two cannot drift.
+   */
+  static final String APP_DESCRIPTION =
+      "Self-hostbare Plattform für die österreichische E-Rechnung: ebInterface 6.1 und Peppol BIS"
+          + " Billing 3.0 (UBL) erzeugen, validieren und konvertieren — mit deutschem Prüfbericht"
+          + " und REST-API.";
+
+  private static final JsonMapper JSON = JsonMapper.builder().build();
+
   private final ReportService reports;
   private final CurrentTenant currentTenant;
   private final ExplanationService explanations;
+  private final PublicSite site;
 
   public PublicWebController(
-      ReportService reports, CurrentTenant currentTenant, ExplanationService explanations) {
+      ReportService reports,
+      CurrentTenant currentTenant,
+      ExplanationService explanations,
+      PublicSite site) {
     this.reports = reports;
     this.currentTenant = currentTenant;
     this.explanations = explanations;
+    this.site = site;
   }
 
   @GetMapping("/")
   public String landing(Model model) {
     model.addAttribute("aiEnabled", explanations.isEnabled());
+    addSeo(model, "/");
     return "index";
   }
 
   @GetMapping("/validator")
   public String validator(Model model) {
     model.addAttribute("aiEnabled", explanations.isEnabled());
+    addSeo(model, "/validator");
     return "validator";
+  }
+
+  /**
+   * What only the two indexable pages carry (PRD §8): the canonical URL and the share image, both
+   * absolute on the configured public host, and a schema.org {@code SoftwareApplication} block. The
+   * layout's head fragment renders the canonical link, {@code og:url}, {@code og:image} and the
+   * JSON-LD only when these are present, so the dashboard and error pages stay without them.
+   *
+   * <p>The JSON-LD is serialised here and written with {@code th:utext}, not assembled in the
+   * template with {@code th:inline="javascript"}: Thymeleaf's script inlining flushes the response
+   * writer, which commits the response before the validator's form is reached — and the form needs
+   * an uncommitted response to create the session its CSRF token lives in. Every value is a
+   * constant or operator configuration; {@code <} is still escaped so no value could close the
+   * script element.
+   */
+  private void addSeo(Model model, String path) {
+    String canonical = site.url(path);
+    model.addAttribute("appDescription", APP_DESCRIPTION);
+    model.addAttribute("canonicalUrl", canonical);
+    model.addAttribute("ogImageUrl", site.url("/og-image.png"));
+    model.addAttribute("jsonLd", softwareApplicationJsonLd(canonical));
+  }
+
+  /**
+   * The public validator needs no account (README, PRD §2), hence an offer at price 0; the
+   * application itself is Apache-2.0.
+   */
+  private static String softwareApplicationJsonLd(String url) {
+    Map<String, Object> ld = new LinkedHashMap<>();
+    ld.put("@context", "https://schema.org");
+    ld.put("@type", "SoftwareApplication");
+    ld.put("name", "einvoice-at");
+    ld.put("url", url);
+    ld.put("description", APP_DESCRIPTION);
+    ld.put("applicationCategory", "BusinessApplication");
+    ld.put("operatingSystem", "Web");
+    ld.put("inLanguage", "de-AT");
+    ld.put("license", "https://www.apache.org/licenses/LICENSE-2.0");
+    ld.put("offers", Map.of("@type", "Offer", "price", "0", "priceCurrency", "EUR"));
+    return JSON.writeValueAsString(ld).replace("<", "\\u003c");
   }
 
   /**

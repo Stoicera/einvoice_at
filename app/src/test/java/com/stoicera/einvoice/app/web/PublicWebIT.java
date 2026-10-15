@@ -79,7 +79,62 @@ class PublicWebIT extends AbstractPostgresIT {
     assertThat(response.statusCode()).isEqualTo(200);
     assertThat(response.body()).contains("E-Rechnung für Österreich");
     // German-first, and declared as such: PRD §8 wants this indexed for German searches.
-    assertThat(response.body()).contains("lang=\"de\"");
+    assertThat(response.body()).contains("lang=\"de-AT\"");
+  }
+
+  /**
+   * The two indexable pages name themselves from the outside: a canonical link and {@code og:url}
+   * on the configured public host (the demo, nothing else being configured here), the share image,
+   * and a JSON-LD block that says what the thing is. The title stays within the length search
+   * engines display whole. None of this is on the dashboard or the error page, which is what the
+   * {@code th:if} in the layout is for — asserted on the one public-ish page without it, 404.
+   */
+  @Test
+  void thePublicPagesCarryCanonicalShareImageAndStructuredData() throws Exception {
+    Map<String, String> canonical = new LinkedHashMap<>();
+    canonical.put("/", "https://einvoice.sebastiankern.net/");
+    canonical.put("/validator", "https://einvoice.sebastiankern.net/validator");
+
+    for (Map.Entry<String, String> page : canonical.entrySet()) {
+      String body = get(page.getKey()).body();
+      assertThat(body)
+          .as(page.getKey())
+          .contains("<link rel=\"canonical\" href=\"" + page.getValue() + "\"")
+          .contains("<meta property=\"og:url\" content=\"" + page.getValue() + "\"")
+          .contains(
+              "<meta property=\"og:image\" content=\"https://einvoice.sebastiankern.net/og-image.png\"")
+          .contains("<script type=\"application/ld+json\">")
+          .contains("\"@type\":\"SoftwareApplication\"")
+          .contains("\"description\":\"Self-hostbare Plattform")
+          .contains("\"price\":\"0\"");
+
+      Matcher title = Pattern.compile("<title>([^<]+)</title>").matcher(body);
+      assertThat(title.find()).as("%s has a <title>", page.getKey()).isTrue();
+      assertThat(title.group(1).length())
+          .as("<title> of %s: %s", page.getKey(), title.group(1))
+          .isLessThanOrEqualTo(60);
+    }
+
+    assertThat(get("/og-image.png").statusCode()).isEqualTo(200);
+    assertThat(get("/gibt-es-nicht").body()).doesNotContain("rel=\"canonical\"");
+  }
+
+  /**
+   * An anonymous request for a path that is nobody's — not a page, not an asset, not a dashboard
+   * route — answers 404, not a refusal. Before, the web chain's catch-all sent every such probe to
+   * its entry point: a 403 here, a redirect into Keycloak on the live demo, where a crawler expects
+   * a 404 and a scanner learns nothing from either. {@code OAuth2ClientWiringIT} asserts the same
+   * with a login configured, and that {@code /app} still redirects.
+   */
+  @Test
+  void anUnknownPathAnswersNotFoundRatherThanARefusal() throws Exception {
+    HttpResponse<String> response = getAsBrowser("/gibt-es-nicht");
+
+    assertThat(response.statusCode()).isEqualTo(404);
+    assertThat(response.body())
+        .as("headers: %s", response.headers().map())
+        .contains("Nicht gefunden");
+    assertThat(get("/wp-login.php").statusCode()).isEqualTo(404);
   }
 
   @Test
@@ -127,15 +182,34 @@ class PublicWebIT extends AbstractPostgresIT {
   /**
    * {@code SecurityConfig} permitted {@code /robots.txt} while no such file existed (M5 hostile
    * review, F15). A permit rule for a path that 404s is a rule nobody can act on, and MILESTONES
-   * names SEO for this page — so the file exists now, and this asserts both that it is served and
-   * that it says the two things it has to say.
+   * names SEO for this page — so the policy exists now ({@code CrawlerController}), and this
+   * asserts both that it is served and that it says the three things it has to say: the public
+   * pages are open, the dashboard is not, and where the sitemap is.
    */
   @Test
   void theCrawlerPolicyIsServedAndKeepsTheDashboardOutOfTheIndex() throws Exception {
     HttpResponse<String> response = get("/robots.txt");
 
     assertThat(response.statusCode()).isEqualTo(200);
-    assertThat(response.body()).contains("Allow: /validator").contains("Disallow: /app/");
+    assertThat(response.headers().firstValue("Content-Type").orElse("")).startsWith("text/plain");
+    assertThat(response.body())
+        .contains("Allow: /validator")
+        .contains("Disallow: /app/")
+        .contains("Sitemap: https://einvoice.sebastiankern.net/sitemap.xml");
+  }
+
+  /** The sitemap lists the two indexable pages on the public host, and nothing behind a login. */
+  @Test
+  void theSitemapIsServedAnonymouslyAndListsOnlyThePublicPages() throws Exception {
+    HttpResponse<String> response = get("/sitemap.xml");
+
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(response.headers().firstValue("Content-Type").orElse(""))
+        .startsWith("application/xml");
+    assertThat(response.body())
+        .contains("<loc>https://einvoice.sebastiankern.net/</loc>")
+        .contains("<loc>https://einvoice.sebastiankern.net/validator</loc>")
+        .doesNotContain("/app");
   }
 
   /**
@@ -279,6 +353,13 @@ class PublicWebIT extends AbstractPostgresIT {
   private HttpResponse<String> get(String path) throws IOException, InterruptedException {
     return http.send(
         HttpRequest.newBuilder(URI.create(url(path))).GET().build(),
+        HttpResponse.BodyHandlers.ofString());
+  }
+
+  /** The same request as a browser or a crawler makes it: asking for HTML. */
+  private HttpResponse<String> getAsBrowser(String path) throws IOException, InterruptedException {
+    return http.send(
+        HttpRequest.newBuilder(URI.create(url(path))).header("Accept", "text/html").GET().build(),
         HttpResponse.BodyHandlers.ofString());
   }
 
