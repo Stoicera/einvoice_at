@@ -51,7 +51,7 @@
          Versions verified against Maven Central on 2026-07-23; this set is mutually
          compatible: phive-rules-parent-pom 4.4.1 itself builds against
          ph-ebinterface 8.1.0, ph-ubl 10.2.0 and phive 12.1.0. -->
-    <ph-ebinterface.version>8.1.0</ph-ebinterface.version>
+    <ph-ebinterface.version>8.1.1</ph-ebinterface.version>
     <ph-ubl.version>10.2.0</ph-ubl.version>
     <phive.version>12.1.0</phive.version>
     <phive-rules.version>4.4.2</phive-rules.version>
