@@ -1,6 +1,6 @@
 # Portfolio readiness — before the public launch
 
-Status: 2026-10-08 · Measured against the Stoicera OSS-launch prompt (SSOT `ai/prompts/oss-launch.md`)
+Status: 2026-10-08, updated 2026-10-15 · Measured against the Stoicera OSS-launch prompt (SSOT `ai/prompts/oss-launch.md`)
 · Purpose: what has to change before the repository is posted publicly (Show HN, LinkedIn).
 
 ## Where it stands (measured 2026-10-08)
@@ -100,3 +100,14 @@ portfolio domain) — no move, no broken links. `stoicera.com` is not used for l
 
 After the list: the launch package itself (OSS-launch Part B, drafts in `docs/launch/`) is a separate
 task.
+
+## Status 2026-10-15
+
+| # | Item | State |
+|---|---|---|
+| 3 | First screen of the README | done (this PR): the validator report with a German finding (`docs/screenshots/00-report-hero.png`, cropped from `03-report.png`) sits right under the one-line summary, followed by "Try it in 30 seconds" (browser, a curl line against the live API, self-host) and a link to the German summary. The curl line was run verbatim on 2026-10-15: `valid: false`, one finding `AT-B2G-01` at `/eb:Invoice`, 0.5 s and 2.2 s round trip. Release badge added next to CI and licence |
+| 9 | Repo furniture | `llms.txt` done (#44); **social preview generated** (this PR): `scripts/social-preview.mjs` renders `docs/assets/social-preview.png`, 1280×640, Navy #0B1F3A, Cobalt #2558E8, Inter. **Manual step left:** GitHub has no API for it — Settings → General → Social preview → upload the PNG |
+| — | Launch package (OSS-launch Part B) | drafts in `docs/launch/` (this PR): `show-hn.md`, `reddit.md`, `linkedin.md`, `devto.md`, `checklist.md`. Status Entwurf; nothing posted. Subreddit rules could not be fetched on 2026-10-15 and have to be read by the author |
+
+Still open: the quickstart from a fresh clone on a clean machine (item 7) — now the first line of
+the week-before list in `docs/launch/checklist.md`.

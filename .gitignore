@@ -21,6 +21,9 @@ target/
 # reader sees first in a portfolio repository.
 lighthouse-*.json
 
+# Node: only scripts/social-preview.mjs uses it, installed with --no-save
+node_modules/
+
 # OS / misc
 .DS_Store
 *.log
