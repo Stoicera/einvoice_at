@@ -385,7 +385,7 @@ jobs:
             type=raw,value=main,enable={{is_default_branch}}
             type=sha,prefix=sha-,format=long
 
-      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           push: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
@@ -401,7 +401,7 @@ jobs:
       # or the git-commit-id plugin losing its binding. It runs on pull requests too, where nothing
       # is pushed — the image is loaded locally for the check.
       - name: Build the image locally for the identity check
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           load: true
