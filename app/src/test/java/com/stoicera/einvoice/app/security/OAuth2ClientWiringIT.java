@@ -113,6 +113,19 @@ class OAuth2ClientWiringIT extends AbstractPostgresIT {
     assertThat(get("/wp-login.php").statusCode()).isEqualTo(404);
   }
 
+  /**
+   * The framework's generated logout confirmation page must survive the split entry point: it is
+   * only installed while the chain has no explicit {@code authenticationEntryPoint}, and the
+   * browser E2E logs out through it. The first version of the split set one and lost this page.
+   */
+  @Test
+  void theLogoutConfirmationPageIsStillGenerated() throws Exception {
+    HttpResponse<String> response = get("/logout");
+
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(response.body()).contains("type=\"submit\"");
+  }
+
   @Test
   void theAuthorizationRedirectPointsAtTheBrowserFacingAuthorizationUrl() throws Exception {
     // The second hop, and the reason the endpoints are listed explicitly at all: the BROWSER has to

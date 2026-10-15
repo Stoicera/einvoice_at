@@ -4,7 +4,6 @@ import com.stoicera.einvoice.app.persistence.ApiKeyRepository;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -32,13 +31,12 @@ import org.springframework.security.oauth2.server.resource.web.authentication.Be
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
-import org.springframework.security.web.authentication.DelegatingAuthenticationEntryPoint;
 import org.springframework.security.web.authentication.Http403ForbiddenEntryPoint;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
-import org.springframework.security.web.util.matcher.RequestMatcherEntry;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.util.StringUtils;
 
 /**
@@ -267,10 +265,30 @@ public class SecurityConfig {
     if (registrations != null) {
       http.oauth2Login(login -> login.defaultSuccessUrl("/app", true));
     }
+    // Registered as DEFAULT entry points, deliberately not as exceptionHandling's one explicit
+    // authenticationEntryPoint: an explicit entry point makes DefaultLoginPageConfigurer drop the
+    // framework's generated /login and /logout pages — and the logout confirmation page is what a
+    // browser gets on GET /logout, which KeycloakLoginFlowIT drives (found by exactly that test on
+    // the first version of this change). The FIRST registration is also the fallback for a request
+    // no matcher claims; oauth2Login registers its own (content-negotiated) mapping later, at
+    // build time, so it never precedes these two.
+    RequestMatcher dashboard = PathPatternRequestMatcher.withDefaults().matcher("/app/**");
     http.exceptionHandling(
-        exceptions -> exceptions.authenticationEntryPoint(webEntryPoint(registrations)));
+        exceptions ->
+            exceptions
+                .defaultAuthenticationEntryPointFor(dashboardEntryPoint(registrations), dashboard)
+                .defaultAuthenticationEntryPointFor(
+                    NOT_FOUND_ENTRY_POINT, new NegatedRequestMatcher(dashboard)));
     return http.build();
   }
+
+  /**
+   * sendError, not {@code HttpStatusEntryPoint}: the latter only sets the status and writes no
+   * body, so a visitor would get an empty 404. sendError is what makes the container dispatch to
+   * {@code /error}, where Boot renders {@code error/404.html} for a browser.
+   */
+  private static final AuthenticationEntryPoint NOT_FOUND_ENTRY_POINT =
+      (request, response, exception) -> response.sendError(HttpServletResponse.SC_NOT_FOUND);
 
   /**
    * How this chain answers an anonymous request the rules above refuse — split by <em>path</em>.
@@ -284,11 +302,12 @@ public class SecurityConfig {
    * <ul>
    *   <li>Under {@code /app/**} — the dashboard — the login redirect, as before and for every
    *       client regardless of its {@code Accept} header, which is what {@code
-   *       OAuth2ClientWiringIT} and {@code SecurityChainRoutingIT} pin. The URL is the one the
-   *       framework would derive itself for a single registration: {@code
-   *       /oauth2/authorization/{registrationId}}.
+   *       OAuth2ClientWiringIT} and {@code SecurityChainRoutingIT} pin. The URL is the one {@code
+   *       OAuth2LoginConfigurer} derives itself: straight into the one registration's authorization
+   *       endpoint ({@code /oauth2/authorization/{registrationId}}), or the framework's chooser
+   *       page at {@code /login} when there are several.
    *   <li>Anywhere else, a plain {@code 404} through Boot's error page ({@code /error} is permitted
-   *       above).
+   *       above) — {@link #NOT_FOUND_ENTRY_POINT}.
    * </ul>
    *
    * <p>The authorization rules are untouched: nothing becomes reachable, only the shape of the
@@ -297,28 +316,10 @@ public class SecurityConfig {
    * a client registration (every IT context that never logs in through a browser) the dashboard
    * keeps answering 403, as it did when the chain had no entry point of its own.
    */
-  private static AuthenticationEntryPoint webEntryPoint(
-      ClientRegistrationRepository registrations) {
-    return new DelegatingAuthenticationEntryPoint(
-        loginEntryPoint(registrations).orElseGet(Http403ForbiddenEntryPoint::new),
-        new RequestMatcherEntry<>(
-            new NegatedRequestMatcher(PathPatternRequestMatcher.withDefaults().matcher("/app/**")),
-            // sendError, not HttpStatusEntryPoint: the latter only sets the status and writes no
-            // body, so a visitor would get an empty 404. sendError is what makes the container
-            // dispatch to /error, where Boot renders error/404.html for a browser.
-            (request, response, exception) ->
-                response.sendError(HttpServletResponse.SC_NOT_FOUND)));
-  }
-
-  /**
-   * The login redirect, derived the way {@code OAuth2LoginConfigurer} derives it: straight into the
-   * one registration's authorization endpoint, or the framework's own chooser page at {@code
-   * /login} when there are several; empty when there is none.
-   */
-  private static Optional<AuthenticationEntryPoint> loginEntryPoint(
+  private static AuthenticationEntryPoint dashboardEntryPoint(
       ClientRegistrationRepository registrations) {
     if (!(registrations instanceof Iterable<?> iterable)) {
-      return Optional.empty();
+      return new Http403ForbiddenEntryPoint();
     }
     List<String> ids = new ArrayList<>();
     for (Object registration : iterable) {
@@ -327,7 +328,7 @@ public class SecurityConfig {
       }
     }
     if (ids.isEmpty()) {
-      return Optional.empty();
+      return new Http403ForbiddenEntryPoint();
     }
     String loginUrl =
         ids.size() == 1
@@ -335,7 +336,7 @@ public class SecurityConfig {
                 + "/"
                 + ids.getFirst()
             : "/login";
-    return Optional.of(new LoginUrlAuthenticationEntryPoint(loginUrl));
+    return new LoginUrlAuthenticationEntryPoint(loginUrl);
   }
 
   /**
