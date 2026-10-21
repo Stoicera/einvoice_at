@@ -10,6 +10,7 @@ German domain terms stay German in code, docs and messages where they are legall
 | **USt** | Umsatzsteuer — Austrian VAT. Standard rates: 20 %, reduced 13 % / 10 %, plus 0 % and reverse charge. |
 | **UID(-Nummer)** | Umsatzsteuer-Identifikationsnummer — VAT identification number (ATU…). |
 | **e-rechnung.gv.at** | The Austrian federal portal/web service that receives B2G e-invoices (ebInterface or Peppol BIS). |
+| **Korrekturvorschlag (mit Nachweis)** | Correction proposal with evidence: for a finding with a known fix, the corrected document, a unified diff and its re-validation, each change with rule id, business term and the source of its value (`RepairProposer`, ADR-0013). |
 | **Prüfbericht** | Validation report. The structured, German-first output of the validation pipeline. |
 | **kaufmännisches Runden** | Commercial rounding: round half away from zero (`HALF_UP`). The rounding mode used throughout `Money`. |
 | **Kennzahl (KZ)** | Figure/total field referenced in Austrian tax contexts, abbreviated KZ (see SPEC §7: KZ totals); used in total-consistency business rules. |

@@ -635,3 +635,98 @@ pre.mono {
     width: 100%;
   }
 }
+
+/* ------------------------------------------------- correction proposal (RepairView) */
+
+.repair {
+  border: 1px solid var(--ink-line);
+  border-left: 4px solid var(--gold);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--ink-raised);
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+.repair > h2 {
+  margin-top: 0;
+}
+
+.repair .principle {
+  max-width: none;
+}
+
+.repair .principle strong {
+  color: var(--gold);
+}
+
+.repair .rule {
+  color: var(--gold);
+  white-space: nowrap;
+}
+
+.repair .provenance {
+  display: block;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  margin-top: 0.2rem;
+}
+
+.repair .provenance.note {
+  font-style: italic;
+}
+
+.repair .repair-input input[type="text"] {
+  flex: 1 1 18rem;
+}
+
+.repair .remaining {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.repair .ai-note {
+  font-size: 0.85rem;
+  margin-bottom: 0;
+}
+
+/* The diff: one block-level span per line, coloured like a terminal's `git diff`. */
+pre.diff {
+  margin: 0;
+  padding: 0.75rem 0;
+  background: var(--ink);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--radius);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  max-width: none;
+}
+
+pre.diff span {
+  display: block;
+  padding: 0 1rem;
+  white-space: pre;
+}
+
+pre.diff .diff-add {
+  color: var(--ok);
+  background: rgba(79, 169, 106, 0.12);
+}
+
+pre.diff .diff-del {
+  color: var(--error);
+  background: rgba(226, 86, 74, 0.12);
+}
+
+pre.diff .diff-hunk {
+  color: var(--gold);
+}
+
+pre.diff .diff-meta {
+  color: var(--text-dim);
+}
+
+.repair details summary {
+  cursor: pointer;
+  color: var(--gold);
+}

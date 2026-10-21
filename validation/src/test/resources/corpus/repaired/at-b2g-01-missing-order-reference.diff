@@ -1,0 +1,12 @@
+--- a/original.xml
++++ b/korrigiert.xml
+@@ -19,6 +19,9 @@
+   </Biller>
+   <InvoiceRecipient>
+     <VATIdentificationNumber>ATU87654321</VATIdentificationNumber>
++    <OrderReference>
++      <OrderID>BBG-2026-4711</OrderID>
++    </OrderReference>
+     <Address>
+       <Name>Bundesbeschaffung GmbH</Name>
+       <Street>Lassallestraße 9b</Street>

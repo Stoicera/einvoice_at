@@ -82,6 +82,16 @@ class PublicValidatorFlowIT extends AbstractPostgresIT {
   private static final Path INVALID_SAMPLE =
       Path.of("../app/src/test/resources/fixtures/at-b2g-01-missing-order-reference.xml");
 
+  /** A Peppol invoice whose two missing electronic addresses the proposal derives itself. */
+  private static final Path PEPPOL_SAMPLE =
+      Path.of("../app/src/test/resources/fixtures/peppol-missing-endpoint-ids.xml");
+
+  /**
+   * Where the correction-proposal screenshot is written. CI uploads the directory as an artifact;
+   * {@code docs/screenshots/08-repair.png} is that file, taken from a green run.
+   */
+  private static final Path SCREENSHOTS = Path.of("target/screenshots");
+
   /**
    * Digest-pinned, like every other image in this repository. {@code DockerImageName}'s parser
    * takes the canonical {@code repository@digest} form (not {@code tag@digest}), so the tag is
@@ -208,6 +218,67 @@ class PublicValidatorFlowIT extends AbstractPostgresIT {
         // that it is AI-generated and unchecked.
         .containsIgnoringCase("Automatisch erzeugt und nicht geprüft");
     assertThat(providerCalls.get()).isPositive();
+  }
+
+  @Test
+  void aVisitorGetsACorrectionProposalWithEvidenceAndAGreenRevalidation() throws Exception {
+    long reportsBefore = reports.count();
+    driver.manage().window().setSize(new org.openqa.selenium.Dimension(1280, 1800));
+
+    driver.get(appUrl("/validator"));
+    driver
+        .findElement(By.cssSelector("input[type=file]"))
+        .sendKeys(PEPPOL_SAMPLE.toAbsolutePath().toString());
+    driver.findElement(By.cssSelector("form[data-swap='#report'] button[type=submit]")).click();
+
+    WebElement repair =
+        wait.until(
+            ExpectedConditions.visibilityOfElementLocated(By.cssSelector("#report .repair")));
+    assertThat(repair.getText())
+        .contains("Korrekturvorschlag mit Nachweis")
+        .contains("Regelwerk entscheidet, Vorschlag ist nachvollziehbar.")
+        .contains("PEPPOL-EN16931-R020")
+        .contains("ATU12345678 (Schema 9914)")
+        .contains("Erneute Prüfung der korrigierten Datei: gültig.");
+    // The pills are rendered uppercase by the stylesheet; the text itself is "behoben".
+    assertThat(repair.findElements(By.cssSelector(".pill.ok"))).hasSize(2);
+    assertThat(repair.findElements(By.cssSelector("pre.diff .diff-add"))).hasSize(2);
+    assertThat(reports.count()).isEqualTo(reportsBefore);
+
+    Files.createDirectories(SCREENSHOTS);
+    Files.write(
+        SCREENSHOTS.resolve("08-repair.png"),
+        driver
+            .findElement(By.cssSelector("#report"))
+            .getScreenshotAs(org.openqa.selenium.OutputType.BYTES));
+  }
+
+  @Test
+  void aVisitorTypesTheOrderReferenceAndTheCorrectionIsCheckedAgain() {
+    long reportsBefore = reports.count();
+
+    driver.get(appUrl("/validator"));
+    driver
+        .findElement(By.cssSelector("input[type=file]"))
+        .sendKeys(INVALID_SAMPLE.toAbsolutePath().toString());
+    driver.findElement(By.cssSelector("form[data-swap='#report'] button[type=submit]")).click();
+
+    WebElement input =
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("orderReference")));
+    assertThat(driver.findElement(By.cssSelector("#report .repair")).getText())
+        .containsIgnoringCase("Eingabe erforderlich");
+    input.sendKeys("BBG-2026-4711");
+    driver.findElement(By.cssSelector(".repair-input button[type=submit]")).click();
+
+    WebElement verdict =
+        wait.until(
+            ExpectedConditions.visibilityOfElementLocated(
+                By.cssSelector("#report .repair .verdict.valid")));
+    assertThat(verdict.getText()).contains("Erneute Prüfung der korrigierten Datei: gültig.");
+    assertThat(driver.findElement(By.cssSelector("#report .repair")).getText())
+        .contains("Ihre Eingabe")
+        .contains("BBG-2026-4711");
+    assertThat(reports.count()).isEqualTo(reportsBefore);
   }
 
   @Test

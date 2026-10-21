@@ -170,6 +170,11 @@ public class SecurityConfig {
                     // to it, holds no server state, and is rate-limited like the upload itself.
                     .requestMatchers(HttpMethod.POST, "/validator/erklaeren")
                     .permitAll()
+                    // The correction proposal with the user's own input (PublicWebController
+                    // #korrigieren): the document travels back in the form, nothing is stored,
+                    // and it is charged to the validate bucket like the upload.
+                    .requestMatchers(HttpMethod.POST, "/validator/korrigieren")
+                    .permitAll()
                     // The API's problem `type` URIs point here (ProblemTypeController); a client
                     // following one must reach the documentation, not a login page.
                     .requestMatchers(HttpMethod.GET, "/problems", "/problems/", "/problems/*")

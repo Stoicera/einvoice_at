@@ -1,5 +1,30 @@
 # Worklog — einvoice-at
 
+## 2026-10-22 — Korrekturvorschlag mit Nachweis
+
+**What.** For `AT-B2G-01`, `PEPPOL-EN16931-R020` and `R010` the validator now proposes the fix and
+proves it: corrected document, unified diff, re-validation by the same `InvoiceValidator`
+(`validation.repair`, ADR-0013). Public page under the errors, `POST /validator/korrigieren` for the
+one value only the user knows (Auftragsreferenz), `?repair=true` on the API.
+
+**Decisions.** Edits on the text at exact positions rather than a re-serialized DOM, so the diff is
+the change and nothing else — the corrected AT-B2G-01 corpus file is byte-identical to
+`valid/b2g-full.xml`. StAX character offsets were tried first and rejected: on the JDK's parser they
+drift by one around CR LF (measured), so spans come from a small scanner cross-checked element by
+element against the hardened DOM. A placeholder is listed, never written: `AT-B2G-01` only checks
+presence, so a written placeholder would validate green and be wrong. Endpoint ids: VAT first (AT
+9914, DE 9930), then GLN (0088); every other country is a placeholder, not a guess. The document
+for the input step travels back through the browser (Base64), not the session — "nothing stored"
+stays literal; cost: uploads over ~1.5 MB cannot use the input step (413).
+
+**Evidence.** Validation module 173 tests green locally; PIT on `validation` 88 % (398/451, gate 85),
+the new package 88 % (258/293). App ITs, E2E and Lighthouse run in CI (Testcontainers are not run on
+the development laptop).
+
+**Next.** AI explanations stay on the existing provider path; switching them to Claude is a separate
+owner decision. A download button for the corrected file (today: shown and copyable, and in the API
+response).
+
 ## 2026-08-07 (evening) — The API is on show, and the conditional links proved themselves in production
 
 The owner set `API_DOCS_ENABLED=true` in the Dokploy panel; the deploy was triggered by re-running

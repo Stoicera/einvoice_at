@@ -11,6 +11,7 @@ import com.stoicera.einvoice.mapping.ubl.UblToInvoiceMapper;
 import com.stoicera.einvoice.rendering.InvoicePdfRenderer;
 import com.stoicera.einvoice.validation.InvoiceValidator;
 import com.stoicera.einvoice.validation.ValidationObserver;
+import com.stoicera.einvoice.validation.repair.RepairProposer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -53,6 +54,15 @@ class InvoicePipelineConfig {
   @Bean
   InvoiceValidator invoiceValidator(ValidationObserver observer) {
     return new InvoiceValidator(observer);
+  }
+
+  /**
+   * Correction proposals ("Korrekturvorschlag mit Nachweis"). Shares the one validator, so the
+   * corrected document is judged by exactly the pipeline — and the observer — the upload was.
+   */
+  @Bean
+  RepairProposer repairProposer(InvoiceValidator invoiceValidator) {
+    return new RepairProposer(invoiceValidator);
   }
 
   @Bean

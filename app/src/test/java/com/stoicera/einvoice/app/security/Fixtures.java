@@ -21,6 +21,10 @@ final class Fixtures {
     return readFixture("at-b2g-01-missing-order-reference.xml");
   }
 
+  static byte[] peppolMissingEndpointIdsBytes() throws Exception {
+    return readFixture("peppol-missing-endpoint-ids.xml");
+  }
+
   private static byte[] readFixture(String name) throws Exception {
     try (var in = Fixtures.class.getResourceAsStream("/fixtures/" + name)) {
       if (in == null) {

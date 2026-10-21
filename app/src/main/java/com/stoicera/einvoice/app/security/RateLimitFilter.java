@@ -113,6 +113,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
   private static final String UI_EXPLAIN_PATH = "/validator/erklaeren";
 
   /**
+   * The browser surface's correction proposal with user input. It validates the posted document
+   * twice (as uploaded, then corrected), so it is the same CPU as an upload and goes into the same
+   * bucket — a separate one would be the unlimited detour the paragraph above rules out.
+   */
+  private static final String UI_REPAIR_PATH = "/validator/korrigieren";
+
+  /**
    * The two <strong>authenticated</strong> explain routes: {@code POST
    * /api/v1/reports/{id}/explain} and the dashboard's per-finding button.
    *
@@ -159,6 +166,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
   private static final RequestMatcher UI_EXPLAIN_MATCHER =
       PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, UI_EXPLAIN_PATH);
+
+  private static final RequestMatcher UI_REPAIR_MATCHER =
+      PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, UI_REPAIR_PATH);
 
   /**
    * The authenticated explain routes. Patterns with a path variable rather than literals — a
@@ -230,11 +240,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
         && !isExplainShaped(request);
   }
 
-  /** The three routes that share the validate bucket: the API endpoint and the two UI routes. */
+  /** The four routes that share the validate bucket: the API endpoint and the three UI routes. */
   private static boolean isValidateShaped(HttpServletRequest request) {
     return VALIDATE_MATCHER.matches(request)
         || UI_VALIDATE_MATCHER.matches(request)
-        || UI_EXPLAIN_MATCHER.matches(request);
+        || UI_EXPLAIN_MATCHER.matches(request)
+        || UI_REPAIR_MATCHER.matches(request);
   }
 
   /** The two authenticated explain routes, which share one bucket of their own. */

@@ -1,6 +1,6 @@
 # Demo-Regiebuch — einvoice-at in zehn Minuten
 
-Stand: 2026-10-13 · Zielgruppe: Geschäftsführung und IT-Leitung eines Unternehmens oder
+Stand: 2026-10-22 · Zielgruppe: Geschäftsführung und IT-Leitung eines Unternehmens oder
 Softwarehauses · Dauer: 10 Minuten Vorführung, danach Gespräch · Sprache: Deutsch, Sie-Form
 
 Dieses Dokument ist öffentlich. Es enthält keine Zugangsdaten und keine Betriebsdetails, und es
@@ -16,14 +16,15 @@ in [docs/enterprise.md](enterprise.md).
 
 Alle Dateien sind synthetisch — keine echten Firmen, keine echten Bankverbindungen
 ([Korpus-README](../validation/src/test/resources/corpus/README.md)). Erwartete Ergebnisse gemessen
-am 2026-10-13 gegen die Live-Instanz.
+am 2026-10-13 gegen die Live-Instanz; die Spalte „Korrekturvorschlag" (seit 2026-10-22) ist im
+Browser-Test der CI belegt (`PublicValidatorFlowIT`) und wird vor jeder Demo live geprüft (1.2).
 
 | Datei im Repository | Was sie ist | Erwartetes Ergebnis |
 |---|---|---|
 | `samples/invoice-b2g-sample.ebinterface.xml` | Gültige ebInterface-6.1-Rechnung an eine Bundesdienststelle: Auftragsreferenz, Lieferantennummer, Biller-E-Mail, SEPA-Zahlung | „Diese Datei ist gültig." · `ebinterface-6.1` · Profil `at-b2g` · keine Befunde |
 | `samples/invoice-b2g-sample.ubl.xml` | Dieselbe Rechnung als Peppol BIS Billing 3.0 (UBL 2.1) | gültig · `ubl-invoice-2.1` · Profil `peppol-bis-billing-3.0` · keine Befunde |
-| `validation/src/test/resources/corpus/invalid/peppol-missing-endpoint-ids.xml` | Peppol-Rechnung ohne elektronische Adressen von Verkäufer und Erwerber — **die Kernszene** | 2 Fehler: `PEPPOL-EN16931-R020` (BT-34), `PEPPOL-EN16931-R010` (BT-49) |
-| `validation/src/test/resources/corpus/invalid/at-b2g-01-missing-order-reference.xml` | ebInterface ohne Auftragsreferenz — die Pflichtangabe, die nur für den Bund gilt | 1 Fehler: `AT-B2G-01`, Fundstelle `/eb:Invoice` |
+| `validation/src/test/resources/corpus/invalid/peppol-missing-endpoint-ids.xml` | Peppol-Rechnung ohne elektronische Adressen von Verkäufer und Erwerber — **die Kernszene** | 2 Fehler: `PEPPOL-EN16931-R020` (BT-34), `PEPPOL-EN16931-R010` (BT-49). Korrekturvorschlag: beide Adressen aus den UID-Nummern im Dokument (Schema 9914), erneute Prüfung gültig |
+| `validation/src/test/resources/corpus/invalid/at-b2g-01-missing-order-reference.xml` | ebInterface ohne Auftragsreferenz — die Pflichtangabe, die nur für den Bund gilt | 1 Fehler: `AT-B2G-01`, Fundstelle `/eb:Invoice`. Korrekturvorschlag: „Eingabe erforderlich"; mit `BBG-2026-4711` erneute Prüfung gültig |
 | `validation/src/test/resources/corpus/invalid/at-b2g-02-invalid-iban.xml` | IBAN mit falscher Prüfsumme (Reserve) | 1 Fehler: `AT-B2G-02`, Fundstelle `…/BeneficiaryAccount[1]/IBAN` — die IBAN selbst wird nicht wiederholt |
 | `validation/src/test/resources/corpus/invalid/malformed.xml` | Kein wohlgeformtes XML (Reserve, falls jemand fragt, was mit Müll passiert) | 1 Fehler: `XML-01` |
 
@@ -49,6 +50,9 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://einvoice.sebastiankern.net/swa
 curl -sS -X POST https://einvoice.sebastiankern.net/api/v1/validate -F file=@demo/03-peppol-ohne-adressen.xml
 # {"id":null,"report":{"sourceFormat":"ubl-invoice-2.1","profile":"peppol-bis-billing-3.0",
 #   "findings":[{"severity":"ERROR","ruleId":"PEPPOL-EN16931-R020", … }, … ],"valid":false}}
+curl -sS -X POST 'https://einvoice.sebastiankern.net/api/v1/validate?repair=true' \
+  -F file=@demo/03-peppol-ohne-adressen.xml | jq '.repair.revalidation.valid'
+# true
 ```
 
 Antwortet eine Adresse nicht: zwei Minuten warten, erneut versuchen. Keine Demo vor 09:00 ansetzen.
@@ -69,7 +73,8 @@ Antwortet eine Adresse nicht: zwei Minuten warten, erneut versuchen. Keine Demo 
 ### 1.4 Grenzen, die man vorher kennt
 
 - Der öffentliche Prüfer ist je IP-Adresse ratenbegrenzt (Standardwert 10 Prüfungen je Minute,
-  `.env.example`). Die Demo braucht vier bis fünf Uploads; nicht hektisch wiederholen. Ein 429
+  `.env.example`). Die Demo braucht sechs bis sieben Anfragen (der Korrekturvorschlag mit Eingabe
+zählt mit); nicht hektisch wiederholen. Ein 429
   trägt `Retry-After`.
 - Dateien bis 2 MB.
 - Die KI-Erklärung („Fehler erklären") ist in der Produktion abgeschaltet (geprüft 2026-10-13: der
@@ -94,7 +99,7 @@ Fundstelle. Sie ist quelloffen — alles, was ich zeige, können Sie im Reposito
 drei Kacheln Erzeugen · Prüfen · Konvertieren, darunter der Datenschutz-Absatz. In der Fußzeile:
 „Prüfung und Erklärung sind technische Hilfestellungen und keine Rechts- oder Steuerberatung."
 
-### 1:00–4:30 · Szene 1: Der öffentliche Prüfer mit einem kaputten Peppol-Dokument
+### 1:00–3:30 · Szene 1: Der öffentliche Prüfer mit einem kaputten Peppol-Dokument
 
 **URL:** `/validator`
 
@@ -127,17 +132,10 @@ verloren geht. Das Regelwerk führen wir unverändert aus, an einer im Code fest
 **Der Zuschauer sieht:** „Diese Datei ist gültig." · `ebinterface-6.1` · Profil `at-b2g` · „Keine
 Befunde. Das Dokument erfüllt Schema und Regelwerk vollständig."
 
-**Klick 3 (wenn Zeit bleibt):** `04-ebinterface-ohne-auftragsreferenz.xml`.
+Unter den beiden Fehlerkarten steht bereits der Abschnitt „Korrekturvorschlag mit Nachweis". Hier
+nur darauf zeigen: „Dazu komme ich gleich." Er ist Szene 3.
 
-**Der Zuschauer sieht:** 1 Fehler `AT-B2G-01` — „Auftragsreferenz fehlt: Rechnungen an
-Bundesdienststellen müssen eine Auftragsreferenz (OrderReference/OrderID) enthalten." Fundstelle
-`/eb:Invoice`.
-
-**Sprechtext:** „Diese Regel gilt nur für Rechnungen an den Bund. Ein System, das ‚Peppol kann',
-ist damit noch nicht bund-tauglich. Für ebInterface gibt es kein offizielles Schematron — diese
-Regeln haben wir geschrieben, und sie liegen offen im Repository, damit Sie sie prüfen können."
-
-### 4:30–7:00 · Szene 2: Die API-Dokumentation — ein Endpunkt ohne Schloss
+### 3:30–5:30 · Szene 2: Die API-Dokumentation — ein Endpunkt ohne Schloss
 
 **URL:** `/swagger-ui.html`
 
@@ -175,7 +173,52 @@ curl -sS -X POST https://einvoice.sebastiankern.net/api/v1/validate -F file=@dem
 **Sprechtext:** „`id: null` — nichts wurde gespeichert. Das ist dieselbe Antwort, die Ihr
 Fakturierungssystem vor dem Versand bekäme."
 
-### 7:00–9:00 · Szene 3: Das Dashboard nach der Anmeldung
+### 5:30–8:00 · Szene 3: Korrekturvorschlag mit Nachweis
+
+**URL:** `/validator` (zweiter Tab). Browser-Zoom für diese Szene auf 110 %, damit Tabelle und Diff
+ganz sichtbar sind.
+
+**Klick 1:** `03-peppol-ohne-adressen.xml` → „Rechnung prüfen" → zum Abschnitt „Korrekturvorschlag
+mit Nachweis" scrollen.
+
+**Der Zuschauer sieht** (Bild: [`docs/screenshots/08-repair.png`](screenshots/08-repair.png)):
+
+- Die Zeile **„Regelwerk entscheidet, Vorschlag ist nachvollziehbar."**
+- Eine Tabelle mit zwei Zeilen: `PEPPOL-EN16931-R020` · „Elektronische Adresse des Verkäufers" BT-34
+  · `ATU12345678 (Schema 9914)` · Herkunft „aus dem Dokument" mit dem Satz, aus welchem Feld der
+  Wert stammt (BT-31, USt-IdNr. des Verkäufers) und was das Regelwerk daran nicht prüft · Ergebnis
+  „behoben". Dasselbe für `R010` und den Erwerber (BT-48 → BT-49).
+- Einen grünen Balken: „Erneute Prüfung der korrigierten Datei: gültig."
+- Darunter die Änderungen als Diff: genau zwei grüne Zeilen `<cbc:EndpointID schemeID="9914">…`, sonst
+  nichts — Einrückung und Rest der Datei bleiben, wie sie waren.
+
+**Sprechtext:** „Hier wird aus der Fehlermeldung eine Korrektur, und zwar eine, die Sie prüfen
+können, bevor Sie ihr glauben. Jede Änderung nennt die Regel, das Feld der EN 16931 und woher der
+Wert kommt — hier aus der UID-Nummer, die schon in der Rechnung steht. Dann prüft dasselbe
+offizielle Regelwerk die korrigierte Datei noch einmal; das Grün kommt vom Regelwerk, nicht von
+uns. Erfunden wird nichts."
+
+**Klick 2:** `04-ebinterface-ohne-auftragsreferenz.xml` → „Rechnung prüfen".
+
+**Der Zuschauer sieht:** `AT-B2G-01`, im Korrekturvorschlag Herkunft „Platzhalter — Eingabe
+erforderlich", **kein** Diff, keine erneute Prüfung, dafür ein Eingabefeld „Auftragsreferenz".
+
+**Sprechtext:** „Die Auftragsreferenz kann kein System erraten — die gibt die bestellende
+Dienststelle bekannt. Also fragt der Vorschlag danach, statt etwas einzusetzen, das nur gültig
+aussieht."
+
+**Klick 3:** `BBG-2026-4711` eintippen → „Vorschlag erstellen und prüfen".
+
+**Der Zuschauer sieht:** Herkunft „Ihre Eingabe", ein Diff mit drei grünen Zeilen
+(`<OrderReference>` … `</OrderReference>`), grüner Balken „Erneute Prüfung der korrigierten Datei:
+gültig."
+
+**Sprechtext (Abschluss der Szene):** „Für Ihr Fakturierungssystem ist das ein Parameter:
+`repair=true` an derselben Prüf-Schnittstelle liefert korrigierte Datei, Diff und erneute Prüfung
+als JSON. Gespeichert wird auch dabei nichts. Und die KI ist daran nicht beteiligt — das
+funktioniert mit abgeschalteter KI genauso."
+
+### 8:00–9:15 · Szene 4: Das Dashboard nach der Anmeldung
 
 Vorab angemeldet (Abschnitt 1.3). Der Anmeldevorgang wird nicht gezeigt, die Anmeldeadresse nicht
 genannt.
@@ -221,7 +264,7 @@ Rechnungen, Berichte, Schlüssel und Protokoll in einer Transaktion. Das Gegente
 Absicht: Der nächtliche Aufbewahrungs-Job räumt Berichte und Protokolle nach Frist weg, aber nie
 Rechnungen — § 132 BAO verpflichtet Sie zu sieben Jahren."
 
-### 9:00–10:00 · Abschluss und nächster Schritt
+### 9:15–10:00 · Abschluss und nächster Schritt
 
 **Sprechtext:** „Drei Wege, das einzusetzen: selbst betreiben — Docker Compose, Apache-2.0, Ihre
 Daten bleiben im Haus. Von uns betrieben, auf EU-Infrastruktur. Oder nur die Schnittstelle in
@@ -267,7 +310,7 @@ Aufwände, keine Tagsätze, kein „zertifiziert", keine Namen anderer Anbieter.
 
 ## 4. Fragen und Antworten
 
-Zwölf Einwände, die in Gesprächen kommen, und die Antwort, die hält.
+Dreizehn Einwände, die in Gesprächen kommen, und die Antwort, die hält.
 
 **1. „Ist das zertifiziert oder vom Bund zugelassen?"**
 Nein, und wir sagen das so. Für Peppol führen wir das offizielle OpenPeppol-Regelwerk unverändert
@@ -335,6 +378,13 @@ die Befundlisten unserer eigenen Reviews.
 **12. „Was kostet das?"**
 Den Preis nennt das Angebot nach dem Erstgespräch, nicht die Demo. In der Demo wird keine Zahl
 genannt.
+
+**13. „Korrigiert das die KI?"**
+Nein. Der Korrekturvorschlag folgt festen, im Repository nachlesbaren Regeln: Ein Wert kommt aus
+einem anderen Feld derselben Rechnung, aus Ihrer Eingabe, oder er fehlt und wird als fehlend
+angezeigt. Ob die Korrektur hält, entscheidet die erneute Prüfung mit demselben Regelwerk. Heute
+deckt er drei Befunde ab (`AT-B2G-01`, `PEPPOL-EN16931-R010`, `R020`); weitere kommen nur dazu, wenn
+der Wert eindeutig aus Dokument oder Eingabe folgt.
 
 ---
 

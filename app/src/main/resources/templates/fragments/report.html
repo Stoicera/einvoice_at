@@ -44,6 +44,13 @@
           </th:block>
         </th:block>
 
+        <!--/* The correction proposal sits right under the errors it answers. th:if on a wrapping
+               block, not beside th:replace: th:replace runs first and would render the fragment
+               with a null argument. */-->
+        <th:block th:if="${repair != null}">
+          <section th:replace="~{fragments/report :: repair(${repair})}"></section>
+        </th:block>
+
         <th:block th:if="${!#lists.isEmpty(warnings)}">
           <h2>Warnungen</h2>
           <th:block th:each="f : ${warnings}">
@@ -63,6 +70,128 @@
         </th:block>
       </th:block>
     </div>
+
+    <!--/*
+      "Korrekturvorschlag mit Nachweis" (RepairProposer, RepairView). Everything shown here is
+      evidence a reader can check: the rule, the business term, where the value came from, the diff
+      and the validator's verdict on the corrected file. No AI is involved — the AI line at the end
+      appears only when the existing "Fehler erklären" path is configured, and says what it is not.
+    */-->
+    <section th:fragment="repair(r)" class="repair" aria-labelledby="repair-heading">
+      <h2 id="repair-heading">Korrekturvorschlag mit Nachweis</h2>
+      <p class="principle">
+        <strong>Regelwerk entscheidet, Vorschlag ist nachvollziehbar.</strong>
+        Jede Änderung nennt Regel, Feld und Herkunft des Werts — übernommen wird nur, was im Dokument
+        steht oder was Sie eingeben. Die korrigierte Datei wird sofort mit demselben Regelwerk erneut
+        geprüft. Gespeichert wird nichts.
+      </p>
+
+      <div class="scroll-x">
+        <table class="changes">
+          <thead>
+            <tr>
+              <th scope="col">Regel</th>
+              <th scope="col">Feld</th>
+              <th scope="col">Wert</th>
+              <th scope="col">Herkunft</th>
+              <th scope="col">Ergebnis</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr th:each="c : ${r.changes()}">
+              <td class="mono rule" th:text="${c.change().ruleId()}"></td>
+              <td>
+                <span th:text="${c.change().fieldDe()}"></span>
+                <span class="muted mono" th:text="${c.change().businessTerm()}"></span>
+              </td>
+              <td class="mono" th:text="${c.displayValue()}"></td>
+              <td>
+                <strong th:text="${c.change().source().labelDe()}"></strong>
+                <span class="provenance" th:text="${c.change().sourceDe()}"></span>
+                <span
+                  class="provenance note"
+                  th:if="${c.change().noteDe()}"
+                  th:text="${c.change().noteDe()}"
+                ></span>
+              </td>
+              <td>
+                <span class="pill" th:classappend="${c.statusClass()}" th:text="${c.statusLabel()}"></span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="errors" th:if="${repairError}" th:text="${repairError}"></p>
+
+      <!--/* Only when a change takes input. The document comes along because nothing was stored on
+             the server to apply the input to — RepairView's Javadoc has the reasoning and the
+             cost. */-->
+      <form
+        th:if="${r.document() != null}"
+        class="stack spaced-sm repair-input"
+        th:action="@{/validator/korrigieren}"
+        method="post"
+        enctype="multipart/form-data"
+        data-swap="#report"
+      >
+        <input type="hidden" name="document" th:value="${r.document()}" />
+        <input type="hidden" name="filename" th:value="${filename}" />
+        <label for="orderReference">Auftragsreferenz (von der bestellenden Dienststelle)</label>
+        <div class="row">
+          <input
+            id="orderReference"
+            name="orderReference"
+            type="text"
+            maxlength="255"
+            autocomplete="off"
+            required
+            th:value="${r.orderReference()}"
+          />
+          <button type="submit">Vorschlag erstellen und prüfen</button>
+          <span class="spinner" data-spinner>Wird geprüft …</span>
+        </div>
+      </form>
+
+      <th:block th:if="${r.proposal().hasCorrectedDocument()}">
+        <div class="verdict" th:classappend="${r.revalidatedValid()} ? 'valid' : 'invalid'">
+          <span class="headline" th:if="${r.revalidatedValid()}"
+            >Erneute Prüfung der korrigierten Datei: gültig.</span
+          >
+          <span class="headline" th:unless="${r.revalidatedValid()}"
+            th:text="|Erneute Prüfung der korrigierten Datei: noch ${#lists.size(r.proposal().remainingErrors())} Fehler.|"
+          ></span>
+          <span class="muted right"
+            th:text="|${r.proposal().revalidation().sourceFormat()} · Profil ${r.proposal().revalidation().profile()}|"
+          ></span>
+        </div>
+        <ul class="remaining" th:unless="${r.revalidatedValid()}">
+          <li th:each="f : ${r.proposal().remainingErrors()}">
+            <span class="mono rule" th:text="${f.ruleId()}"></span>
+            <span th:text="${f.messageDe()}"></span>
+          </li>
+        </ul>
+
+        <h3>Änderungen gegenüber Ihrer Datei</h3>
+        <pre class="diff" aria-label="Unified Diff"><span
+            th:each="l : ${r.diffLines()}"
+            th:class="|diff-${l.kind()}|"
+            th:text="${l.text()}"
+          ></span></pre>
+
+        <details>
+          <summary>Korrigierte Datei anzeigen</summary>
+          <div class="scroll-x">
+            <pre class="mono" th:text="${r.proposal().correctedXml()}"></pre>
+          </div>
+        </details>
+      </th:block>
+
+      <p class="muted ai-note" th:if="${aiEnabled}">
+        Die KI-Erklärung je Befund („Fehler erklären“) bleibt eine Erklärung. Der Vorschlag selbst
+        stammt aus Regeln, die im Repository nachlesbar sind — nicht aus der KI.
+      </p>
+    </section>
 
     <!--/* One finding. The German message is the primary text (project policy: every finding carries
            one); the English mirror and the location are quiet secondary lines for a developer. */-->

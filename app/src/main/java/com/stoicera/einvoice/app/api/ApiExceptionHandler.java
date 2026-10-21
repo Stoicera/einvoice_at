@@ -82,6 +82,16 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         ex.getMessage());
   }
 
+  /**
+   * A correction-proposal input that cannot be written into the document. The detail is echoed: it
+   * names the limit the caller's own value broke, never the value itself.
+   */
+  @ExceptionHandler(InvalidRepairInputException.class)
+  ProblemDetail handleInvalidRepairInput(InvalidRepairInputException ex) {
+    return problem(
+        HttpStatus.BAD_REQUEST, "invalid-repair-input", "Invalid repair input", ex.getMessage());
+  }
+
   /** Unknown id, or an id belonging to another tenant — one indistinguishable 404, no oracle. */
   @ExceptionHandler(InvoiceNotFoundException.class)
   ProblemDetail handleNotFound(InvoiceNotFoundException ex) {

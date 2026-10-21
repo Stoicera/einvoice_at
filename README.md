@@ -40,6 +40,13 @@ dashboard is behind a genuine Keycloak login, and the observability captures are
 | [![Validation report](docs/screenshots/03-report.png)](docs/screenshots/03-report.png)<br>**Report** — findings grouped by severity, German first, rule id and location per finding | [![Dashboard](docs/screenshots/04-dashboard.png)](docs/screenshots/04-dashboard.png)<br>**Dashboard** — per-tenant overview behind an OIDC login |
 | [![Create-invoice wizard](docs/screenshots/05-wizard.png)](docs/screenshots/05-wizard.png)<br>**Wizard** — four server-rendered steps, no JavaScript required | [![Grafana pipeline dashboard](docs/screenshots/06-grafana-pipeline.png)](docs/screenshots/06-grafana-pipeline.png)<br>**Grafana** — stage and step latency, provisioned with the profile |
 
+[![Correction proposal with evidence](docs/screenshots/08-repair.png)](docs/screenshots/08-repair.png)
+
+**Korrekturvorschlag mit Nachweis** — a Peppol invoice without electronic addresses: both derived
+from the VAT numbers already in the document, each change with rule, business term and source, the
+diff, and the re-validation by the official rule set coming back valid. Captured by the Selenium
+test `PublicValidatorFlowIT` in CI, not staged.
+
 [![Tempo trace of an invoice creation](docs/screenshots/07-tempo-trace.png)](docs/screenshots/07-tempo-trace.png)
 
 **One invoice creation, traced end to end.** This is what "OTel across the pipeline stages" means in
@@ -182,7 +189,7 @@ The `app` module serves the `/api/v1` REST API (M3). Interactive docs: **Swagger
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `POST` | `/api/v1/validate` | public | Validate an uploaded ebInterface 6.1 **or** Peppol BIS 3.0 UBL document (multipart `file`, format auto-detected) → `ValidationReport`. Anonymous: nothing is persisted; authenticated: the report is persisted and audited. |
+| `POST` | `/api/v1/validate` | public | Validate an uploaded ebInterface 6.1 **or** Peppol BIS 3.0 UBL document (multipart `file`, format auto-detected) → `ValidationReport`. Anonymous: nothing is persisted; authenticated: the report is persisted and audited. `?repair=true` adds a correction proposal — corrected XML, unified diff, re-validation — for findings with a known fix; `orderReference` supplies the Auftragsreferenz. The proposal is never persisted. |
 | `POST` | `/api/v1/invoices` | JWT or API key | Create an invoice from canonical JSON → `{id, report}` (201, `Location` header). |
 | `GET` | `/api/v1/invoices` | JWT or API key | The tenant's invoices, newest first, paginated (`page`, `size`). |
 | `GET` | `/api/v1/invoices/{id}` | JWT or API key | The stored canonical JSON. |
@@ -512,6 +519,8 @@ Every rule id the pipeline can produce is centralised in `RuleIds` (module `vali
 | `AT-B2G-05` | own Schematron | no `PaymentMethod` (`UniversalBankTransaction` or `NoPayment`) present |
 
 **Golden-file corpus.** [`validation/src/test/resources/corpus/`](validation/src/test/resources/corpus/) is the pipeline's executable specification: `valid/` documents must clear every stage cleanly, `invalid/` documents each isolate exactly one deliberate defect against one rule id. `CorpusTest` runs every file through the real validator; the corpus's own README documents the file-by-file provenance. A reported mapping/validation bug is always added here as a new failing golden file before it is fixed in code.
+
+**Correction proposals ("Korrekturvorschlag mit Nachweis").** For findings with a known fix, `RepairProposer` (package `validation.repair`, plain Java) produces the corrected document, a unified diff and an immediate re-validation by the same `InvoiceValidator` — shown under the errors in the public validator and returned by `POST /api/v1/validate?repair=true`. Today: `AT-B2G-01` (Auftragsreferenz, BT-13, from user input), `PEPPOL-EN16931-R020` / `R010` (electronic address BT-34 / BT-49, derived from the same party's Austrian or German VAT number or its GLN). Every change names its rule, its business term and the source of its value — elsewhere in the document, the user's input, or a placeholder that is listed but **not** written, so nothing invented can pass validation by accident. Edits are made on the text at exact positions, so the diff shows only the change; the corrected `at-b2g-01-missing-order-reference.xml` is byte-identical to the corpus file it was cut from. No AI is involved; it works with the AI switch off. Expected outputs live in `corpus/repaired/`; the decision record is [ADR-0013](docs/adr/0013-correction-proposals.md).
 
 **CLI.** `ValidationRunner` runs the pipeline over one or more files or directories and prints a German-first report per file (English mirror per finding). Run it over the golden-file corpus:
 

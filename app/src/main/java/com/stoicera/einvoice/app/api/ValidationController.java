@@ -4,6 +4,8 @@ import com.stoicera.einvoice.app.persistence.TenantEntity;
 import com.stoicera.einvoice.app.report.ReportService;
 import com.stoicera.einvoice.app.report.ValidateResult;
 import com.stoicera.einvoice.app.security.CurrentTenant;
+import com.stoicera.einvoice.validation.repair.RepairInput;
+import com.stoicera.einvoice.validation.repair.RepairProposer;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -18,6 +20,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -42,6 +45,12 @@ import org.springframework.web.multipart.MultipartFile;
  * oversized upload never reaches this method and is answered 413 by {@link ApiExceptionHandler}'s
  * inherited handling of {@code MaxUploadSizeExceededException}. A missing {@code file} part is
  * answered 400 the same way.
+ *
+ * <p>With {@code repair=true} the response also carries a correction proposal for the findings that
+ * have a known fix ({@link RepairProposer}): the corrected document, a unified diff and its
+ * re-validation. {@code orderReference} supplies the Auftragsreferenz ({@code AT-B2G-01}), the one
+ * value that cannot come from the document. The proposal is computed in memory and never persisted,
+ * for any caller; the rate limit covers it as part of this endpoint.
  */
 @RestController
 @RequestMapping("/api/v1/validate")
@@ -49,10 +58,13 @@ public class ValidationController {
 
   private final ReportService reports;
   private final CurrentTenant currentTenant;
+  private final RepairProposer repairs;
 
-  public ValidationController(ReportService reports, CurrentTenant currentTenant) {
+  public ValidationController(
+      ReportService reports, CurrentTenant currentTenant, RepairProposer repairs) {
     this.reports = reports;
     this.currentTenant = currentTenant;
+    this.repairs = repairs;
   }
 
   @PostMapping(
@@ -66,7 +78,13 @@ public class ValidationController {
               + " invoice or credit note against the official OpenPeppol rule set, executed"
               + " unmodified at a pinned version. Public — no credential required. An"
               + " authenticated caller (JWT or API key) additionally gets the report persisted"
-              + " and audited; see the class Javadoc.")
+              + " and audited; see the class Javadoc. With repair=true the response adds a"
+              + " correction proposal for findings with a known fix (AT-B2G-01,"
+              + " PEPPOL-EN16931-R010, PEPPOL-EN16931-R020): every change with its rule id,"
+              + " business term and the source of its value, the corrected document, a unified"
+              + " diff and the re-validation of the corrected document. Nothing is invented: a"
+              + " value the document does not contain and the caller did not supply is reported"
+              + " as a placeholder and not written.")
   // Public endpoint: overrides OpenApiConfig's global bearerAuth/apiKeyAuth requirement with an
   // empty security array, or the generated doc would wrongly claim a credential is needed here.
   @SecurityRequirements
@@ -79,7 +97,9 @@ public class ValidationController {
               schema = @Schema(implementation = ValidateResult.class)))
   @ApiResponse(
       responseCode = "400",
-      description = "The multipart request has no `file` part.",
+      description =
+          "The multipart request has no `file` part, or `orderReference` is longer than 255"
+              + " characters or contains a character XML cannot carry.",
       content =
           @Content(
               mediaType = "application/problem+json",
@@ -107,10 +127,37 @@ public class ValidationController {
               required = true)
           @RequestPart("file")
           MultipartFile file,
+      @Parameter(
+              description =
+                  "Also return a correction proposal for findings with a known fix. Default"
+                      + " false.")
+          @RequestParam(name = "repair", defaultValue = "false")
+          boolean repair,
+      @Parameter(
+              description =
+                  "The Auftragsreferenz to use when the proposal fixes AT-B2G-01. Only read with"
+                      + " repair=true. At most 255 characters.")
+          @RequestParam(name = RepairProposer.INPUT_ORDER_REFERENCE, required = false)
+          String orderReference,
       Authentication authentication)
       throws IOException {
+    RepairInput input = repair ? repairInput(orderReference) : RepairInput.none();
     Optional<UUID> tenantId =
         currentTenant.resolveIfAuthenticated(authentication).map(TenantEntity::getId);
-    return reports.validate(file.getBytes(), tenantId);
+    byte[] bytes = file.getBytes();
+    ValidateResult result = reports.validate(bytes, tenantId);
+    if (!repair) {
+      return result;
+    }
+    return repairs.propose(bytes, result.report(), input).map(result::withRepair).orElse(result);
+  }
+
+  /** Checked before validating, so an unusable input costs no validation run. */
+  private static RepairInput repairInput(String orderReference) {
+    try {
+      return new RepairInput(orderReference);
+    } catch (IllegalArgumentException e) {
+      throw new InvalidRepairInputException(e.getMessage());
+    }
   }
 }

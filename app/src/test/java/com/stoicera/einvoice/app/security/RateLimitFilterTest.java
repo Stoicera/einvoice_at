@@ -41,6 +41,7 @@ class RateLimitFilterTest {
   private static final String UI_EXPLAIN =
       "/app/berichte/1c1a9b6e-0000-0000-0000-000000000001/erklaeren";
   private static final String PUBLIC_EXPLAIN = "/validator/erklaeren";
+  private static final String PUBLIC_REPAIR = "/validator/korrigieren";
   private static final ObjectMapper JSON = new ObjectMapper();
 
   /** Any limit will do for the eviction test; only the map's size is under assertion there. */
@@ -410,6 +411,24 @@ class RateLimitFilterTest {
     filter.doFilter(anonymousPost(ip), new MockHttpServletResponse(), chain);
     MockHttpServletResponse blocked = new MockHttpServletResponse();
     filter.doFilter(post(PUBLIC_EXPLAIN, ip), blocked, chain);
+
+    assertThat(chain.invocations()).isEqualTo(1);
+    assertThat(blocked.getStatus()).isEqualTo(429);
+  }
+
+  /**
+   * The correction route validates the posted document twice; a bucket of its own would be an
+   * unlimited detour around the upload's limit.
+   */
+  @Test
+  void theCorrectionRouteSharesTheValidateBucket() throws Exception {
+    RateLimitFilter filter = new RateLimitFilter(1, 1, 1000, 1000, 1000, 1000);
+    CountingChain chain = new CountingChain();
+    String ip = "203.0.113.65";
+
+    filter.doFilter(anonymousPost(ip), new MockHttpServletResponse(), chain);
+    MockHttpServletResponse blocked = new MockHttpServletResponse();
+    filter.doFilter(post(PUBLIC_REPAIR, ip), blocked, chain);
 
     assertThat(chain.invocations()).isEqualTo(1);
     assertThat(blocked.getStatus()).isEqualTo(429);
