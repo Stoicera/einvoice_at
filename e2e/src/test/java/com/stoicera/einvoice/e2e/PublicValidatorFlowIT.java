@@ -246,11 +246,48 @@ class PublicValidatorFlowIT extends AbstractPostgresIT {
     assertThat(reports.count()).isEqualTo(reportsBefore);
 
     Files.createDirectories(SCREENSHOTS);
-    Files.write(
-        SCREENSHOTS.resolve("08-repair.png"),
-        driver
-            .findElement(By.cssSelector("#report"))
-            .getScreenshotAs(org.openqa.selenium.OutputType.BYTES));
+    Files.write(SCREENSHOTS.resolve("08-repair.png"), fullScreenshotOf(repair));
+  }
+
+  /**
+   * A screenshot of the whole element, also where it is taller than the browser window. A plain
+   * element screenshot is cut at the viewport (the first capture of this section was), so this asks
+   * Chrome directly, over the WebDriver CDP endpoint, to render beyond it; if that is unavailable,
+   * the cut screenshot is still better than none.
+   */
+  private byte[] fullScreenshotOf(WebElement element) {
+    try {
+      @SuppressWarnings("unchecked")
+      java.util.List<Number> box =
+          (java.util.List<Number>)
+              driver.executeScript(
+                  "const r = arguments[0].getBoundingClientRect();"
+                      + " return [r.left + window.scrollX, r.top + window.scrollY, r.width,"
+                      + " r.height];",
+                  element);
+      int margin = 16;
+      java.util.Map<String, Object> clip =
+          java.util.Map.of(
+              "x",
+              Math.max(0, box.get(0).doubleValue() - margin),
+              "y",
+              Math.max(0, box.get(1).doubleValue() - margin),
+              "width",
+              box.get(2).doubleValue() + 2 * margin,
+              "height",
+              box.get(3).doubleValue() + 2 * margin,
+              "scale",
+              1);
+      java.util.Map<String, Object> shot =
+          ((org.openqa.selenium.chromium.HasCdp)
+                  new org.openqa.selenium.remote.Augmenter().augment(driver))
+              .executeCdpCommand(
+                  "Page.captureScreenshot",
+                  java.util.Map.of("format", "png", "captureBeyondViewport", true, "clip", clip));
+      return java.util.Base64.getDecoder().decode((String) shot.get("data"));
+    } catch (RuntimeException e) {
+      return element.getScreenshotAs(org.openqa.selenium.OutputType.BYTES);
+    }
   }
 
   @Test

@@ -21,6 +21,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
 /**
  * The public browser surface, end to end against a real context and a real Postgres.
@@ -68,6 +70,18 @@ class PublicWebIT extends AbstractPostgresIT {
    * Thymeleaf renders Spring Security's token as a hidden input on every {@code th:action} form.
    */
   private static final Pattern CSRF_INPUT = Pattern.compile("name=\"_csrf\"\\s+value=\"([^\"]+)\"");
+
+  /**
+   * This class uploads more than the default anonymous allowance of 10 a minute — every
+   * correction-proposal test validates at least once, the input step twice — all from one address.
+   * Raised here, as {@code ExplainApiIT} does, so the limit stays a property {@code RateLimitIT}
+   * tests on purpose rather than something this class trips over by accident.
+   */
+  @DynamicPropertySource
+  static void generousRateLimit(DynamicPropertyRegistry registry) {
+    registry.add("app.rate-limit.validate.capacity", () -> "1000");
+    registry.add("app.rate-limit.validate.refill-per-minute", () -> "1000");
+  }
 
   @LocalServerPort private int port;
 
