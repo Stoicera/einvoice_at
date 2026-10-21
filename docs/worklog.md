@@ -166,7 +166,7 @@ deployed themselves to production, each confirmed against the running instance r
 
 **Next**
 
-- Owner: order the Hetzner Storage Box and write `/opt/einvoice-at/offsite.env` — `deployment.md`
+- Owner: order the Hetzner Storage Box and write `<app-dir>/offsite.env` — `deployment.md`
   §10.4, four lines, no code or cron change after it.
 - Owner's call: whether `API_DOCS_ENABLED` should be `false` in production at all. The OpenAPI
   annotations are already public in this repository, so publishing the rendered document leaks
@@ -185,14 +185,14 @@ One autonomous session closed everything that stood between the morning's first 
 finished M6: deployment steps §10–§11, the owner checklist, and a CI that had been silently red
 on `main` since 2026-08-01 — through docs-only merges, so the code had not changed. The world had.
 
-**§10 backups, done and rehearsed.** Scripts installed to `/opt/einvoice-at/scripts` from `main`;
+**§10 backups, done and rehearsed.** Scripts installed to `<app-dir>/scripts` from `main`;
 first dump taken and archive-verified (16K, 31 entries); nightly cron at 02:15 with credentials in
 a root-only 0600 env file and the newline-terminated cron file; restore rehearsed into
 `einvoice_drill` — row counts matched the live database exactly (tenant 1, flyway 2, rest 0) —
 then dropped. The dump still lives on the same disk as the database; the off-site copy is the one
 open operational item (owner-checklist.md).
 
-**Hardening audit, all green.** fail2ban exempts the Dokploy panel (46.224.182.114) and is
+**Hardening audit, all green.** fail2ban exempts the Dokploy panel's address and is
 actively banning others (9 at audit time); external scan shows only 22/80/443 reachable
 (2377/3000/5432/8080/9000 closed); sshd is key-only; `KC_BOOTSTRAP_*` is gone from Keycloak's
 environment; unattended-upgrades on; no Swarm service publishes a port; the app service carries

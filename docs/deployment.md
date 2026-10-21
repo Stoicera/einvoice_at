@@ -1009,12 +1009,18 @@ otherwise cost you an evening:
 A `postgres:17` container attached to the Dokploy network solves both at once, needs nothing
 installed on the host, and guarantees the client and server versions match.
 
+**Placeholders used in this section.** `<app-dir>` is the directory holding the scripts and
+the root-only env files; `<backup-dir>` holds the dumps (`<backup-dir-keycloak>` the Keycloak
+dumps). Pick them once and use them everywhere. `offsite-sync.sh` reads `<app-dir>/offsite.env`
+only when `OFFSITE_ENV_FILE` points there or `<app-dir>` matches the script's documented default
+(see its header).
+
 **Do this.** On the production VPS:
 
 ```bash
 ssh root@<PRODUCTION_IP>
-mkdir -p /opt/einvoice-at/scripts /var/backups/einvoice
-cd /opt/einvoice-at/scripts
+mkdir -p <app-dir>/scripts <backup-dir>
+cd <app-dir>/scripts
 curl -fsSLO https://raw.githubusercontent.com/Stoicera/einvoice_at/main/scripts/backup.sh
 curl -fsSLO https://raw.githubusercontent.com/Stoicera/einvoice_at/main/scripts/restore.sh
 curl -fsSLO https://raw.githubusercontent.com/Stoicera/einvoice_at/main/scripts/offsite-sync.sh
@@ -1043,8 +1049,8 @@ and the credentials path is sound before you automate anything.
 
 ```bash
 docker run --rm --network dokploy-network \
-  -v /opt/einvoice-at/scripts:/scripts:ro \
-  -v /var/backups/einvoice:/backups \
+  -v <app-dir>/scripts:/scripts:ro \
+  -v <backup-dir>:/backups \
   -e POSTGRES_HOST=<EINVOICE_DB_INTERNAL_HOST> \
   -e POSTGRES_USER=einvoice -e POSTGRES_DB=einvoice \
   -e PGPASSWORD='<APP_DB_PASSWORD>' -e BACKUP_KEEP_DAYS=30 \
@@ -1064,21 +1070,21 @@ Pruning dumps older than 30 days in /backups
 line is not a credential:
 
 ```bash
-cat > /opt/einvoice-at/backup.env <<'EOF'
+cat > <app-dir>/backup.env <<'EOF'
 POSTGRES_HOST=<EINVOICE_DB_INTERNAL_HOST>
 POSTGRES_USER=einvoice
 POSTGRES_DB=einvoice
 PGPASSWORD=<APP_DB_PASSWORD>
 BACKUP_KEEP_DAYS=30
 EOF
-chmod 600 /opt/einvoice-at/backup.env
+chmod 600 <app-dir>/backup.env
 ```
 
 Then create `/etc/cron.d/einvoice-backup`. It must end with a newline, or cron ignores the file
 without saying so:
 
 ```cron
-15 2 * * * root docker run --rm --network dokploy-network --env-file /opt/einvoice-at/backup.env -v /opt/einvoice-at/scripts:/scripts:ro -v /var/backups/einvoice:/backups postgres:17 /scripts/backup.sh /backups >> /var/log/einvoice-backup.log 2>&1 && /opt/einvoice-at/scripts/offsite-sync.sh /var/backups/einvoice >> /var/log/einvoice-backup.log 2>&1
+15 2 * * * root docker run --rm --network dokploy-network --env-file <app-dir>/backup.env -v <app-dir>/scripts:/scripts:ro -v <backup-dir>:/backups postgres:17 /scripts/backup.sh /backups >> /var/log/einvoice-backup.log 2>&1 && <app-dir>/scripts/offsite-sync.sh <backup-dir> >> /var/log/einvoice-backup.log 2>&1
 ```
 
 The second half is the off-site copy of §10.4. It is chained with `&&` because syncing after a
@@ -1094,7 +1100,7 @@ docker run --rm --network dokploy-network -e PGPASSWORD='<APP_DB_PASSWORD>' post
   createdb -h <EINVOICE_DB_INTERNAL_HOST> -U einvoice einvoice_drill
 
 docker run --rm --network dokploy-network \
-  -v /opt/einvoice-at/scripts:/scripts:ro -v /var/backups/einvoice:/backups \
+  -v <app-dir>/scripts:/scripts:ro -v <backup-dir>:/backups \
   -e POSTGRES_HOST=<EINVOICE_DB_INTERNAL_HOST> \
   -e POSTGRES_USER=einvoice -e POSTGRES_DB=einvoice_drill \
   -e PGPASSWORD='<APP_DB_PASSWORD>' \
@@ -1116,7 +1122,7 @@ have bind-mounted. `could not translate host name` means the internal host from 
 
 ### 10.4 Copy the dumps off the machine
 
-**What this is.** One command that pushes `/var/backups/einvoice` to storage on a different machine,
+**What this is.** One command that pushes `<backup-dir>` to storage on a different machine,
 and then proves the copy is readable by downloading it again.
 
 **Why.** Everything up to here writes the dump to the same physical disk as the database it dumped.
@@ -1129,16 +1135,16 @@ into a machine you already trust.
 `scripts/offsite-sync.sh` is installed and in the nightly chain. Arming it is one file; there is no
 code change.
 
-**State on this fleet (armed 2026-09-23).** The target is not a Storage Box yet but the Dokploy panel
-host, over the private network `dokploy-net` (prod 10.10.1.2 → panel 10.10.1.1). On the panel a
-system user `backupsink` (password locked) accepts exactly one key with a forced command:
-`restrict,from="10.10.1.2",command="/usr/bin/rrsync -no-del /srv/backup/skdevserver1" <key>`.
-`-no-del` refuses `--delete` and still allows the read-back below. `/opt/einvoice-at/offsite.env`
-(0600):
+**State on the instance Stoicera operates (armed 2026-09-23).** The target is not a Storage Box yet
+but a second server in the same provider account, reached over a private network. On that server a
+dedicated system user with a locked password accepts exactly one key, and only from the production
+server's private address; a forced command confines it to one target directory and refuses
+deletions, while still allowing the read-back below. Host, user, addresses and paths of that setup
+are deliberately not part of this public document. `<app-dir>/offsite.env` (0600):
 
 ```bash
-OFFSITE_TARGET="backupsink@10.10.1.1:${OFFSITE_SUBDIR:-einvoice}/"
-OFFSITE_SSH_KEY=/root/.ssh/offsite_ed25519
+OFFSITE_TARGET="<backup-user>@<backup-host>:${OFFSITE_SUBDIR:-einvoice}/"
+OFFSITE_SSH_KEY=<ssh-key-path>
 OFFSITE_SSH_PORT=22
 OFFSITE_REQUIRED=1
 OFFSITE_VERIFY=1
@@ -1146,15 +1152,15 @@ OFFSITE_VERIFY=1
 
 Each product's cron line sets `OFFSITE_SUBDIR` and, where its files are not `einvoice-*.dump`,
 `OFFSITE_PATTERN`. Keycloak's database is backed up with the same `backup.sh`
-(`BACKUP_PREFIX=keycloak` in the root-only `/opt/einvoice-at/backup-keycloak.env`), in
+(`BACKUP_PREFIX=keycloak` in the root-only `<app-dir>/backup-keycloak.env`), in
 `/etc/cron.d/keycloak-backup`:
 
 ```cron
-20 2 * * * root docker run --rm --network dokploy-network --env-file /opt/einvoice-at/backup-keycloak.env -v /opt/einvoice-at/scripts:/scripts:ro -v /var/backups/keycloak:/backups postgres:17 /scripts/backup.sh /backups >> /var/log/keycloak-backup.log 2>&1 && OFFSITE_SUBDIR=keycloak OFFSITE_PATTERN="keycloak-*.dump" /opt/einvoice-at/scripts/offsite-sync.sh /var/backups/keycloak >> /var/log/keycloak-backup.log 2>&1
+20 2 * * * root docker run --rm --network dokploy-network --env-file <app-dir>/backup-keycloak.env -v <app-dir>/scripts:/scripts:ro -v <backup-dir-keycloak>:/backups postgres:17 /scripts/backup.sh /backups >> /var/log/keycloak-backup.log 2>&1 && OFFSITE_SUBDIR=keycloak OFFSITE_PATTERN="keycloak-*.dump" <app-dir>/scripts/offsite-sync.sh <backup-dir-keycloak> >> /var/log/keycloak-backup.log 2>&1
 ```
 
 migration-lab chains the same script at 02:45 with `OFFSITE_SUBDIR=migration-lab
-OFFSITE_PATTERN='*.sql.gz'`. The panel and prod are in one Hetzner account and region: this covers
+OFFSITE_PATTERN='*.sql.gz'`. Both servers are in one provider account and region: this covers
 the loss of the server, not of the account. The Storage Box below is the step that adds a location
 outside it (owner decision, it costs money).
 
@@ -1169,13 +1175,13 @@ cat /root/.ssh/storagebox.pub          # register this key in the Storage Box pa
 Hetzner's Storage Box listens on **port 23**, not 22. Write the config file:
 
 ```bash
-cat > /opt/einvoice-at/offsite.env <<'EOF'
+cat > <app-dir>/offsite.env <<'EOF'
 OFFSITE_TARGET=uXXXXXX@uXXXXXX.your-storagebox.de:einvoice/
 OFFSITE_SSH_KEY=/root/.ssh/storagebox
 OFFSITE_SSH_PORT=23
 OFFSITE_REQUIRED=1
 EOF
-chmod 600 /opt/einvoice-at/offsite.env
+chmod 600 <app-dir>/offsite.env
 ```
 
 `OFFSITE_REQUIRED=1` is the line that matters most. Without it, a typo in `OFFSITE_TARGET` and a
@@ -1185,14 +1191,14 @@ invisible until a restore. With it, anything short of a working off-site copy fa
 **Verify.** Run it by hand once:
 
 ```bash
-/opt/einvoice-at/scripts/offsite-sync.sh /var/backups/einvoice
+<app-dir>/scripts/offsite-sync.sh <backup-dir>
 ```
 
 Expected — the last line is the one that counts, because it was produced by reading the file *back*
 from the Storage Box and comparing its SHA-256 against the local sidecar:
 
 ```
-Syncing /var/backups/einvoice/ -> uXXXXXX@uXXXXXX.your-storagebox.de:einvoice/
+Syncing <backup-dir>/ -> uXXXXXX@uXXXXXX.your-storagebox.de:einvoice/
 ...
 Verifying einvoice-<stamp>.dump by reading it back from off-site storage
 OK: einvoice-<stamp>.dump verified off-site (sha256 matches); N dump(s) now stored remotely
