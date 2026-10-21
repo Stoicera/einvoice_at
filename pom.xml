@@ -92,7 +92,7 @@
          and a PATH hijack of `kenv` on BSD/Solaris, which no Java jar of constants can perform.
          Arguing that takes longer than upgrading, and .owasp-suppressions.xml's own policy says the
          first response is to upgrade. Drop this override once Boot manages 1.43.0 or higher. -->
-    <opentelemetry-semconv.version>1.43.0</opentelemetry-semconv.version>
+    <opentelemetry-semconv.version>1.44.0</opentelemetry-semconv.version>
 
     <!-- PDF generation for the rendering module (M4). Version verified against Maven Central
          maven-metadata.xml on 2026-07-25: 3.0.8 is both <latest> and <release>. Apache-2.0, the
