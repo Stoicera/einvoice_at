@@ -45,7 +45,9 @@ dashboard is behind a genuine Keycloak login, and the observability captures are
 **Korrekturvorschlag mit Nachweis** — a Peppol invoice without electronic addresses: both derived
 from the VAT numbers already in the document, each change with rule, business term and source, the
 diff, and the re-validation by the official rule set coming back valid. Captured by the Selenium
-test `PublicValidatorFlowIT` in CI, not staged.
+test `PublicValidatorFlowIT` in CI (run 39696207415, artifact `e2e-screenshots`), not staged; that
+test runs with a stub AI provider, which is why the last line about AI explanations shows — with
+the AI switch off, as in production, it does not.
 
 [![Tempo trace of an invoice creation](docs/screenshots/07-tempo-trace.png)](docs/screenshots/07-tempo-trace.png)
 
