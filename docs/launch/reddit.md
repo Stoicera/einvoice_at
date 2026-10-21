@@ -83,7 +83,7 @@ Ich habe dafür einen Prüfer gebaut: https://einvoice.sebastiankern.net/validat
   offizielles Schematron, die österreichischen Regeln sind deshalb im Repository nachlesbar.
 
 Was er nicht ist: keine Einreichung, kein Ersatz für die Prüfung bei e-rechnung.gv.at (deren Urteil
-zählt), keine Rechts- oder Steuerberatung, nicht zertifiziert.
+zählt), keine Rechts- oder Steuerberatung, keine amtliche Zulassung.
 
 Der Code ist offen (Apache-2.0) und lässt sich selbst betreiben:
 https://github.com/Stoicera/einvoice_at

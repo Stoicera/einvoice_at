@@ -6,7 +6,7 @@ steht im ersten Kommentar, höchstens drei Hashtags. Keine Bezahlwerbung, kein B
 
 ## Post A — Profil Sebastian Kern (Autor)
 
-Länge: 1 239 Zeichen.
+Länge: 1 245 Zeichen.
 
 ```text
 Eine vom Bund abgelehnte E-Rechnung kommt als Schematron-Ausgabe zurück. einvoice-at sagt Ihnen stattdessen auf Deutsch, welche Regel verletzt ist und wo im Dokument – kostenlos, ohne Konto, quelloffen.
@@ -20,7 +20,7 @@ Was der Prüfer macht:
 – für ebInterface, wo es kein offizielles Schematron gibt, eigene Regeln, im Repository nachlesbar
 – der Upload wird im Arbeitsspeicher geprüft und nicht gespeichert
 
-Was er nicht ist: keine Einreichung, nicht zertifiziert, keine Rechts- oder Steuerberatung. Das Urteil von e-rechnung.gv.at bleibt das, das zählt.
+Was er nicht ist: keine Einreichung, keine amtliche Zulassung, keine Rechts- oder Steuerberatung. Das Urteil von e-rechnung.gv.at bleibt das, das zählt.
 
 Softwarehäuser können die Prüfung über eine REST-API in die eigene Fakturierung einbauen oder alles selbst betreiben (Apache-2.0).
 
@@ -38,7 +38,7 @@ Code (Apache-2.0): https://github.com/Stoicera/einvoice_at
 
 ## Post B — Profil Raphael Lugmayr (Mitgründer, am selben Tag, ein bis zwei Stunden später)
 
-Länge: 1 236 Zeichen. Raphael liest den Text vorher und ändert, was nicht nach ihm klingt.
+Länge: 1 242 Zeichen. Raphael liest den Text vorher und ändert, was nicht nach ihm klingt.
 
 ```text
 Mein Mitgründer Sebastian Kern hat einen Prüfer für österreichische E-Rechnungen gebaut, der jeden Fehler auf Deutsch erklärt – und den gesamten Code offengelegt.
@@ -52,7 +52,7 @@ Drei Dinge, die mir an dem Projekt wichtig sind:
 – Für Peppol läuft das offizielle Regelwerk unverändert; der Build schlägt fehl, sobald ein neuerer Regelsatz verbindlich wird.
 – Alles ist nachprüfbar: Code, Tests und Entscheidungen liegen öffentlich.
 
-Was es nicht ist: keine Einreichung beim Bund, keine Steuerberatung, nicht zertifiziert.
+Was es nicht ist: keine Einreichung beim Bund, keine Steuerberatung, keine amtliche Zulassung.
 
 Wenn Sie Rechnungen an Bundesdienststellen stellen oder ein Fakturierungsprodukt betreuen: Probieren Sie es mit einer Testrechnung aus und sagen Sie uns, was fehlt.
 
@@ -71,7 +71,7 @@ Quellcode: https://github.com/Stoicera/einvoice_at
 ## Vor dem Posten prüfen
 
 - Prüfer live: Testrechnung im Browser hochladen, Befund erscheint auf Deutsch.
-- Keine Aussage über Nutzer- oder Kundenzahlen, keine Zertifizierung, keine Rechts- oder
+- Keine Aussage über Nutzer- oder Kundenzahlen, keine Behauptung einer Zulassung, keine Rechts- oder
   Steuerberatung andeuten.
 - Kommentare am Posttag innerhalb von vier Stunden beantworten, auf dem eigenen Profil jeweils
   die Person, die gepostet hat.
