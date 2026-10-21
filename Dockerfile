@@ -3,7 +3,7 @@ WORKDIR /workspace
 COPY . .
 RUN --mount=type=cache,target=/root/.m2 ./mvnw -B -ntp -DskipTests package
 
-FROM eclipse-temurin:25-jre-alpine@sha256:28db6fdf60e38945e43d840c0333aeaec66c15943070104f7586fd3c9d1665b0
+FROM eclipse-temurin:25-jre-alpine@sha256:3c0a9084927a221ccd1d007fcaf614465672c0af37aaa834c5184483afe56d61
 RUN addgroup -S app && adduser -S app -G app
 USER app
 WORKDIR /app
