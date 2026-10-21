@@ -98,5 +98,16 @@ conversation needs. Live checks on 2026-10-13: `/actuator/health` `UP`, `/valida
 Owner decision, taken 2026-10-09: the demo **stays** on `einvoice.sebastiankern.net` (personal OSS
 portfolio domain) — no move, no broken links. `stoicera.com` is not used for lab projects.
 
+## Status 2026-10-22
+
+| # | Item | State |
+|---|---|---|
+| 10 | Bound the OWASP job | done: the first scheduled run on `main` (cron `0 3 * * 1`, started 2026-10-19 08:31 UTC) ran only the job "Security scan (OWASP Dependency-Check)" and finished green in 16 min (run 39223344329); every other job skipped as designed |
+
+Also on 2026-10-22: `docs/deployment.md` §10/§10.4, `docs/owner-checklist.md` and `docs/worklog.md`
+no longer name private network addresses, host names, user names or server paths of the operated
+instance; placeholders (`<backup-host>`, `<app-dir>`, …) stand in. The old text remains in the Git
+history — whether to rewrite it is an owner decision (force-push is blocked by the ruleset).
+
 After the list: the launch package itself (OSS-launch Part B, drafts in `docs/launch/`) is a separate
 task.
