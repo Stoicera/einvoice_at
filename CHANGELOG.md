@@ -14,6 +14,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **README first screen:** the validator report with a German finding directly under the one-line
+  summary, a "Try it in 30 seconds" block (browser, one curl line against the live API, self-host)
+  and a release badge.
+- **`scripts/social-preview.mjs`** renders the GitHub social preview `docs/assets/social-preview.png`
+  (1280×640) with playwright-core; not a project dependency, setup in the script header. Uploading
+  it is a manual step (Settings → Social preview).
+- **Launch drafts in `docs/launch/`** (Show HN, Reddit, LinkedIn, Dev.to, launch-day checklist),
+  status Entwurf, nothing posted.
 - **`/.well-known/security.txt`** (RFC 9116) on the public host, naming the same two contacts as
   `SECURITY.md` (GitHub private vulnerability reporting, office@stoicera.com), with `Expires`
   2027-10-01. The web filter chain now permits `/.well-known/**` anonymously; before, the URL
