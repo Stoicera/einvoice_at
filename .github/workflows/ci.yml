@@ -340,6 +340,17 @@ jobs:
             e2e/target/gatling/
           retention-days: 14
 
+      # Always, not only on failure: docs/screenshots/08-repair.png is taken from this artifact of a
+      # green run, so the README shows what the browser test actually saw.
+      - name: Upload the E2E screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-screenshots
+          path: e2e/target/screenshots/
+          if-no-files-found: ignore
+          retention-days: 14
+
   docker:
     name: Docker image build and publish
     if: github.event_name != 'schedule'

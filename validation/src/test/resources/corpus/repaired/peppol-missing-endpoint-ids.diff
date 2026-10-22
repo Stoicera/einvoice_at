@@ -1,0 +1,18 @@
+--- a/original.xml
++++ b/korrigiert.xml
+@@ -12,6 +12,7 @@
+   </cac:OrderReference>
+   <cac:AccountingSupplierParty>
+     <cac:Party>
++      <cbc:EndpointID schemeID="9914">ATU12345678</cbc:EndpointID>
+       <cac:PartyIdentification>
+         <cbc:ID>LF-4711</cbc:ID>
+       </cac:PartyIdentification>
+@@ -36,6 +37,7 @@
+   </cac:AccountingSupplierParty>
+   <cac:AccountingCustomerParty>
+     <cac:Party>
++      <cbc:EndpointID schemeID="9914">ATU87654321</cbc:EndpointID>
+       <cac:PostalAddress>
+         <cbc:StreetName>Ballhausplatz 2</cbc:StreetName>
+         <cbc:CityName>Wien</cbc:CityName>

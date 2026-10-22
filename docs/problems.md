@@ -14,6 +14,7 @@ the servlet filters through `Problems` (`app/src/main/java/com/stoicera/einvoice
 | [invalid-json](#invalid-json) | 400 | The request body is not valid canonical invoice JSON. |
 | [invalid-invoice](#invalid-invoice) | 422 | The JSON parsed, but the invoice violates a domain rule. |
 | [unsupported-conversion](#unsupported-conversion) | 400 | The requested source/target format pair cannot be converted. |
+| [invalid-repair-input](#invalid-repair-input) | 400 | A value for the correction proposal (`orderReference`) cannot be written into the document. |
 | [invalid-finding-index](#invalid-finding-index) | 400 | The finding index does not exist in that report. |
 | [multiple-credentials](#multiple-credentials) | 400 | Both `X-Api-Key` and `Authorization: Bearer` were sent. |
 | [invoice-not-found](#invoice-not-found) | 404 | No invoice with that id exists for this tenant. |
@@ -40,6 +41,14 @@ names the rule.
 ### unsupported-conversion
 
 `POST /api/v1/convert` was asked for a format pair the platform does not convert.
+
+### invalid-repair-input
+
+`POST /api/v1/validate?repair=true` was given an `orderReference` that cannot be written into an
+e-invoice: longer than 255 characters (the ebInterface `IDType` limit) or containing a character
+XML 1.0 cannot carry (control characters, line breaks) — or `orderReference` was sent without
+`repair=true`, where it would otherwise be ignored without a word. `detail` names the case. No
+validation ran; fix the request and retry.
 
 ### invalid-finding-index
 

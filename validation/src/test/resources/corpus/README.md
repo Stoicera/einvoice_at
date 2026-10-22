@@ -14,6 +14,7 @@ closed in code.
 corpus/
   valid/     documents that must pass the whole pipeline with no compliance-affecting finding
   invalid/   documents that must fail on exactly one deliberate defect
+  repaired/  expected output of RepairProposer for the repairable invalid/ files, plus its diff
 ```
 
 ## What is asserted
@@ -251,3 +252,21 @@ the input document itself — a corpus entry cannot drift from a golden copy of 
 It earns its keep: writing it found the exemption `Comment` growing by one category code on every
 conversion. Adding a `valid/` file here therefore also adds a round-trip case; if the new file does
 *not* survive unchanged, that is a real mapping asymmetry to document, not a test to relax.
+
+## Correction proposals (`repaired/`)
+
+`RepairProposer` (package `validation.repair`) proposes a correction for the findings with a known,
+mechanical fix and re-validates the result. `repaired/<name>.xml` is the expected corrected document
+for `invalid/<name>.xml` and `repaired/<name>.diff` the expected unified diff; `RepairProposerTest`
+compares both byte for byte, and `CorpusTest` lists the three `.xml` files as valid in their own
+right, independent of the proposer.
+
+| File | Input | Change and provenance |
+|---|---|---|
+| `repaired/peppol-missing-endpoint-ids.xml` | none | `cbc:EndpointID schemeID="9914"` for seller (BT-34) and buyer (BT-49), each copied from the same party's Austrian VAT number (BT-31 / BT-48) |
+| `repaired/at-b2g-01-missing-order-reference.xml` | `orderReference=BBG-2026-4711` | `OrderReference/OrderID` (BT-13) inserted after `VATIdentificationNumber`, value from user input. The result is byte-identical to `valid/b2g-full.xml`, the file the defect was cut from — the test asserts that too |
+| `repaired/at-b2g-01-whitespace-order-id.xml` | `orderReference=BBG-2026-4711` | the blank `OrderID` filled in place |
+
+To regenerate after a deliberate change, run the proposer on the `invalid/` file and write
+`diff -u --label a/original.xml --label b/korrigiert.xml invalid/<name>.xml repaired/<name>.xml`;
+then read the diff before committing it — the golden file is only worth what that reading was.

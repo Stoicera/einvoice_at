@@ -27,6 +27,16 @@ geprüft und danach verworfen**. Es entsteht:
 auseinanderlaufen könnte. `PublicWebIT` prüft nach jedem anonymen Upload, dass die Zeilenzahl in
 `report` unverändert ist.
 
+**Korrekturvorschlag (seit 2026-10-22).** Der Bericht kann einen Korrekturvorschlag enthalten
+(ADR-0013). Er entsteht im selben Arbeitsspeicher-Durchlauf und wird nicht gespeichert — auch nicht
+für angemeldete Nutzer:innen, und auch nicht über `POST /api/v1/validate?repair=true`. Braucht der
+Vorschlag eine Eingabe (die Auftragsreferenz), schickt der Bericht die hochgeladene Datei
+Base64-kodiert im Formular an den Browser zurück, und der zweite Schritt (`/validator/korrigieren`)
+bekommt sie von dort wieder — der Server hält sie nur für die Dauer der Anfrage. Die Datei verlässt
+dabei nicht den Weg zwischen Ihrem Browser und dem Prüfer; sie in der Sitzung zu halten, wäre
+Speicherung unter anderem Namen. `PublicWebIT` prüft auch nach diesem Schritt, dass die Zahl der
+gespeicherten Berichte unverändert ist.
+
 Was in Protokollen landet, ist das, was jeder Webserver protokolliert: Zeitpunkt, Pfad, Statuscode und
 die IP-Adresse des Aufrufers. Letztere wird zusätzlich für das Rate-Limit im Arbeitsspeicher gehalten
 (Token-Bucket, max. 10.000 Adressen, älteste werden verdrängt) und nie persistiert.

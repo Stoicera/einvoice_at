@@ -9,7 +9,11 @@ import com.stoicera.einvoice.app.security.CurrentTenant;
 import com.stoicera.einvoice.core.text.Texts;
 import com.stoicera.einvoice.core.validation.Finding;
 import com.stoicera.einvoice.core.validation.Severity;
+import com.stoicera.einvoice.core.validation.ValidationReport;
+import com.stoicera.einvoice.validation.repair.RepairInput;
+import com.stoicera.einvoice.validation.repair.RepairProposer;
 import java.io.IOException;
+import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -49,21 +53,38 @@ import org.springframework.web.multipart.MultipartFile;
  * the explained text comes from the client, so a visitor can have any text explained. That costs an
  * LLM call, which is why this route is rate-limited too, and it cannot reach any other visitor's
  * data — there is none to reach.
+ *
+ * <h2>"Korrekturvorschlag mit Nachweis"</h2>
+ *
+ * <p>Every report also gets a correction proposal when a finding has a known fix ({@link
+ * RepairProposer}): what changes, where each value comes from, the diff, and the re-validation of
+ * the corrected document by the same validator. No AI is involved, so it works with the AI switch
+ * off. When a value can only come from the user (the Auftragsreferenz), {@link #korrigieren} takes
+ * it together with the document, which comes back from the browser for the reason {@link
+ * RepairView} gives; it runs under the validate rate limit and persists nothing for any caller.
  */
 @Controller
 public class PublicWebController {
 
   private static final Logger log = LoggerFactory.getLogger(PublicWebController.class);
 
+  /** Longest file name echoed back into the report; anything longer is cut, never rejected. */
+  private static final int MAX_FILENAME_LENGTH = 255;
+
   private final ReportService reports;
   private final CurrentTenant currentTenant;
   private final ExplanationService explanations;
+  private final RepairProposer repairs;
 
   public PublicWebController(
-      ReportService reports, CurrentTenant currentTenant, ExplanationService explanations) {
+      ReportService reports,
+      CurrentTenant currentTenant,
+      ExplanationService explanations,
+      RepairProposer repairs) {
     this.reports = reports;
     this.currentTenant = currentTenant;
     this.explanations = explanations;
+    this.repairs = repairs;
   }
 
   @GetMapping("/")
@@ -100,16 +121,65 @@ public class PublicWebController {
 
     Optional<UUID> tenantId =
         currentTenant.resolveIfAuthenticated(authentication).map(TenantEntity::getId);
-    ValidateResult result = reports.validate(file.getBytes(), tenantId);
+    byte[] bytes = file.getBytes();
+    ValidateResult result = reports.validate(bytes, tenantId);
 
-    model.addAttribute("filename", file.getOriginalFilename());
+    model.addAttribute("filename", shortened(file.getOriginalFilename()));
     model.addAttribute("aiEnabled", explanations.isEnabled());
-    addReport(
-        model,
-        result.report().sourceFormat(),
-        result.report().profile(),
-        result.report().isValid(),
-        result.report().findings());
+    addReport(model, result.report());
+    addRepair(model, bytes, result.report(), RepairInput.none());
+    return "fragments/report :: report";
+  }
+
+  /**
+   * Renders the report again with the user's input applied to the correction proposal.
+   *
+   * <p>The document arrives Base64-encoded from the report's own form ({@link RepairView}). It is
+   * validated through {@code ReportService} with an empty tenant — the same "write nothing" path as
+   * an anonymous upload — <em>for every caller</em>: an authenticated visitor's upload was already
+   * persisted by {@link #pruefen}, and recording the same document again because they typed a
+   * reference would be a duplicate, not a record. The correction itself is never stored.
+   */
+  @PostMapping("/validator/korrigieren")
+  public String korrigieren(
+      @RequestParam(name = "document", required = false) String document,
+      @RequestParam(name = RepairProposer.INPUT_ORDER_REFERENCE, required = false)
+          String orderReference,
+      @RequestParam(name = "filename", required = false) String filename,
+      Model model) {
+    model.addAttribute("aiEnabled", explanations.isEnabled());
+    byte[] bytes;
+    try {
+      bytes = document == null ? new byte[0] : Base64.getDecoder().decode(document);
+    } catch (IllegalArgumentException e) {
+      bytes = new byte[0];
+    }
+    if (bytes.length == 0) {
+      model.addAttribute(
+          "uploadError",
+          "Die Datei konnte nicht übernommen werden. Bitte laden Sie sie erneut hoch.");
+      return "fragments/report :: report";
+    }
+
+    RepairInput input;
+    try {
+      input = new RepairInput(orderReference);
+    } catch (IllegalArgumentException e) {
+      model.addAttribute("repairError", e.getMessage());
+      // Keep what was typed in the field (cut to the field's own limit), so it can be corrected
+      // rather than retyped.
+      model.addAttribute(
+          "typedOrderReference",
+          orderReference.length() > RepairInput.MAX_ORDER_REFERENCE_LENGTH
+              ? orderReference.substring(0, RepairInput.MAX_ORDER_REFERENCE_LENGTH)
+              : orderReference);
+      input = RepairInput.none();
+    }
+
+    ValidationReport report = reports.validate(bytes, Optional.empty()).report();
+    model.addAttribute("filename", shortened(filename));
+    addReport(model, report);
+    addRepair(model, bytes, report, input);
     return "fragments/report :: report";
   }
 
@@ -156,6 +226,33 @@ public class PublicWebController {
     }
     model.addAttribute("explanation", explanation.orElse(null));
     return "fragments/explanation :: explanation";
+  }
+
+  private static void addReport(Model model, ValidationReport report) {
+    addReport(model, report.sourceFormat(), report.profile(), report.isValid(), report.findings());
+  }
+
+  /**
+   * Adds the correction proposal, if any. A failure here must never cost the visitor the report
+   * itself, so it is logged (class name only — the message could carry document content) and the
+   * report renders without a proposal.
+   */
+  private void addRepair(Model model, byte[] bytes, ValidationReport report, RepairInput input) {
+    try {
+      repairs
+          .propose(bytes, report, input)
+          .ifPresent(
+              proposal -> model.addAttribute("repair", RepairView.of(proposal, bytes, input)));
+    } catch (RuntimeException e) {
+      log.warn("Correction proposal failed: {}", e.getClass().getSimpleName());
+    }
+  }
+
+  private static String shortened(String filename) {
+    if (filename == null || filename.length() <= MAX_FILENAME_LENGTH) {
+      return filename;
+    }
+    return filename.substring(0, MAX_FILENAME_LENGTH);
   }
 
   private static String blankToNull(String value) {

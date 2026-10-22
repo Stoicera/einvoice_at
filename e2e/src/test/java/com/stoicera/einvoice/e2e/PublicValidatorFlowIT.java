@@ -82,6 +82,16 @@ class PublicValidatorFlowIT extends AbstractPostgresIT {
   private static final Path INVALID_SAMPLE =
       Path.of("../app/src/test/resources/fixtures/at-b2g-01-missing-order-reference.xml");
 
+  /** A Peppol invoice whose two missing electronic addresses the proposal derives itself. */
+  private static final Path PEPPOL_SAMPLE =
+      Path.of("../app/src/test/resources/fixtures/peppol-missing-endpoint-ids.xml");
+
+  /**
+   * Where the correction-proposal screenshot is written. CI uploads the directory as an artifact;
+   * {@code docs/screenshots/08-repair.png} is that file, taken from a green run.
+   */
+  private static final Path SCREENSHOTS = Path.of("target/screenshots");
+
   /**
    * Digest-pinned, like every other image in this repository. {@code DockerImageName}'s parser
    * takes the canonical {@code repository@digest} form (not {@code tag@digest}), so the tag is
@@ -208,6 +218,104 @@ class PublicValidatorFlowIT extends AbstractPostgresIT {
         // that it is AI-generated and unchecked.
         .containsIgnoringCase("Automatisch erzeugt und nicht geprüft");
     assertThat(providerCalls.get()).isPositive();
+  }
+
+  @Test
+  void aVisitorGetsACorrectionProposalWithEvidenceAndAGreenRevalidation() throws Exception {
+    long reportsBefore = reports.count();
+    driver.manage().window().setSize(new org.openqa.selenium.Dimension(1280, 1800));
+
+    driver.get(appUrl("/validator"));
+    driver
+        .findElement(By.cssSelector("input[type=file]"))
+        .sendKeys(PEPPOL_SAMPLE.toAbsolutePath().toString());
+    driver.findElement(By.cssSelector("form[data-swap='#report'] button[type=submit]")).click();
+
+    WebElement repair =
+        wait.until(
+            ExpectedConditions.visibilityOfElementLocated(By.cssSelector("#report .repair")));
+    assertThat(repair.getText())
+        .contains("Korrekturvorschlag mit Nachweis")
+        .contains("Regelwerk entscheidet, Vorschlag ist nachvollziehbar.")
+        .contains("PEPPOL-EN16931-R020")
+        .contains("ATU12345678 (Schema 9914)")
+        .contains("Erneute Prüfung der korrigierten Datei: gültig.");
+    // The pills are rendered uppercase by the stylesheet; the text itself is "behoben".
+    assertThat(repair.findElements(By.cssSelector(".pill.ok"))).hasSize(2);
+    assertThat(repair.findElements(By.cssSelector("pre.diff .diff-add"))).hasSize(2);
+    assertThat(reports.count()).isEqualTo(reportsBefore);
+
+    Files.createDirectories(SCREENSHOTS);
+    Files.write(SCREENSHOTS.resolve("08-repair.png"), fullScreenshotOf(repair));
+  }
+
+  /**
+   * A screenshot of the whole element, also where it is taller than the browser window. A plain
+   * element screenshot is cut at the viewport (the first capture of this section was), so this asks
+   * Chrome directly, over the WebDriver CDP endpoint, to render beyond it; if that is unavailable,
+   * the cut screenshot is still better than none.
+   */
+  private byte[] fullScreenshotOf(WebElement element) {
+    try {
+      @SuppressWarnings("unchecked")
+      java.util.List<Number> box =
+          (java.util.List<Number>)
+              driver.executeScript(
+                  "const r = arguments[0].getBoundingClientRect();"
+                      + " return [r.left + window.scrollX, r.top + window.scrollY, r.width,"
+                      + " r.height];",
+                  element);
+      int margin = 16;
+      java.util.Map<String, Object> clip =
+          java.util.Map.of(
+              "x",
+              Math.max(0, box.get(0).doubleValue() - margin),
+              "y",
+              Math.max(0, box.get(1).doubleValue() - margin),
+              "width",
+              box.get(2).doubleValue() + 2 * margin,
+              "height",
+              box.get(3).doubleValue() + 2 * margin,
+              "scale",
+              1);
+      java.util.Map<String, Object> shot =
+          ((org.openqa.selenium.chromium.HasCdp)
+                  new org.openqa.selenium.remote.Augmenter().augment(driver))
+              .executeCdpCommand(
+                  "Page.captureScreenshot",
+                  java.util.Map.of("format", "png", "captureBeyondViewport", true, "clip", clip));
+      return java.util.Base64.getDecoder().decode((String) shot.get("data"));
+    } catch (RuntimeException e) {
+      return element.getScreenshotAs(org.openqa.selenium.OutputType.BYTES);
+    }
+  }
+
+  @Test
+  void aVisitorTypesTheOrderReferenceAndTheCorrectionIsCheckedAgain() {
+    long reportsBefore = reports.count();
+
+    driver.get(appUrl("/validator"));
+    driver
+        .findElement(By.cssSelector("input[type=file]"))
+        .sendKeys(INVALID_SAMPLE.toAbsolutePath().toString());
+    driver.findElement(By.cssSelector("form[data-swap='#report'] button[type=submit]")).click();
+
+    WebElement input =
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("orderReference")));
+    assertThat(driver.findElement(By.cssSelector("#report .repair")).getText())
+        .containsIgnoringCase("Eingabe erforderlich");
+    input.sendKeys("BBG-2026-4711");
+    driver.findElement(By.cssSelector(".repair-input button[type=submit]")).click();
+
+    WebElement verdict =
+        wait.until(
+            ExpectedConditions.visibilityOfElementLocated(
+                By.cssSelector("#report .repair .verdict.valid")));
+    assertThat(verdict.getText()).contains("Erneute Prüfung der korrigierten Datei: gültig.");
+    assertThat(driver.findElement(By.cssSelector("#report .repair")).getText())
+        .contains("Ihre Eingabe")
+        .contains("BBG-2026-4711");
+    assertThat(reports.count()).isEqualTo(reportsBefore);
   }
 
   @Test

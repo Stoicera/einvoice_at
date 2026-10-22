@@ -1,6 +1,8 @@
 package com.stoicera.einvoice.app.report;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.stoicera.einvoice.core.validation.ValidationReport;
+import com.stoicera.einvoice.validation.repair.RepairProposal;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.UUID;
 
@@ -15,6 +17,11 @@ import java.util.UUID;
  * ad-hoc validation is not tied to a stored invoice) and the run is audited. One response shape for
  * both, rather than two different envelopes, keeps the contract simple and lets a client probe
  * {@code id != null} to know whether the run was recorded.
+ *
+ * <p>{@code repair} is present only when the caller asked for it ({@code repair=true}) and a
+ * finding has a known fix; otherwise the field is omitted, so a client that never asks sees exactly
+ * the response it always did. The proposal is never persisted, not even for an authenticated caller
+ * — the corrected document is the caller's to keep.
  */
 public record ValidateResult(
     @Schema(
@@ -24,4 +31,26 @@ public record ValidateResult(
             nullable = true)
         UUID id,
     @Schema(description = "The validation report produced for the uploaded document.")
-        ValidationReport report) {}
+        ValidationReport report,
+    @Schema(
+            description =
+                "Correction proposal with evidence: each change with rule id, business term and"
+                    + " the source of its value, the corrected document, a unified diff and the"
+                    + " re-validation of the corrected document. Only present with repair=true"
+                    + " and when a finding has a known fix. Never persisted. correctedXml is the"
+                    + " document text; write it in the encoding its XML declaration names (UTF-8"
+                    + " unless declared otherwise).",
+            nullable = true)
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        RepairProposal repair) {
+
+  /** A result without a correction proposal — the shape every caller got before it existed. */
+  public ValidateResult(UUID id, ValidationReport report) {
+    this(id, report, null);
+  }
+
+  /** This result with {@code proposal} attached. */
+  public ValidateResult withRepair(RepairProposal proposal) {
+    return new ValidateResult(id, report, proposal);
+  }
+}

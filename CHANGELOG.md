@@ -14,6 +14,20 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Korrekturvorschlag mit Nachweis** (correction proposal with evidence, ADR-0013). For
+  `AT-B2G-01`, `PEPPOL-EN16931-R020` and `R010` the public validator now shows, under the errors,
+  every change with its rule id, business term (BT-13, BT-34, BT-49) and the source of its value
+  (elsewhere in the document, the user's input, or a placeholder that is not written), the unified
+  diff, and the re-validation of the corrected document by the same validator. The Auftragsreferenz
+  is asked for, never guessed; the endpoint ids are derived from the parties' Austrian (EAS 9914)
+  or German (9930) VAT numbers or their GLN (0088). `POST /api/v1/validate?repair=true`
+  (+ `orderReference`) returns the same as JSON; a new problem type `invalid-repair-input` (400)
+  covers an unwritable `orderReference`. New pure-Java package `validation.repair`
+  (`RepairProposer`), new route `POST /validator/korrigieren` (rate-limited with the upload,
+  persists nothing), golden files in `corpus/repaired/`. No AI involved; works with the AI switch
+  off. CI now uploads the E2E screenshots as an artifact (`docs/screenshots/08-repair.png` comes
+  from it).
+
 - **`/.well-known/security.txt`** (RFC 9116) on the public host, naming the same two contacts as
   `SECURITY.md` (GitHub private vulnerability reporting, office@stoicera.com), with `Expires`
   2027-10-01. The web filter chain now permits `/.well-known/**` anonymously; before, the URL

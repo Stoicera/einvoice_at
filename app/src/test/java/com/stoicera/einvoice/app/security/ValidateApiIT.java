@@ -208,13 +208,112 @@ class ValidateApiIT extends AbstractKeycloakIT {
     assertThat(problem.get("type").asText()).isEqualTo(PROBLEM_BASE + "bad-request");
   }
 
+  // --- correction proposal ---------------------------------------------------------------------
+
+  @Test
+  void withoutRepairTheResponseHasNoRepairFieldAtAll() throws Exception {
+    JsonNode payload =
+        json.readTree(postValidate(Fixtures.peppolMissingEndpointIdsBytes(), null).body());
+
+    assertThat(payload.has("repair")).isFalse();
+  }
+
+  @Test
+  void repairDerivesThePeppolEndpointIdsAndTheCorrectionRevalidatesGreen() throws Exception {
+    long reportsBefore = reports.count();
+
+    HttpResponse<String> response =
+        postValidate(VALIDATE + "?repair=true", Fixtures.peppolMissingEndpointIdsBytes(), null);
+    assertThat(response.statusCode()).isEqualTo(200);
+
+    JsonNode payload = json.readTree(response.body());
+    assertThat(payload.get("report").get("valid").asBoolean()).isFalse();
+    JsonNode repair = payload.get("repair");
+    JsonNode seller = repair.get("changes").get(0);
+    assertThat(seller.get("ruleId").asText()).isEqualTo("PEPPOL-EN16931-R020");
+    assertThat(seller.get("businessTerm").asText()).isEqualTo("BT-34");
+    assertThat(seller.get("value").asText()).isEqualTo("ATU12345678");
+    assertThat(seller.get("schemeId").asText()).isEqualTo("9914");
+    assertThat(seller.get("source").asText()).isEqualTo("DOCUMENT");
+    assertThat(seller.get("sourceDe").asText()).contains("BT-31");
+    assertThat(repair.get("diff").asText())
+        .contains("+      <cbc:EndpointID schemeID=\"9914\">ATU12345678</cbc:EndpointID>");
+    assertThat(repair.get("correctedXml").asText()).contains("<cbc:EndpointID");
+    assertThat(repair.get("revalidation").get("valid").asBoolean()).isTrue();
+    assertThat(repair.get("revalidation").get("findings")).isEmpty();
+    // Proposing persists nothing, exactly like the anonymous validation itself.
+    assertThat(reports.count()).isEqualTo(reportsBefore);
+  }
+
+  @Test
+  void repairWithoutAnOrderReferenceReportsAPlaceholderAndWritesNothing() throws Exception {
+    JsonNode repair =
+        json.readTree(
+                postValidate(VALIDATE + "?repair=true", Fixtures.invalidFileBytes(), null).body())
+            .get("repair");
+
+    JsonNode change = repair.get("changes").get(0);
+    assertThat(change.get("ruleId").asText()).isEqualTo(RuleIds.AT_B2G_01);
+    assertThat(change.get("source").asText()).isEqualTo("PLACEHOLDER");
+    assertThat(change.get("value").isNull()).isTrue();
+    assertThat(change.get("inputName").asText()).isEqualTo("orderReference");
+    assertThat(repair.get("correctedXml").isNull()).isTrue();
+    assertThat(repair.get("revalidation").isNull()).isTrue();
+  }
+
+  @Test
+  void repairWithAnOrderReferenceInsertsItAndTheCorrectionRevalidatesGreen() throws Exception {
+    JsonNode repair =
+        json.readTree(
+                postValidate(
+                        VALIDATE + "?repair=true&orderReference=BBG-2026-4711",
+                        Fixtures.invalidFileBytes(),
+                        null)
+                    .body())
+            .get("repair");
+
+    assertThat(repair.get("changes").get(0).get("source").asText()).isEqualTo("USER_INPUT");
+    assertThat(repair.get("diff").asText()).contains("+      <OrderID>BBG-2026-4711</OrderID>");
+    assertThat(repair.get("revalidation").get("valid").asBoolean()).isTrue();
+  }
+
+  @Test
+  void anUnwritableOrderReferenceIsA400ProblemBeforeAnyValidation() throws Exception {
+    HttpResponse<String> response =
+        postValidate(
+            VALIDATE + "?repair=true&orderReference=" + "x".repeat(256),
+            Fixtures.invalidFileBytes(),
+            null);
+
+    assertThat(response.statusCode()).isEqualTo(400);
+    assertThat(contentType(response)).contains("application/problem+json");
+    JsonNode problem = json.readTree(response.body());
+    assertThat(problem.get("type").asText()).isEqualTo(PROBLEM_BASE + "invalid-repair-input");
+    assertThat(problem.get("detail").asText()).contains("255");
+  }
+
+  @Test
+  void anOrderReferenceWithoutRepairIsA400RatherThanSilentlyIgnored() throws Exception {
+    HttpResponse<String> response =
+        postValidate(VALIDATE + "?orderReference=BBG-2026-4711", Fixtures.invalidFileBytes(), null);
+
+    assertThat(response.statusCode()).isEqualTo(400);
+    assertThat(json.readTree(response.body()).get("type").asText())
+        .isEqualTo(PROBLEM_BASE + "invalid-repair-input");
+  }
+
   // --- helpers ---------------------------------------------------------------------------------
 
   private HttpResponse<String> postValidate(byte[] fileBytes, String[] auth) throws Exception {
+    return postValidate(VALIDATE, fileBytes, auth);
+  }
+
+  private HttpResponse<String> postValidate(String pathAndQuery, byte[] fileBytes, String[] auth)
+      throws Exception {
     MultipartBodies.Multipart multipart =
         MultipartBodies.singleFilePart("file", "invoice.xml", fileBytes);
     HttpRequest.Builder builder =
-        HttpRequest.newBuilder(URI.create("http://localhost:" + port + VALIDATE))
+        HttpRequest.newBuilder(URI.create("http://localhost:" + port + pathAndQuery))
             .header("Content-Type", multipart.contentType());
     if (auth != null) {
       builder.header(auth[0], auth[1]);

@@ -1,0 +1,11 @@
+--- a/original.xml
++++ b/korrigiert.xml
+@@ -20,7 +20,7 @@
+   <InvoiceRecipient>
+     <VATIdentificationNumber>ATU87654321</VATIdentificationNumber>
+     <OrderReference>
+-      <OrderID>   </OrderID>
++      <OrderID>BBG-2026-4711</OrderID>
+     </OrderReference>
+     <Address>
+       <Name>Bundesbeschaffung GmbH</Name>

@@ -21,6 +21,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
 /**
  * The public browser surface, end to end against a real context and a real Postgres.
@@ -57,11 +59,29 @@ class PublicWebIT extends AbstractPostgresIT {
       Path.of("src/test/resources/fixtures/invoice-b2g-sample.ebinterface.xml");
   private static final Path INVALID_SAMPLE =
       Path.of("src/test/resources/fixtures/at-b2g-01-missing-order-reference.xml");
+  private static final Path PEPPOL_WITHOUT_ENDPOINTS =
+      Path.of("src/test/resources/fixtures/peppol-missing-endpoint-ids.xml");
+
+  /** The uploaded document as the correction form carries it back (RepairView). */
+  private static final Pattern DOCUMENT_INPUT =
+      Pattern.compile("name=\"document\"\s+value=\"([^\"]+)\"");
 
   /**
    * Thymeleaf renders Spring Security's token as a hidden input on every {@code th:action} form.
    */
   private static final Pattern CSRF_INPUT = Pattern.compile("name=\"_csrf\"\\s+value=\"([^\"]+)\"");
+
+  /**
+   * This class uploads more than the default anonymous allowance of 10 a minute — every
+   * correction-proposal test validates at least once, the input step twice — all from one address.
+   * Raised here, as {@code ExplainApiIT} does, so the limit stays a property {@code RateLimitIT}
+   * tests on purpose rather than something this class trips over by accident.
+   */
+  @DynamicPropertySource
+  static void generousRateLimit(DynamicPropertyRegistry registry) {
+    registry.add("app.rate-limit.validate.capacity", () -> "1000");
+    registry.add("app.rate-limit.validate.refill-per-minute", () -> "1000");
+  }
 
   @LocalServerPort private int port;
 
@@ -210,6 +230,124 @@ class PublicWebIT extends AbstractPostgresIT {
             MultipartBodies.form(noToken, "file", "invoice.xml", Files.readAllBytes(VALID_SAMPLE)));
 
     assertThat(response.statusCode()).isEqualTo(403);
+  }
+
+  // ------------------------------------------------------ correction proposal
+
+  @Test
+  void aPeppolUploadGetsACorrectionProposalWithEvidenceAndAGreenRevalidation() throws Exception {
+    long before = reports.count();
+
+    HttpResponse<String> response = upload(PEPPOL_WITHOUT_ENDPOINTS);
+
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(response.body())
+        .contains("Korrekturvorschlag mit Nachweis")
+        .contains("Regelwerk entscheidet, Vorschlag ist nachvollziehbar.")
+        .contains("PEPPOL-EN16931-R020")
+        .contains("PEPPOL-EN16931-R010")
+        .contains("ATU12345678 (Schema 9914)")
+        .contains("aus dem Dokument")
+        .contains("BT-31")
+        .contains("behoben")
+        .contains("Erneute Prüfung der korrigierten Datei: gültig.")
+        .contains("class=\"diff-add\"")
+        // No input is needed here, so the document is not sent back to the browser.
+        .doesNotContain("name=\"document\"");
+    assertThat(reports.count()).isEqualTo(before);
+  }
+
+  @Test
+  void anOrderReferenceIsAskedForNotInvented() throws Exception {
+    HttpResponse<String> response = upload(INVALID_SAMPLE);
+
+    assertThat(response.body())
+        .contains("Korrekturvorschlag mit Nachweis")
+        .contains("Eingabe erforderlich")
+        .contains("name=\"orderReference\"")
+        .doesNotContain("Erneute Prüfung der korrigierten Datei");
+  }
+
+  @Test
+  void theOrderReferenceIsAppliedRevalidatedAndNothingIsPersisted() throws Exception {
+    Session session = openValidatorPage();
+    String document = documentField(upload(INVALID_SAMPLE).body());
+    long before = reports.count();
+
+    Map<String, String> fields = new LinkedHashMap<>();
+    fields.put("_csrf", session.csrfToken());
+    fields.put("document", document);
+    fields.put("filename", "rechnung.xml");
+    fields.put("orderReference", "BBG-2026-4711");
+    HttpResponse<String> response =
+        session.post("/validator/korrigieren", MultipartBodies.form(fields, null, null, null));
+
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(response.body())
+        .contains("Ihre Eingabe")
+        .contains("BBG-2026-4711")
+        .contains("Erneute Prüfung der korrigierten Datei: gültig.")
+        .contains("rechnung.xml");
+    assertThat(reports.count()).isEqualTo(before);
+  }
+
+  @Test
+  void anOverlongOrderReferenceIsRefusedWithAReadableMessage() throws Exception {
+    Session session = openValidatorPage();
+    Map<String, String> fields = new LinkedHashMap<>();
+    fields.put("_csrf", session.csrfToken());
+    fields.put("document", documentField(upload(INVALID_SAMPLE).body()));
+    fields.put("orderReference", "x".repeat(256));
+
+    HttpResponse<String> response =
+        session.post("/validator/korrigieren", MultipartBodies.form(fields, null, null, null));
+
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(response.body())
+        .contains("höchstens 255 Zeichen")
+        .contains("Eingabe erforderlich")
+        // What was typed stays in the field, cut to the field's limit.
+        .contains("value=\"" + "x".repeat(255) + "\"");
+  }
+
+  @Test
+  void aDamagedDocumentFieldAsksForANewUploadInsteadOfFailing() throws Exception {
+    Session session = openValidatorPage();
+    Map<String, String> fields = new LinkedHashMap<>();
+    fields.put("_csrf", session.csrfToken());
+    fields.put("document", "not base64 !!!");
+    fields.put("orderReference", "A-1");
+
+    HttpResponse<String> response =
+        session.post("/validator/korrigieren", MultipartBodies.form(fields, null, null, null));
+
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(response.body()).contains("Bitte laden Sie sie erneut hoch");
+  }
+
+  @Test
+  void theCorrectionRouteRequiresTheCsrfToken() throws Exception {
+    Session session = openValidatorPage();
+    Map<String, String> fields = new LinkedHashMap<>();
+    fields.put("document", "PEludm9pY2UvPg==");
+
+    HttpResponse<String> response =
+        session.post("/validator/korrigieren", MultipartBodies.form(fields, null, null, null));
+
+    assertThat(response.statusCode()).isEqualTo(403);
+  }
+
+  @Test
+  void withAiDisabledTheProposalMakesNoAiClaim() throws Exception {
+    assertThat(upload(PEPPOL_WITHOUT_ENDPOINTS).body())
+        .contains("Korrekturvorschlag mit Nachweis")
+        .doesNotContain("KI-Erklärung je Befund");
+  }
+
+  private static String documentField(String html) {
+    Matcher matcher = DOCUMENT_INPUT.matcher(html);
+    assertThat(matcher.find()).withFailMessage("no document field in the report").isTrue();
+    return matcher.group(1);
   }
 
   // --------------------------------------------------------- the AI off-switch

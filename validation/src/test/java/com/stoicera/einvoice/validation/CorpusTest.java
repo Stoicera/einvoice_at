@@ -70,7 +70,13 @@ class CorpusTest {
         Arguments.of("corpus/valid/peppol-ubl-creditnote.xml", Set.of()),
         Arguments.of(
             "corpus/invalid/peppol-missing-endpoint-ids.xml",
-            Set.of("PEPPOL-EN16931-R010", "PEPPOL-EN16931-R020")));
+            Set.of("PEPPOL-EN16931-R010", "PEPPOL-EN16931-R020")),
+        // The expected outputs of RepairProposer for the three repairable invalid files
+        // (RepairProposerTest compares against them byte for byte). Listed here as well so the
+        // corpus itself states that every one of them is valid, independent of the proposer.
+        Arguments.of("corpus/repaired/peppol-missing-endpoint-ids.xml", Set.of()),
+        Arguments.of("corpus/repaired/at-b2g-01-missing-order-reference.xml", Set.of()),
+        Arguments.of("corpus/repaired/at-b2g-01-whitespace-order-id.xml", Set.of()));
   }
 
   @ParameterizedTest(name = "{0} → {1}")
