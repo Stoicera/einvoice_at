@@ -51,7 +51,7 @@
          Versions verified against Maven Central on 2026-07-23; this set is mutually
          compatible: phive-rules-parent-pom 4.4.1 itself builds against
          ph-ebinterface 8.1.0, ph-ubl 10.2.0 and phive 12.1.0. -->
-    <ph-ebinterface.version>8.1.0</ph-ebinterface.version>
+    <ph-ebinterface.version>8.1.1</ph-ebinterface.version>
     <ph-ubl.version>10.2.0</ph-ubl.version>
     <phive.version>12.1.0</phive.version>
     <phive-rules.version>4.4.2</phive-rules.version>
@@ -92,7 +92,7 @@
          and a PATH hijack of `kenv` on BSD/Solaris, which no Java jar of constants can perform.
          Arguing that takes longer than upgrading, and .owasp-suppressions.xml's own policy says the
          first response is to upgrade. Drop this override once Boot manages 1.43.0 or higher. -->
-    <opentelemetry-semconv.version>1.43.0</opentelemetry-semconv.version>
+    <opentelemetry-semconv.version>1.44.0</opentelemetry-semconv.version>
 
     <!-- PDF generation for the rendering module (M4). Version verified against Maven Central
          maven-metadata.xml on 2026-07-25: 3.0.8 is both <latest> and <release>. Apache-2.0, the
