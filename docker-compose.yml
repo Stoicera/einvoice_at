@@ -30,6 +30,8 @@ services:
       API_DOCS_ENABLED: ${API_DOCS_ENABLED:-true}
       # Problem `type` URI base (RFC 9457); blank = the public demo host. See .env.example.
       PROBLEM_TYPE_BASE_URI: ${PROBLEM_TYPE_BASE_URI:-}
+      # Public base URL for canonical links and the sitemap; blank = the public demo host.
+      APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-}
       # Bounds and limits. THESE WERE DOCUMENTED IN .env.example AND NOT PASSED THROUGH HERE, which
       # meant setting any of them in .env did exactly nothing — silently, which is the worst way for a
       # configuration knob to be broken. Found by the Gatling run: it raised

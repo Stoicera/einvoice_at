@@ -1,6 +1,7 @@
 package com.stoicera.einvoice.app.security;
 
 import com.stoicera.einvoice.app.persistence.ApiKeyRepository;
+import jakarta.servlet.http.HttpServletResponse;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.beans.factory.ObjectProvider;
@@ -14,7 +15,9 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimNames;
@@ -25,9 +28,15 @@ import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
+import org.springframework.security.web.authentication.Http403ForbiddenEntryPoint;
+import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.util.StringUtils;
 
 /**
@@ -180,8 +189,13 @@ public class SecurityConfig {
                     // unprompted, and a probe that fell through to `.anyRequest().authenticated()`
                     // would answer a login redirect instead of a plain 404 — noise in the access
                     // log and, with a login configured, a redirect chain for a missing icon.
-                    .requestMatchers(
-                        "/app.css", "/app.js", "/favicon.svg", "/favicon.ico", "/robots.txt")
+                    .requestMatchers("/app.css", "/app.js", "/favicon.svg", "/favicon.ico")
+                    .permitAll()
+                    // What a crawler asks for before it asks for anything else (CrawlerController)
+                    // and the share image the public pages' og:image names. All three are
+                    // anonymous by definition: a robots.txt behind a login is a policy nobody can
+                    // read, and a sitemap that redirects to Keycloak lists nothing.
+                    .requestMatchers("/robots.txt", "/sitemap.xml", "/og-image.png")
                     .permitAll()
                     // RFC 9116: /.well-known/security.txt tells whoever found a vulnerability
                     // where to report it. It is a static file (resources/static/.well-known/), and
@@ -247,10 +261,82 @@ public class SecurityConfig {
     //
     // Without a registration the public pages still work and /app/** is simply refused, rather than
     // the whole application failing to start.
-    if (clientRegistrations.getIfAvailable() != null) {
+    ClientRegistrationRepository registrations = clientRegistrations.getIfAvailable();
+    if (registrations != null) {
       http.oauth2Login(login -> login.defaultSuccessUrl("/app", true));
     }
+    // Registered as DEFAULT entry points, deliberately not as exceptionHandling's one explicit
+    // authenticationEntryPoint: an explicit entry point makes DefaultLoginPageConfigurer drop the
+    // framework's generated /login and /logout pages — and the logout confirmation page is what a
+    // browser gets on GET /logout, which KeycloakLoginFlowIT drives (found by exactly that test on
+    // the first version of this change). The FIRST registration is also the fallback for a request
+    // no matcher claims; oauth2Login registers its own (content-negotiated) mapping later, at
+    // build time, so it never precedes these two.
+    RequestMatcher dashboard = PathPatternRequestMatcher.withDefaults().matcher("/app/**");
+    http.exceptionHandling(
+        exceptions ->
+            exceptions
+                .defaultAuthenticationEntryPointFor(dashboardEntryPoint(registrations), dashboard)
+                .defaultAuthenticationEntryPointFor(
+                    NOT_FOUND_ENTRY_POINT, new NegatedRequestMatcher(dashboard)));
     return http.build();
+  }
+
+  /**
+   * sendError, not {@code HttpStatusEntryPoint}: the latter only sets the status and writes no
+   * body, so a visitor would get an empty 404. sendError is what makes the container dispatch to
+   * {@code /error}, where Boot renders {@code error/404.html} for a browser.
+   */
+  private static final AuthenticationEntryPoint NOT_FOUND_ENTRY_POINT =
+      (request, response, exception) -> response.sendError(HttpServletResponse.SC_NOT_FOUND);
+
+  /**
+   * How this chain answers an anonymous request the rules above refuse — split by <em>path</em>.
+   *
+   * <p>Spring Security's default is one answer for the whole chain: with a login configured, every
+   * refused anonymous request is redirected into Keycloak — {@code /wp-login.php}, {@code /.env},
+   * {@code /sitemap.xml.bak}, whatever a crawler or scanner probes. For a search engine that is a
+   * {@code 302} into another host's login form where a {@code 404} belongs (checked live
+   * 2026-10-15), and the same class of noise the {@code /favicon.ico} rule above exists for.
+   *
+   * <ul>
+   *   <li>Under {@code /app/**} — the dashboard — the login redirect, as before and for every
+   *       client regardless of its {@code Accept} header, which is what {@code
+   *       OAuth2ClientWiringIT} and {@code SecurityChainRoutingIT} pin. The URL is the one {@code
+   *       OAuth2LoginConfigurer} derives itself: straight into the one registration's authorization
+   *       endpoint ({@code /oauth2/authorization/{registrationId}}), or the framework's chooser
+   *       page at {@code /login} when there are several.
+   *   <li>Anywhere else, a plain {@code 404} through Boot's error page ({@code /error} is permitted
+   *       above) — {@link #NOT_FOUND_ENTRY_POINT}.
+   * </ul>
+   *
+   * <p>The authorization rules are untouched: nothing becomes reachable, only the shape of the
+   * refusal changes. A future authenticated route placed outside {@code /app/**} would answer an
+   * anonymous browser with 404 instead of a login redirect — visible in review, not a leak. Without
+   * a client registration (every IT context that never logs in through a browser) the dashboard
+   * keeps answering 403, as it did when the chain had no entry point of its own.
+   */
+  private static AuthenticationEntryPoint dashboardEntryPoint(
+      ClientRegistrationRepository registrations) {
+    if (!(registrations instanceof Iterable<?> iterable)) {
+      return new Http403ForbiddenEntryPoint();
+    }
+    List<String> ids = new ArrayList<>();
+    for (Object registration : iterable) {
+      if (registration instanceof ClientRegistration clientRegistration) {
+        ids.add(clientRegistration.getRegistrationId());
+      }
+    }
+    if (ids.isEmpty()) {
+      return new Http403ForbiddenEntryPoint();
+    }
+    String loginUrl =
+        ids.size() == 1
+            ? OAuth2AuthorizationRequestRedirectFilter.DEFAULT_AUTHORIZATION_REQUEST_BASE_URI
+                + "/"
+                + ids.getFirst()
+            : "/login";
+    return new LoginUrlAuthenticationEntryPoint(loginUrl);
   }
 
   /**

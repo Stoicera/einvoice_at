@@ -15,6 +15,20 @@
     <meta property="og:description" th:content="${description}" />
     <meta property="og:locale" content="de_AT" />
     <meta property="og:type" content="website" />
+    <!--/* Only the two indexable public pages set canonicalUrl/ogImageUrl (PublicWebController);
+           everything else — dashboard, error page — carries neither a canonical nor the share
+           image. The JSON-LD block is data, not script: CSP's script-src does not apply to it. It
+           is serialised in PublicWebController — th:inline="javascript" would flush the response
+           and break the CSRF form further down (see addSeo there). */-->
+    <th:block th:if="${canonicalUrl != null}">
+      <link rel="canonical" th:href="${canonicalUrl}" />
+      <meta property="og:url" th:content="${canonicalUrl}" />
+      <meta property="og:image" th:content="${ogImageUrl}" />
+      <meta property="og:image:width" content="1200" />
+      <meta property="og:image:height" content="630" />
+      <meta name="twitter:card" content="summary_large_image" />
+      <script type="application/ld+json" th:utext="${jsonLd}"></script>
+    </th:block>
     <link rel="stylesheet" th:href="@{/app.css}" />
     <!--/* Declared explicitly so the browser stops guessing /favicon.ico, which 404'd on every
            page load — visible in any console and in the access log. */-->
