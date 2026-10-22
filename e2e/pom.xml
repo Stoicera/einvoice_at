@@ -34,7 +34,7 @@
     <skipTests>true</skipTests>
     <!-- This module contributes no production code, so a coverage gate here would measure nothing. -->
     <jacoco.skip>true</jacoco.skip>
-    <gatling.version>3.15.1</gatling.version>
+    <gatling.version>3.16.0</gatling.version>
     <gatling-maven-plugin.version>4.21.10</gatling-maven-plugin.version>
     <!-- Where the load scenario points. Overridden on the command line / in CI; the default is the
          compose stack's published port, so `./mvnw -pl e2e gatling:test -Pload` works after a
