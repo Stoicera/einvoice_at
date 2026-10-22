@@ -14,6 +14,11 @@ import java.util.List;
  * time for an answer that is already known. Each edit is widened to the whole lines it touches;
  * lines the edit leaves identical at either end are then trimmed off again, so inserting a line
  * after {@code <cac:Party>} shows as one added line, not as that tag removed and re-added.
+ *
+ * <p>Content lines keep their own line end: in a CR LF document each line carries its {@code \r},
+ * as {@code git diff} prints it, so {@code git apply} and {@code patch} accept the diff for the
+ * file it describes. Header lines end in LF, also as git does. A viewer that wants plain lines
+ * splits with {@link String#lines()}, which treats CR LF as one terminator.
  */
 final class UnifiedDiff {
 
@@ -177,8 +182,8 @@ final class UnifiedDiff {
     return out;
   }
 
+  /** Drops the LF; a CR before it stays part of the line (see the class Javadoc). */
   private static String stripLineBreak(String line) {
-    String s = line.endsWith("\n") ? line.substring(0, line.length() - 1) : line;
-    return s.endsWith("\r") ? s.substring(0, s.length() - 1) : s;
+    return line.endsWith("\n") ? line.substring(0, line.length() - 1) : line;
   }
 }

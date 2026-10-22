@@ -104,12 +104,15 @@ class UnifiedDiffTest {
   }
 
   @Test
-  void crLfIsNotPartOfTheShownLines() {
+  void crLfLinesKeepTheirCarriageReturnSoThePatchAppliesToTheFile() {
     String text = TEN.replace("\n", "\r\n");
     String diff =
         UnifiedDiff.render(
             text, List.of(TextEdit.insert(endOfLine(text, 1) - 1, "\r\nnew")), "a", "b");
 
-    assertThat(diff).doesNotContain("\r").contains(" l1\n+new\n l2\n");
+    // As git prints it: headers end in LF, every content line keeps the file's CR.
+    assertThat(diff)
+        .startsWith("--- a/a\n+++ b/b\n@@ -1,4 +1,5 @@\n")
+        .contains(" l1\r\n+new\r\n l2\r\n");
   }
 }

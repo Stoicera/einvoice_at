@@ -10,6 +10,8 @@
   <body>
     <div th:fragment="report" class="stack spaced">
       <p class="errors" th:if="${uploadError}" th:text="${uploadError}"></p>
+      <!--/* An input error with no proposal to show it in (the posted document had nothing to fix). */-->
+      <p class="errors" th:if="${repairError != null and repair == null}" th:text="${repairError}"></p>
 
       <th:block th:unless="${uploadError}">
         <div class="verdict" th:classappend="${valid} ? 'valid' : 'invalid'">
@@ -146,7 +148,7 @@
             maxlength="255"
             autocomplete="off"
             required
-            th:value="${r.orderReference()}"
+            th:value="${typedOrderReference != null ? typedOrderReference : r.orderReference()}"
           />
           <button type="submit">Vorschlag erstellen und prüfen</button>
           <span class="spinner" data-spinner>Wird geprüft …</span>

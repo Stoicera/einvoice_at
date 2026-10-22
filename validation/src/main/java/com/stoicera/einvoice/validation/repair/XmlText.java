@@ -2,6 +2,7 @@ package com.stoicera.einvoice.validation.repair;
 
 import com.stoicera.einvoice.validation.internal.SecureXml;
 import java.nio.charset.Charset;
+import java.nio.charset.CharsetEncoder;
 import java.nio.charset.IllegalCharsetNameException;
 import java.nio.charset.StandardCharsets;
 import java.nio.charset.UnsupportedCharsetException;
@@ -12,6 +13,7 @@ import java.util.Comparator;
 import java.util.Deque;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.w3c.dom.Document;
@@ -124,9 +126,47 @@ final class XmlText {
     return out.append(text, cursor, text.length()).toString();
   }
 
-  /** Encodes {@code corrected} in the upload's own charset. */
+  /**
+   * Encodes {@code corrected} in the upload's own charset. Every character this class inserts went
+   * through {@link #escape}, so nothing is replaced by {@code ?} on the way: the bytes validated
+   * are the text shown.
+   */
   byte[] encode(String corrected) {
     return corrected.getBytes(charset);
+  }
+
+  /**
+   * {@code value} as XML character data or attribute content for <em>this</em> document: the five
+   * XML specials as entities, and any character the document's charset cannot carry (a euro sign in
+   * an ISO-8859-1 file) as a numeric character reference — which every XML parser reads back as the
+   * same character.
+   */
+  String escape(String value) {
+    CharsetEncoder encoder = charset.newEncoder();
+    StringBuilder out = new StringBuilder(value.length() + 16);
+    value
+        .codePoints()
+        .forEach(
+            c -> {
+              switch (c) {
+                case '&' -> out.append("&amp;");
+                case '<' -> out.append("&lt;");
+                case '>' -> out.append("&gt;");
+                case '"' -> out.append("&quot;");
+                case '\'' -> out.append("&apos;");
+                default -> {
+                  String ch = new String(Character.toChars(c));
+                  if (encoder.canEncode(ch)) {
+                    out.append(ch);
+                  } else {
+                    out.append("&#x")
+                        .append(Integer.toHexString(c).toUpperCase(Locale.ROOT))
+                        .append(';');
+                  }
+                }
+              }
+            });
+    return out.toString();
   }
 
   /**

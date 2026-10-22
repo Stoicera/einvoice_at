@@ -55,6 +55,15 @@ zweite Schritt antwortet dann 413. Die Route zählt gegen dasselbe Kontingent wi
 
 ## Konsequenzen
 
+- Eine Prüfung mit behebbarem Befund kostet zwei Validierungsläufe (Upload und Korrektur) unter einem
+  Token des Kontingents. Das Kontingent bleibt eine Obergrenze, nur eine doppelt so teure; bewusst so,
+  weil der Vorschlag ohne zweiten Klick sichtbar sein soll. Wird das zum Engpass, zählt der Filter
+  solche Anfragen doppelt.
+- Der Diff ist auch ein Maschinenartefakt: Inhaltszeilen behalten ihr Zeilenende (CR LF bleibt CR
+  LF), wie `git diff` es ausgibt, damit `git apply` ihn auf die Datei anwenden kann. Zeichen, die die
+  Kodierung der Datei nicht tragen kann, werden als Zeichenreferenz geschrieben — geprüft wird genau
+  der Text, der angezeigt wird.
+
 - Neue Regeln mit eindeutigem Fix kommen als Fall in `RepairProposer` dazu, mit Golden Files in
   `corpus/repaired/` und dem Test, dass die Korrektur grün geprüft wird.
 - Ein Fix, dessen Wert nicht eindeutig aus Dokument oder Eingabe folgt, wird nicht gebaut.

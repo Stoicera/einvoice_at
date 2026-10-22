@@ -303,7 +303,11 @@ class PublicWebIT extends AbstractPostgresIT {
         session.post("/validator/korrigieren", MultipartBodies.form(fields, null, null, null));
 
     assertThat(response.statusCode()).isEqualTo(200);
-    assertThat(response.body()).contains("höchstens 255 Zeichen").contains("Eingabe erforderlich");
+    assertThat(response.body())
+        .contains("höchstens 255 Zeichen")
+        .contains("Eingabe erforderlich")
+        // What was typed stays in the field, cut to the field's limit.
+        .contains("value=\"" + "x".repeat(255) + "\"");
   }
 
   @Test

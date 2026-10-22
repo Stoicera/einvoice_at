@@ -46,8 +46,9 @@ names the rule.
 
 `POST /api/v1/validate?repair=true` was given an `orderReference` that cannot be written into an
 e-invoice: longer than 255 characters (the ebInterface `IDType` limit) or containing a character
-XML 1.0 cannot carry (control characters, line breaks). `detail` names the limit. No validation
-ran; fix the value and retry.
+XML 1.0 cannot carry (control characters, line breaks) — or `orderReference` was sent without
+`repair=true`, where it would otherwise be ignored without a word. `detail` names the case. No
+validation ran; fix the request and retry.
 
 ### invalid-finding-index
 

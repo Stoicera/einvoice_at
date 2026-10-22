@@ -15,6 +15,8 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import java.io.IOException;
 import java.util.Optional;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.security.core.Authentication;
@@ -55,6 +57,8 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/api/v1/validate")
 public class ValidationController {
+
+  private static final Logger log = LoggerFactory.getLogger(ValidationController.class);
 
   private final ReportService reports;
   private final CurrentTenant currentTenant;
@@ -99,7 +103,8 @@ public class ValidationController {
       responseCode = "400",
       description =
           "The multipart request has no `file` part, or `orderReference` is longer than 255"
-              + " characters or contains a character XML cannot carry.",
+              + " characters, contains a character XML cannot carry, or was sent without"
+              + " repair=true.",
       content =
           @Content(
               mediaType = "application/problem+json",
@@ -141,6 +146,10 @@ public class ValidationController {
           String orderReference,
       Authentication authentication)
       throws IOException {
+    if (!repair && orderReference != null) {
+      // Ignoring it silently would look like the reference had been rejected.
+      throw new InvalidRepairInputException("orderReference wird nur mit repair=true gelesen.");
+    }
     RepairInput input = repair ? repairInput(orderReference) : RepairInput.none();
     Optional<UUID> tenantId =
         currentTenant.resolveIfAuthenticated(authentication).map(TenantEntity::getId);
@@ -149,7 +158,15 @@ public class ValidationController {
     if (!repair) {
       return result;
     }
-    return repairs.propose(bytes, result.report(), input).map(result::withRepair).orElse(result);
+    try {
+      return repairs.propose(bytes, result.report(), input).map(result::withRepair).orElse(result);
+    } catch (RuntimeException e) {
+      // The report is the product; a failed proposal must not turn it into a 500 — for an
+      // authenticated caller it is already stored. Class name only: the message could carry
+      // document content.
+      log.warn("Correction proposal failed: {}", e.getClass().getSimpleName());
+      return result;
+    }
   }
 
   /** Checked before validating, so an unusable input costs no validation run. */

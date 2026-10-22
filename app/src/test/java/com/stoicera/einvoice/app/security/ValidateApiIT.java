@@ -292,6 +292,16 @@ class ValidateApiIT extends AbstractKeycloakIT {
     assertThat(problem.get("detail").asText()).contains("255");
   }
 
+  @Test
+  void anOrderReferenceWithoutRepairIsA400RatherThanSilentlyIgnored() throws Exception {
+    HttpResponse<String> response =
+        postValidate(VALIDATE + "?orderReference=BBG-2026-4711", Fixtures.invalidFileBytes(), null);
+
+    assertThat(response.statusCode()).isEqualTo(400);
+    assertThat(json.readTree(response.body()).get("type").asText())
+        .isEqualTo(PROBLEM_BASE + "invalid-repair-input");
+  }
+
   // --- helpers ---------------------------------------------------------------------------------
 
   private HttpResponse<String> postValidate(byte[] fileBytes, String[] auth) throws Exception {

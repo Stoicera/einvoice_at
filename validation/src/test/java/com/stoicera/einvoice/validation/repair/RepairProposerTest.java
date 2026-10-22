@@ -257,6 +257,38 @@ class RepairProposerTest {
   }
 
   @Test
+  void aCharacterTheDocumentsCharsetCannotCarryIsWrittenAsACharacterReference() {
+    String xml =
+        text("invalid/at-b2g-01-missing-order-reference.xml")
+            .replace("encoding=\"UTF-8\"", "encoding=\"ISO-8859-1\"");
+    byte[] latin1 = xml.getBytes(StandardCharsets.ISO_8859_1);
+    RepairProposal proposal =
+        proposer
+            .propose(latin1, VALIDATOR.validate(latin1), new RepairInput("BBG-€-4711"))
+            .orElseThrow();
+
+    // The euro sign does not exist in ISO-8859-1; written raw it would become "?" on encoding,
+    // and the validator would judge a different document than the one shown.
+    assertThat(proposal.correctedXml()).contains("<OrderID>BBG-&#x20AC;-4711</OrderID>");
+    assertThat(proposal.revalidatedValid()).isTrue();
+  }
+
+  @Test
+  void aSelfClosingPartyIsNeverWrittenAround() {
+    String xml =
+        text("invalid/peppol-missing-endpoint-ids.xml")
+            .replaceAll(
+                "(?s)<cac:AccountingCustomerParty>.*</cac:AccountingCustomerParty>",
+                "<cac:AccountingCustomerParty><cac:Party/></cac:AccountingCustomerParty>");
+    RepairProposal proposal = proposeText(xml, RepairInput.none()).orElseThrow();
+
+    // Nothing inside <cac:Party/> to derive from, and nothing written next to it.
+    assertThat(proposal.changes().get(1).source()).isEqualTo(ValueSource.PLACEHOLDER);
+    assertThat(proposal.correctedXml())
+        .contains("<cac:AccountingCustomerParty><cac:Party/></cac:AccountingCustomerParty>");
+  }
+
+  @Test
   void aValidDocumentGetsNoProposal() {
     assertThat(proposeText(text("valid/b2g-full.xml"), RepairInput.none())).isEmpty();
     assertThat(proposeText(text("valid/peppol-ubl-invoice.xml"), RepairInput.none())).isEmpty();
@@ -284,6 +316,8 @@ class RepairProposerTest {
     assertThat(new RepairInput(null).orderReference()).isNull();
     assertThat(new RepairInput("  A-1 ").orderReference()).isEqualTo("A-1");
     assertThat(new RepairInput("x".repeat(255)).orderReference()).hasSize(255);
+    // 255 characters as XML counts them, even where Java needs two chars for one.
+    assertThat(new RepairInput("😀".repeat(255)).orderReference()).hasSize(510);
     assertThatThrownBy(() -> new RepairInput("x".repeat(256)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("255");

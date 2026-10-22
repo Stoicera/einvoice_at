@@ -37,7 +37,9 @@ public record ValidateResult(
                 "Correction proposal with evidence: each change with rule id, business term and"
                     + " the source of its value, the corrected document, a unified diff and the"
                     + " re-validation of the corrected document. Only present with repair=true"
-                    + " and when a finding has a known fix. Never persisted.",
+                    + " and when a finding has a known fix. Never persisted. correctedXml is the"
+                    + " document text; write it in the encoding its XML declaration names (UTF-8"
+                    + " unless declared otherwise).",
             nullable = true)
         @JsonInclude(JsonInclude.Include.NON_NULL)
         RepairProposal repair) {

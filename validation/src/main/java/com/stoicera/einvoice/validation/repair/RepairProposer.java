@@ -211,9 +211,9 @@ public final class RepairProposer {
               ? new TextEdit(
                   span.startTagStart(),
                   span.startTagEnd() - span.startTagStart(),
-                  "<" + span.qname() + ">" + escape(value) + "</" + span.qname() + ">")
+                  "<" + span.qname() + ">" + doc.escape(value) + "</" + span.qname() + ">")
               : new TextEdit(
-                  span.startTagEnd(), span.endTagStart() - span.startTagEnd(), escape(value));
+                  span.startTagEnd(), span.endTagStart() - span.startTagEnd(), doc.escape(value));
       return Optional.of(new Planned(change, Optional.of(edit)));
     }
 
@@ -222,10 +222,10 @@ public final class RepairProposer {
     List<String> lines =
         List.of(
             "<" + eb + "OrderReference" + declaration + ">",
-            "\t<" + eb + "OrderID>" + escape(value) + "</" + eb + "OrderID>",
+            "\t<" + eb + "OrderID>" + doc.escape(value) + "</" + eb + "OrderID>",
             "</" + eb + "OrderReference>");
-    TextEdit edit = insertChild(doc, recipient.get(), BEFORE_ORDER_REFERENCE, lines);
-    return Optional.of(new Planned(change, Optional.of(edit)));
+    return insertChild(doc, recipient.get(), BEFORE_ORDER_REFERENCE, lines)
+        .map(edit -> new Planned(change, Optional.of(edit)));
   }
 
   // --- PEPPOL-EN16931-R020 / R010: electronic addresses --------------------------------------
@@ -327,13 +327,14 @@ public final class RepairProposer {
             + "EndpointID"
             + declaration
             + " schemeID=\""
-            + escape(d.schemeId())
+            + doc.escape(d.schemeId())
             + "\">"
-            + escape(d.value())
+            + doc.escape(d.value())
             + "</"
             + cbc
             + "EndpointID>";
-    TextEdit edit = insertChild(doc, partyElement.get(), BEFORE_ENDPOINT_ID, List.of(line));
+    Optional<TextEdit> edit =
+        insertChild(doc, partyElement.get(), BEFORE_ENDPOINT_ID, List.of(line));
     ProposedChange change =
         new ProposedChange(
             party.ruleId(),
@@ -347,7 +348,7 @@ public final class RepairProposer {
             "Das Regelwerk prüft Form und Schema der Adresse, nicht ob die Partei darunter im"
                 + " Peppol-Netz erreichbar ist. Vor dem Versand im Peppol-Verzeichnis nachsehen.",
             null);
-    return Optional.of(new Planned(change, Optional.of(edit)));
+    return edit.map(e -> new Planned(change, Optional.of(e)));
   }
 
   private Optional<Derived> fromVat(Element party, Party which) {
@@ -411,9 +412,11 @@ public final class RepairProposer {
   /**
    * Inserts {@code lines} as a child of {@code parent}: after the last child named in {@code
    * precedingNames} (schema order), or as the first child when there is none. Indentation is copied
-   * from the document; {@code \t} in a line stands for one more indentation step.
+   * from the document; {@code \t} in a line stands for one more indentation step. Empty for a
+   * self-closing parent ({@code <cac:Party/>}): such a document already fails the schema for other
+   * reasons, and rewriting the parent is not a change this class proposes.
    */
-  private static TextEdit insertChild(
+  private static Optional<TextEdit> insertChild(
       XmlText doc, Element parent, Set<String> precedingNames, List<String> lines) {
     List<Element> kids = children(parent);
     Element anchor = null;
@@ -423,6 +426,9 @@ public final class RepairProposer {
       }
     }
     XmlText.Span parentSpan = doc.span(parent);
+    if (parentSpan.isEmptyTag()) {
+      return Optional.empty();
+    }
     Optional<String> parentIndent = doc.indentBefore(parentSpan.startTagStart());
     Optional<String> childIndent =
         kids.isEmpty()
@@ -432,7 +438,7 @@ public final class RepairProposer {
 
     if (childIndent.isEmpty()) {
       // A document on one line: insert inline, no line breaks of our own.
-      return TextEdit.insert(offset, String.join("", lines).replace("\t", ""));
+      return Optional.of(TextEdit.insert(offset, String.join("", lines).replace("\t", "")));
     }
     String indent = childIndent.get();
     String step =
@@ -446,7 +452,7 @@ public final class RepairProposer {
       String content = line.startsWith("\t") ? step + line.substring(1) : line;
       out.append(lineBreak).append(indent).append(content);
     }
-    return TextEdit.insert(offset, out.toString());
+    return Optional.of(TextEdit.insert(offset, out.toString()));
   }
 
   /** {@code "prefix:"}, or {@code ""} when {@code ns} is the default namespace at {@code at}. */
@@ -486,21 +492,5 @@ public final class RepairProposer {
       }
     }
     return out;
-  }
-
-  private static String escape(String value) {
-    StringBuilder out = new StringBuilder(value.length() + 16);
-    for (int i = 0; i < value.length(); i++) {
-      char c = value.charAt(i);
-      switch (c) {
-        case '&' -> out.append("&amp;");
-        case '<' -> out.append("&lt;");
-        case '>' -> out.append("&gt;");
-        case '"' -> out.append("&quot;");
-        case '\'' -> out.append("&apos;");
-        default -> out.append(c);
-      }
-    }
-    return out.toString();
   }
 }

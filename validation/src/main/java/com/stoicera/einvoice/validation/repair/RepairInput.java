@@ -32,7 +32,8 @@ public record RepairInput(String orderReference) {
       return null;
     }
     String stripped = value.strip();
-    if (stripped.length() > MAX_ORDER_REFERENCE_LENGTH) {
+    // Code points, not UTF-16 units: XSD maxLength counts characters as XML sees them.
+    if (stripped.codePointCount(0, stripped.length()) > MAX_ORDER_REFERENCE_LENGTH) {
       throw new IllegalArgumentException(
           "Die Auftragsreferenz darf höchstens %d Zeichen lang sein."
               .formatted(MAX_ORDER_REFERENCE_LENGTH));

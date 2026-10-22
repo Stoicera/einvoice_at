@@ -166,6 +166,13 @@ public class PublicWebController {
       input = new RepairInput(orderReference);
     } catch (IllegalArgumentException e) {
       model.addAttribute("repairError", e.getMessage());
+      // Keep what was typed in the field (cut to the field's own limit), so it can be corrected
+      // rather than retyped.
+      model.addAttribute(
+          "typedOrderReference",
+          orderReference.length() > RepairInput.MAX_ORDER_REFERENCE_LENGTH
+              ? orderReference.substring(0, RepairInput.MAX_ORDER_REFERENCE_LENGTH)
+              : orderReference);
       input = RepairInput.none();
     }
 
