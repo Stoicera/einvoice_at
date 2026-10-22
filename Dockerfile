@@ -1,4 +1,4 @@
-FROM eclipse-temurin:25-jdk@sha256:c42fecf62f32725c65cfea284c012526d6fb31cc78123c740ebdc1cfd2dced12 AS build
+FROM eclipse-temurin:25-jdk@sha256:2d5d5e9b533342a565907c84f47a2ec298c40cde7b13a3ca85d4950fa456a641 AS build
 WORKDIR /workspace
 COPY . .
 RUN --mount=type=cache,target=/root/.m2 ./mvnw -B -ntp -DskipTests package
