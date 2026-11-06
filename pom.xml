@@ -154,6 +154,18 @@
          DOMPurify 3.4.12 (verified by extracting the webjar); empirically confirmed working via
          OpenApiIT (app/src/test/.../api/OpenApiIT.java) against the real Boot 4.1.0 context. -->
     <springdoc-openapi.version>3.1.0</springdoc-openapi.version>
+    <!-- The swagger-ui webjar springdoc pulls in is pinned SEPARATELY and ahead of the version
+         springdoc 3.1.0 manages (5.32.11), because the scan went red for the bundle again:
+         the scheduled OWASP run on main on 2026-11-02 (run 41430102198) flagged DOMPurify 3.4.12
+         inside swagger-ui-bundle.js with CVE-2026-116803 and CVE-2026-116804 (CVSS 10.0;
+         GHSA-77h4-4vqj-j7vc and GHSA-6vxf-252m-8g79, both "fixed in DOMPurify 3.4.17").
+         Verified 2026-11-06 by extracting the webjars from Maven Central: 5.32.15 embeds
+         DOMPurify 3.4.13, 5.33.3 embeds 3.4.16, 5.34.0 (what springdoc 3.2.0 manages) embeds
+         3.4.16, and 5.34.1 — the newest webjar on 2026-11-06 — embeds 3.4.17. So the webjar is
+         pinned here and the springdoc starter stays at 3.1.0 (built against Boot 4.1.0, this
+         repo's 4.1.x line); springdoc reads the UI version from the webjar's own pom.properties,
+         so no path changes. OpenApiIT (app) proves /swagger-ui/index.html still serves. -->
+    <swagger-ui.version>5.34.1</swagger-ui.version>
 
     <!-- Reactor-wide defaults for org.codehaus.mojo:exec-maven-plugin's `java` goal (used by the
          validation module's ValidationRunner CLI): skipped everywhere except where a module opts
@@ -225,6 +237,11 @@
         <groupId>org.springdoc</groupId>
         <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
         <version>${springdoc-openapi.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.webjars</groupId>
+        <artifactId>swagger-ui</artifactId>
+        <version>${swagger-ui.version}</version>
       </dependency>
       <dependency>
         <groupId>net.jqwik</groupId>

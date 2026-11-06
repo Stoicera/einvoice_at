@@ -170,6 +170,13 @@ springdoc:
     enabled: ${API_DOCS_ENABLED:true}
   swagger-ui:
     enabled: ${API_DOCS_ENABLED:true}
+    # The webjar version springdoc serves the UI from. springdoc ships this value in its own
+    # springdoc.config.properties (5.32.11 for springdoc 3.1.0) and builds the resource path
+    # /webjars/swagger-ui/<version>/ from it, so a webjar pinned ahead of springdoc in the root
+    # POM (org.webjars:swagger-ui, see <swagger-ui.version> there) answers 404 unless this says the
+    # same number — OpenApiIT.swaggerUiIsReachableAnonymously is the test that catches a mismatch
+    # (it did, 2026-11-06). Keep the two in step when either moves.
+    version: 5.34.1
 
 server:
   port: 8080
