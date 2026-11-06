@@ -109,5 +109,20 @@ task.
 | 9 | Repo furniture | `llms.txt` done (#44); **social preview generated** (this PR): `scripts/social-preview.mjs` renders `docs/assets/social-preview.png`, 1280×640, Navy #0B1F3A, Cobalt #2558E8, Inter. **Manual step left:** GitHub has no API for it — Settings → General → Social preview → upload the PNG |
 | — | Launch package (OSS-launch Part B) | drafts in `docs/launch/` (this PR): `show-hn.md`, `reddit.md`, `linkedin.md`, `devto.md`, `checklist.md`. Status Entwurf; nothing posted. Subreddit rules could not be fetched on 2026-10-15 and have to be read by the author |
 
-Still open: the quickstart from a fresh clone on a clean machine (item 7) — now the first line of
-the week-before list in `docs/launch/checklist.md`.
+Still open after 2026-10-15: the quickstart from a fresh clone on a clean machine (item 7) — done
+2026-11-06, see below.
+
+## Status 2026-11-06 (branch `launch/2026-11-06`, OSS-launch Part A and B re-run)
+
+| # | Item | State |
+|---|---|---|
+| 1 | Run it as a stranger | **done**: fresh `git clone` of `main` (edcd3e7) on a laptop that had never built the project, README quickstart verbatim: first attempt failed on `Bind for 0.0.0.0:5432 failed` (another PostgreSQL on the machine), second with `POSTGRES_PORT=5433`: 312 s from clone to `"status":"UP"` including the image build, `/validator` 200, both `samples/` files `valid: true`, dev-realm token issued, `GET /api/v1/invoices` 200. The port note is in the README now |
+| 2 | README order | done since 2026-10-15; dates refreshed (curl line 1.0 s on 2026-11-06), port note, 312 s measurement |
+| 3 | CONTRIBUTING, issue templates, PR template | done (#44); community profile 100 % (2026-11-06) |
+| 4 | Release | `v0.2.0` exists; **`v0.3.0` drafted** in `docs/launch/release-notes.md`, tag not cut (owner step) |
+| 5 | Repo furniture | topics, description, homepage set; `llms.txt` present; social preview PNG committed, **upload still manual**; CI badge **failing** on 2026-11-06 — cause fixed on this branch (DOMPurify CVEs in the swagger-ui webjar), turns green with the first completed push run on `main` |
+| 6 | Licence | `LICENSE` Apache-2.0 = README = GitHub metadata (2026-11-06) |
+| 7–12 | Launch package | `show-hn.md` revised against the HN guidelines read 2026-11-06; `reddit.md` four subs (rules **not readable** by the agent, HTTP 403 both times — author reads them); `devto.md` full article, 1 040 words, runnable curl and compose; `linkedin.md` A/B/C with the Erstgespräch link in the first comment; `werkbank.md` German issue as a file (Ghost draft not created in this package); `README.md` in `docs/launch/` with order, roles, six-hour rule and the baseline |
+| — | Found on the way | (a) CI `cancel-in-progress` cancelled `main` runs when Dependabot merged in bursts (2026-10-22: edcd3e7 never built or deployed) — now PR-only; (b) the scheduled OWASP run flips the CI badge, which is honest but means a Monday NVD outage would show "failing" to launch-day visitors — left as is, noted; (c) Lighthouse from outside on 2026-11-06: `/` 100/100/100/100, `/validator` 99/100/100/100 |
+
+Not done in this package, by instruction: no push, no tag, no release, no post, no Ghost draft.

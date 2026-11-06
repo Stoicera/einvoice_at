@@ -25,7 +25,7 @@ curl -sL https://raw.githubusercontent.com/Stoicera/einvoice_at/main/validation/
 ```
 
 It answers `"valid": false` with one finding, `AT-B2G-01` at `/eb:Invoice`, *„Auftragsreferenz fehlt:
-…"* (checked 2026-10-15: 0.5 s and 2.2 s round trip in two runs).
+…"* (checked 2026-10-15: 0.5 s and 2.2 s round trip in two runs; 2026-11-06: 1.0 s).
 
 **On your own machine** (Docker with Compose; details in [Quickstart](#quickstart)):
 
@@ -127,8 +127,9 @@ Honest, and naming what each alternative does better. No vendor names.
 **Maintenance that is ongoing by construction:** Peppol rule-set upgrades as OpenPeppol publishes
 them (the build fails when the pin is superseded; 2026.5 adopted 2026-08-07, ten days before it
 became mandatory), dependency updates through Dependabot behind the OWASP gate, and the
-[CHANGELOG](CHANGELOG.md). Open launch items as of 2026-10-13 are listed in
-[docs/PORTFOLIO-READINESS.md](docs/PORTFOLIO-READINESS.md).
+[CHANGELOG](CHANGELOG.md). Open launch items as of 2026-11-06 are listed in
+[docs/PORTFOLIO-READINESS.md](docs/PORTFOLIO-READINESS.md); the launch package itself is in
+[docs/launch/](docs/launch/README.md).
 
 ## For companies / Für Unternehmen
 
@@ -180,14 +181,22 @@ curl http://localhost:8080/actuator/health
 # {"groups":["liveness","readiness"],"status":"UP"}
 ```
 
+If `docker compose up` stops with `Bind for 0.0.0.0:5432 failed: port is already allocated`, a
+PostgreSQL is already running on your machine: set `POSTGRES_PORT=5433` (any free port) in `.env`
+and run it again. The same applies to `KEYCLOAK_PORT` (8081) and `APP_PORT` (8080). That port
+collision was the one thing that broke the quickstart when it was run from a fresh clone on
+2026-11-06.
+
 Then open **<http://localhost:8080/validator>** and drop an ebInterface or UBL invoice on it.
 There are two ready to try in [`samples/`](samples/). Log in at **<http://localhost:8080/app>** with
 `testuser` / `testpass` (the dev realm's only user) to see the dashboard.
 
 Measured, not estimated: `docker compose up -d --build` to the first `"status":"UP"` took **82 s**
 with no image present, and the image build alone takes **75 s** with `--no-cache` and an empty Maven
-cache — i.e. downloading every dependency. Both are well inside M6's five-minute Quickstart budget;
-the variable is your connection to Maven Central, not this repository.
+cache — i.e. downloading every dependency (2026-10-01). From a fresh `git clone` on a laptop that had
+never built the project, **312 s** from the clone to `"status":"UP"`, image build included, with
+the port collision above in between (2026-11-06). The variable is your connection to Maven Central,
+not this repository.
 
 **Want the traces?** One more flag and three more containers:
 

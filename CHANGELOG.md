@@ -12,6 +12,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Release notes for the next tag, `v0.3.0`, are drafted in
+[docs/launch/release-notes.md](docs/launch/release-notes.md).
+
+### Fixed
+
+- **Security scan red on `main` since 2026-11-02** (scheduled run 41430102198): the swagger-ui
+  5.32.11 webjar that springdoc 3.1.0 manages embeds DOMPurify 3.4.12, flagged with
+  CVE-2026-116803 and CVE-2026-116804 (CVSS 10.0, fixed in DOMPurify 3.4.17). `org.webjars:swagger-ui`
+  is now pinned to 5.34.1 in the root POM (embeds 3.4.17, verified by extracting the jar on
+  2026-11-06) and `springdoc.swagger-ui.version` says the same number, because springdoc builds the
+  UI's resource path from that property — without it the UI answered 404, which `OpenApiIT` caught.
+  No suppression added.
+
 ### Added
 
 - **README first screen:** the validator report with a German finding directly under the one-line
@@ -44,6 +57,17 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- **CI: superseded runs are cancelled on pull-request branches only.** On `main` every push runs
+  to the end, deploy job included. On 2026-10-22 three Dependabot merges within 16 minutes
+  cancelled each other's runs; the last completed `main` run belonged to b64b402 and the newer
+  commits were never built, verified or deployed.
+- **README quickstart** names the port collision (`POSTGRES_PORT`, `KEYCLOAK_PORT`, `APP_PORT`)
+  that broke the quickstart from a fresh clone on 2026-11-06, with the measured 312 s to a healthy
+  stack.
+- **Launch package completed** in `docs/launch/`: `README.md` (order, roles, baseline of
+  2026-11-06), `release-notes.md`, `werkbank.md`, Reddit drafts for four subs, the Dev.to article
+  in full, Show HN revised against the guidelines read on 2026-11-06. Status Entwurf, nothing
+  posted.
 - **CI: the OWASP Dependency-Check job also runs on a weekly schedule** (Monday 03:00 UTC, on
   `main`, that job alone) so the week-scoped NVD cache is warm before the first pull request of the
   week — a cold sync took 57 min on 2026-10-08, a warm one 1–3 min

@@ -1920,3 +1920,25 @@ met.
 
 - M1 — Kanonisches Rechnungsmodell: EN-16931 core model in `core`, BigDecimal money arithmetic with jqwik property tests, Austrian USt logic, ArchUnit rules active, ADR-0003.
 
+
+## 2026-11-06 — Launch readiness re-run (branch `launch/2026-11-06`)
+
+**What.** OSS-launch Part A and B re-run against `main` at edcd3e7 plus the marketing commit
+of 2026-10-15 (cherry-picked). Quickstart executed from a fresh clone: 312 s to healthy, one
+port collision found and documented. Scheduled OWASP run of 2026-11-02 was red (DOMPurify 3.4.12
+inside swagger-ui 5.32.11, two CVSS 10.0 advisories); webjar pinned to 5.34.1 and
+`springdoc.swagger-ui.version` aligned — `OpenApiIT` caught the 404 of the first attempt. CI
+`cancel-in-progress` limited to pull requests after finding that `main` runs cancelled each other
+on 2026-10-22. Launch package completed in `docs/launch/` (README with baseline, release notes
+for `v0.3.0`, Werkbank issue, four Reddit drafts, full Dev.to article, revised Show HN, LinkedIn
+A/B/C).
+
+**Decisions.** springdoc stays at 3.1.0 (3.2.0 manages swagger-ui 5.34.0, which still embeds
+DOMPurify 3.4.16). `v0.3.0`, not `v0.2.1`: a new public endpoint since `v0.2.0`.
+
+**Verification.** `OpenApiIT` 4/4 green with the pinned webjar; Spotless clean; live demo health
+`UP`, README curl line 1.0 s, Lighthouse `/` 100/100/100/100 and `/validator` 99/100/100/100
+from a laptop.
+
+**Next.** Owner: merge the branch, watch the `main` run to the end, cut `v0.3.0`, upload the
+social preview, read the subreddit rules, create the Ghost draft, pick the day.
