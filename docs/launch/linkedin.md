@@ -1,15 +1,15 @@
 # LinkedIn — Entwürfe
 
-Status: **Entwurf** (2026-10-15). Nichts davon ist veröffentlicht. Deutsch, Sie-Form, 900–1 300
-Zeichen je Post (gezählt ohne diese Hinweise), die erste Zeile trägt die ganze Aussage, der Link
-steht im ersten Kommentar, höchstens drei Hashtags. Keine Bezahlwerbung, kein Boost.
+Status: **Entwurf** (2026-11-06, ersetzt den Entwurf vom 15.10.2026). Nichts davon ist
+veröffentlicht. Deutsch, Sie-Form, 900–1 300 Zeichen je Post (gezählt ohne diese Hinweise), die
+erste Zeile trägt die ganze Aussage, der Link steht im ersten Kommentar, höchstens drei Hashtags.
+Organisch; keine Bezahlwerbung, kein Boost, kein LinkedIn Premium (Dok 04 §5). Jede Zahl mit
+Messdatum; was hier nicht steht, wird im Kommentar nicht behauptet.
 
-## Post A — Profil Sebastian Kern (Autor)
-
-Länge: 1 239 Zeichen.
+## Post A — Profil Sebastian Kern (Autor), Launchtag 08:30
 
 ```text
-Eine vom Bund abgelehnte E-Rechnung kommt als Schematron-Ausgabe zurück. einvoice-at sagt Ihnen stattdessen auf Deutsch, welche Regel verletzt ist und wo im Dokument – kostenlos, ohne Konto, quelloffen.
+Eine vom Bund abgelehnte E-Rechnung kommt als Schematron-Ausgabe zurück. einvoice-at sagt Ihnen stattdessen auf Deutsch, welche Regel verletzt ist und wo im Dokument – ohne Konto, quelloffen.
 
 Rechnungen an Bundesdienststellen müssen strukturiert sein: ebInterface oder Peppol BIS Billing 3.0. Wird eine abgelehnt, steht in der Begründung ein englischer Regeltext, ein XPath und eine Assertion-ID. Für die Person in der Buchhaltung, die die Rechnung korrigieren soll, ist das kein Hinweis.
 
@@ -22,7 +22,7 @@ Was der Prüfer macht:
 
 Was er nicht ist: keine Einreichung, nicht zertifiziert, keine Rechts- oder Steuerberatung. Das Urteil von e-rechnung.gv.at bleibt das, das zählt.
 
-Softwarehäuser können die Prüfung über eine REST-API in die eigene Fakturierung einbauen oder alles selbst betreiben (Apache-2.0).
+Softwarehäuser bauen die Prüfung über eine REST-API in die eigene Fakturierung ein oder betreiben alles selbst (Apache-2.0). Heute ist das Projekt auch auf Hacker News; Rückmeldungen werden beantwortet.
 
 Link im ersten Kommentar.
 
@@ -34,11 +34,12 @@ Link im ersten Kommentar.
 ```text
 Prüfer ohne Konto: https://einvoice.sebastiankern.net/validator
 Code (Apache-2.0): https://github.com/Stoicera/einvoice_at
+Für Unternehmen, die das in ihre Fakturierung einbauen oder betreiben lassen wollen: Erstgespräch, 20 Minuten, online – https://termin.stoicera.com/sebastian
 ```
 
-## Post B — Profil Raphael Lugmayr (Mitgründer, am selben Tag, ein bis zwei Stunden später)
+## Post B — Profil Raphael Lugmayr (Mitgründer), Launchtag 10:00
 
-Länge: 1 236 Zeichen. Raphael liest den Text vorher und ändert, was nicht nach ihm klingt.
+Raphael liest den Text vorher und ändert, was nicht nach ihm klingt.
 
 ```text
 Mein Mitgründer Sebastian Kern hat einen Prüfer für österreichische E-Rechnungen gebaut, der jeden Fehler auf Deutsch erklärt – und den gesamten Code offengelegt.
@@ -66,12 +67,30 @@ Link im ersten Kommentar.
 ```text
 Zum Ausprobieren: https://einvoice.sebastiankern.net/validator
 Quellcode: https://github.com/Stoicera/einvoice_at
+Erstgespräch (20 Minuten, online): https://termin.stoicera.com/sebastian
+```
+
+## Post C — Profil Sebastian Kern, Tag 2 (Befund aus dem Launch, nur wenn es ihn gibt)
+
+Erste Zeile ist eine Zahl aus der Messung in `README.md` (T+24h): Sterne, Besucher, die häufigste
+Frage. Kein Text vorab – dieser Post wird aus den echten Zahlen geschrieben oder gar nicht. Muster:
+
+```text
+<N> Sterne, <M> Besucher, eine Frage, die dreimal kam: „<Frage>".
+
+<Antwort in drei bis fünf Sätzen, mit dem, was deshalb geändert oder als Issue angelegt wurde.>
+
+Link im ersten Kommentar.
 ```
 
 ## Vor dem Posten prüfen
 
-- Prüfer live: Testrechnung im Browser hochladen, Befund erscheint auf Deutsch.
-- Keine Aussage über Nutzer- oder Kundenzahlen, keine Zertifizierung, keine Rechts- oder
-  Steuerberatung andeuten.
-- Kommentare am Posttag innerhalb von vier Stunden beantworten, auf dem eigenen Profil jeweils
-  die Person, die gepostet hat.
+- Prüfer live: Testrechnung im Browser hochladen, Befund erscheint auf Deutsch (am Launchtag vor
+  08:30, siehe `README.md` in diesem Ordner).
+- Keine Aussage über Nutzer- oder Kundenzahlen (es gibt keine Kundeninstallation), keine
+  Zertifizierung, keine Rechts- oder Steuerberatung andeuten, keine Mitbewerber nennen.
+- Kommentare am Posttag innerhalb von vier Stunden beantworten, auf dem eigenen Profil jeweils die
+  Person, die gepostet hat. Wer nach einem Gespräch fragt, bekommt den Cal-Link als Antwort,
+  keine Mail-Adresse im Kommentar.
+- Die Company Page „Stoicera Software Group" repostet Post A am Launchtag; nativ postet sie nichts
+  (Dok 04, Firmenkanäle).

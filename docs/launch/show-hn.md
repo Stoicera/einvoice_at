@@ -1,11 +1,15 @@
 # Show HN — draft
 
-Status: **Entwurf** (2026-10-15). Nothing here is posted. The author posts it himself and answers
-the comments himself.
+Status: **Entwurf** (2026-11-06, revised from 2026-10-15). Nothing here is posted. The author
+posts it himself and answers the comments himself.
 
-Rules this draft follows (Show HN page, read 2026-10-15): the title starts with "Show HN"; the
-project is something people can try without signing up (the public validator and the curl line in
-the README); the author built it and is there to discuss it; no one is asked to upvote or comment.
+Rules this draft follows (Show HN guidelines and HN guidelines, read 2026-11-06): the title
+starts with "Show HN" and contains no site name, no gratuitous number, nothing in uppercase for
+emphasis; the project is something people can run on their computer and try without a signup (the
+public validator, the curl line and the compose quickstart in the README); it is non-trivial and
+the author worked on it personally and is around to discuss it; "explain how and why" is what the
+first comment does; no one is asked to upvote or comment, the link is not shared with a request to
+vote, and the submission is not deleted and reposted.
 
 ## Title
 
@@ -54,7 +58,10 @@ its first screen). Do not submit the demo URL — the repository is what we want
 > What is still rough: German messages exist for the 79 Peppol rules an Austrian filer realistically
 > trips (as of 2026-10-01); other Peppol rules show a German frame around the English original. The
 > optional AI explanation of findings is switched off on the demo. ebInterface 7.0 is not supported.
-> The quickstart has not yet been run by someone other than me on a clean machine.
+> The quickstart was last run from a fresh clone on 2026-11-06: 312 s from `git clone` to a healthy
+> stack, image build included; the one thing that broke was a PostgreSQL already on port 5432,
+> which the README now mentions. Keycloak is heavier than a validator needs — it is there because
+> the dashboard and API keys are per tenant.
 >
 > Feedback that would help most: an invoice that e-rechnung.gv.at rejects but this validator passes
 > (synthetic or anonymised, please — never a real invoice with personal data), German messages that
@@ -74,9 +81,10 @@ mentioned; `CLAUDE.md` and the review records are in the repository, so it is vi
 
 - It is our own project; say so, as the first comment does.
 - The demo must work at posting time: check `/actuator/health`, upload a file in the browser and run
-  the README curl line from a second machine within 30 minutes before posting.
+  the README curl line from a second machine within 30 minutes before posting. On 2026-11-06 all
+  three were fine (health `UP`, curl line 1.0 s, `/validator` 200).
 - No deploy to production on launch day (a push to `main` redeploys and resets the in-memory
-  request counters used for measuring, see `checklist.md`).
+  request counters used for measuring, see `README.md` in this folder).
 - The author answers every comment for at least six hours after posting. Critique gets a thank-you
   and a fix or an issue link, never an argument.
 - Never ask anyone to upvote, and do not share the HN link with a request to vote.

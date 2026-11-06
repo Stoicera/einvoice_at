@@ -1,32 +1,23 @@
-# Dev.to — draft article
-
-Status: **Entwurf** (2026-10-15). Nothing here is published. Target length of the finished article:
-600–900 words (the draft body below is about 850). English. If the article also runs in the
-Werkbank publication, publish it there first and set `canonical_url` on Dev.to to that URL.
-
-Front matter for Dev.to:
-
-```yaml
+---
 title: "What a green build did not tell us: four findings from an Austrian e-invoice validator"
 published: false
 tags: java, springboot, opensource, testing
-# canonical_url: <Werkbank URL, if it runs there first>
-```
-
-Every date below is taken from the repository (merged pull requests, `CHANGELOG.md`,
-`docs/worklog.md`); the PR number is given so a reader can check it.
-
+# canonical_url: <Werkbank URL — set it if the German issue (werkbank.md) is published first>
 ---
 
-## Draft
+<!-- Status: Entwurf (2026-11-06, replaces the outline of 2026-10-15). Nothing published.
+     About 1 200 words in the article body, code blocks included. Every date is taken from the repository (merged pull
+     requests, CHANGELOG.md, docs/worklog.md, CI run ids), with the PR number so a reader can
+     check it. Not to be written, binding: user or customer numbers (there are none),
+     "certified" or "approved by the federal government", server addresses or control-plane
+     paths, effort or cost figures, anything that sounds like legal or tax advice. -->
 
-### Intro (≈120 words)
-
-Invoices to Austrian federal bodies must be structured e-invoices — ebInterface 6.1 or Peppol BIS
-Billing 3.0. When one is rejected, the reason comes back as Schematron output: an English rule text,
-an XPath, an assertion id. einvoice-at is an open-source Java 25 / Spring Boot app that validates,
-generates and converts both formats and answers every finding with a German message, the rule id and
-the location. Try it against the live instance:
+Invoices to Austrian federal bodies have to be structured e-invoices — ebInterface 6.1 or Peppol
+BIS Billing 3.0. When one is rejected, the reason comes back as Schematron output: an English rule
+text, an XPath, an assertion id. [einvoice-at](https://github.com/Stoicera/einvoice_at) is an
+open-source Java 25 / Spring Boot 4.1 application that validates, generates and converts both
+formats and answers every finding with a German message, the rule id and the location in the
+document. You can try the validator against the live instance without an account:
 
 ```bash
 curl -sL https://raw.githubusercontent.com/Stoicera/einvoice_at/main/validation/src/test/resources/corpus/invalid/at-b2g-01-missing-order-reference.xml \
@@ -34,73 +25,123 @@ curl -sL https://raw.githubusercontent.com/Stoicera/einvoice_at/main/validation/
   | jq '.report | {valid, findings: [.findings[] | {ruleId, location, messageDe}]}'
 ```
 
+It answers `"valid": false` with one finding, `AT-B2G-01` at `/eb:Invoice`: *Auftragsreferenz
+fehlt* — the order reference federal bodies require and most international ERP systems have never
+heard of (1.0 s round trip on 2026-11-06).
+
 This article is not about the features. It is about four moments when the build was green and
-something was still wrong — and what the project does differently since.
+something was still wrong, and what the project does differently since. The pattern is the same
+each time: the tests checked what somebody had written down, not what was true outside the code.
 
-### 1. A deleted rule that we kept translating (PR #26, 2026-08-07) (≈170 words)
+## 1. A deleted rule we kept translating
 
-- OpenPeppol made rule set 2026.5 mandatory on 2026-08-17. The project switched on 2026-08-07, ten
-  days before, because after that date a "valid" from us would have been judged by rules the
-  recipient no longer applies.
-- The golden-file corpus stayed green — correctly, the changed rules concern Dutch and Danish schemes.
-- But rule `BR-CO-25` had been deleted with no successor, and the German message catalogue went on
-  translating it. No test failed: the coverage test compared against a list typed into the test
-  file, not against the rule set. Two German messages had also become wrong, not just imprecise.
-- Since then a test reads the allowed rule ids from the shipped rule files, and another one fails
-  the build on the day a newer rule set supersedes the pinned one, with version and date in the
-  message.
-- Line to keep: a deadline you have to remember is a risk; now the build reports it.
+OpenPeppol made rule set 2026.5 mandatory on 2026-08-17. The project switched on 2026-08-07
+(PR #26), ten days early, because after the deadline a "valid" from us would have been judged
+against rules the recipient no longer applies. The golden-file corpus stayed green, correctly: the
+changed rules concern Dutch and Danish schemes.
 
-### 2. A green repository turned red without a changed line (PR #38, 2026-10-08) (≈140 words)
+But rule `BR-CO-25` had been deleted upstream with no successor, and the German message catalogue
+went on "translating" it. No test failed, because the coverage test compared the catalogue against
+a list typed into the test file. Two German messages had quietly become wrong as well, not merely
+imprecise.
 
-- Builds pin dependencies; they do not pin the world's verdict on them. The OWASP Dependency-Check
-  job in CI was red from 2026-09-24 at the latest, for CVEs published against libraries the project
-  had not touched.
-- Fix: an upgrade, not a suppression — Spring Boot 4.1.0 → 4.1.1, Tomcat 11.0.24 → 11.0.26,
-  Netty 4.2.16 → 4.2.19, only `pom.xml`. Green on `main` since 2026-10-08.
-- The rule in `.owasp-suppressions.xml`: a suppression is a claim that a CVE does not apply, it
-  names its reason, and where possible it carries an expiry date so it has to be argued again.
+Two tests replaced that list. One reads the allowed rule ids out of the shipped rule files. The
+other reads the publication dates OpenPeppol ships inside the phive-rules artefact and fails the
+build on the day a newer rule set supersedes the pinned one — with the version and the date in the
+assertion message:
 
-### 3. A dead button that no test could see (PR #27, 2026-08-07) (≈150 words)
+```java
+@Test
+void noNewerRuleSetIsAlreadyMandatory() {
+  int[] pinned = versionOf(PeppolValidationStage.RULE_SET_VERSION);
+  LocalDate today = LocalDate.now();
+  Map<String, LocalDate> published = publishedRuleSets(); // read from phive-rules, not listed here
+  assertThat(published).hasSizeGreaterThan(1);
+  assertThat(published).allSatisfy((version, mandatoryFrom) -> {
+    int[] candidate = versionOf(version);
+    boolean isNewer = candidate[0] > pinned[0]
+        || (candidate[0] == pinned[0] && candidate[1] > pinned[1]);
+    if (isNewer) {
+      assertThat(mandatoryFrom)
+          .as("OpenPeppol rule set %s became mandatory on %s and this validator is still pinned"
+              + " to %s. Upgrade PeppolValidationStage to PeppolValidation%s_%02d (ADR-0007).",
+              version, mandatoryFrom, PeppolValidationStage.RULE_SET_VERSION,
+              candidate[0], candidate[1])
+          .isAfter(today);
+    }
+  });
+}
+```
 
-- The landing page had a "REST-API ansehen" button and every page an "API" menu item. On production,
-  where the API docs were switched off at the time, both led to a 404.
-- There was a test for the switched-off state. It checked that the docs were no longer served. Its
-  own comment said the docs were "really gone, not merely unlinked" — the second half was never
-  tested and never true.
-- Found by clicking through the live site in a real browser. Fixed test-first in both directions:
-  links disappear when the docs are off, and appear when they are on — otherwise a wiring bug that
-  removes the link everywhere would stay green.
-- Line to keep: a green suite proves the code does what the tests say; it cannot notice a page
-  pointing at something that does not exist.
+Before this test the deadline lived in an owner checklist and in one person's memory. It is the
+one tripwire in the repository that fires without anybody editing the repository first.
 
-### 4. Our own privacy promise was not quite true (PR #29, 2026-08-07) (≈170 words)
+## 2. A green repository turned red without a changed line
 
-- The public validator says the upload is not stored: no report, no log entry, no file on a disk.
-  The last part was false.
-- Spring Boot's `spring.servlet.multipart.file-size-threshold` defaults to 0 bytes, so every upload
-  was streamed to a temporary file. The app had set the size limits, not the threshold. Observed on
-  the running instance during a 1.9 MB upload; the file was deleted at the end of the request.
-- For a page that lists privacy as a property, the gap between promise and mechanism is the bug,
-  not how long the file lived.
-- Fix: a threshold at least as large as the accepted maximum, so anything the app accepts stays
-  below it and in memory. Re-measured the same way: before a temp file, after none. Listed under
-  "Fixed" in v0.2.0 (2026-10-09).
+Builds pin dependencies; they do not pin the world's verdict on them. The OWASP Dependency-Check
+job in CI went red on 2026-09-24 at the latest, for CVEs published against libraries the project
+had not touched. The fix was an upgrade, not a suppression: Spring Boot 4.1.0 → 4.1.1, Tomcat
+11.0.24 → 11.0.26, Netty 4.2.16 → 4.2.19, only `pom.xml` (PR #38, green on `main` since
+2026-10-08).
 
-### Close (≈100 words)
+It happened again on 2026-11-02, this time in a scheduled run that exists only to warm the NVD
+cache: `swagger-ui-bundle.js` inside the swagger-ui 5.32.11 webjar embeds DOMPurify 3.4.12, flagged
+with two CVSS 10.0 advisories, fixed in DOMPurify 3.4.17. springdoc 3.1.0 manages that webjar at
+5.32.11, and even springdoc 3.2.0 manages 5.34.0, which still embeds 3.4.16 — verified by extracting
+the jars rather than trusting a changelog. So the webjar is now pinned separately at 5.34.1, which
+embeds 3.4.17. One detail that cost an hour: springdoc builds the UI's resource path from its own
+`springdoc.swagger-ui.version` property, so a webjar pinned ahead of it answers 404 until that
+property says the same number. The integration test that requests `/swagger-ui/index.html` is what
+caught it.
 
-- The pattern across all four: the tests checked what someone wrote down, not what is true outside
-  the code — a rule set, the CVE database, a page in a browser, a disk.
-- What helped each time: derive the check from the source of truth (rule files, not a list), let
-  time-based facts fail the build, use the product in a browser, measure a promise on the running
-  system.
-- Not in this article: what the project does not do (no Peppol access point, no sending, no tax
-  advice). Repo, Apache-2.0: https://github.com/Stoicera/einvoice_at — feedback via issues welcome.
+The rule in `.owasp-suppressions.xml` stands: a suppression is a claim that a CVE does not apply,
+it names its reason, and where possible it carries an expiry date so it has to be argued again.
 
----
+## 3. A dead button that no test could see
 
-## Not to be written (binding)
+The landing page had a "REST-API ansehen" button and every page an "API" menu item. In production,
+where the API docs were switched off at the time, both led to a 404.
 
-No user or customer numbers (there are none). No "certified", "officially approved" or "checked by
-the federal government". No server addresses, host names of the control plane or paths. No effort
-or cost figures. Nothing that sounds like legal or tax advice.
+There was a test for the switched-off state. It checked that the docs were no longer served. Its
+own comment said the docs were "really gone, not merely unlinked" — the second half was never tested
+and never true. It was found by clicking through the live site in a real browser, and fixed
+test-first in both directions (PR #27, 2026-08-07): the links disappear when the docs are off and
+appear when they are on, so a wiring bug that removes the link everywhere cannot stay green either.
+
+A green suite proves the code does what the tests say. It cannot notice a page pointing at
+something that does not exist.
+
+## 4. Our own privacy promise was not quite true
+
+The public validator says the upload is not stored: no report, no log entry, no file on a disk. The
+last part was false. Spring Boot's `spring.servlet.multipart.file-size-threshold` defaults to zero
+bytes, so every upload was streamed to a temporary file for the length of the request. The
+application had set the size limits, not the threshold. Observed on the running instance during a
+1.9 MB upload; the file was deleted at the end of the request.
+
+For a page that lists privacy as a property, the gap between promise and mechanism is the bug, not
+how long the file lived. The fix (PR #29, 2026-08-07, listed under "Fixed" in v0.2.0) sets the
+threshold at least as large as the accepted maximum, so anything the application accepts stays
+below it and in memory. Re-measured the same way: before, a temp file; after, none.
+
+## What helped each time
+
+Derive the check from the source of truth — the rule files, not a list; the artefact's own
+publication dates, not a calendar entry. Let time-based facts fail the build instead of waiting in
+a document. Use the product in a browser. Measure a promise on the running system, not in the
+configuration that is supposed to produce it. And treat a transitive front-end bundle like any
+other dependency: extract it and look.
+
+What the project does not do: it is not a Peppol access point and sends nothing, no inbound
+processing, no bookkeeping, no tax advice, not certified by anyone — the verdict that counts is the
+one at e-rechnung.gv.at. The repository is Apache-2.0; `CONTRIBUTING.md` says what gets merged and
+that issues get an answer within five working days. If you run it yourself:
+
+```bash
+git clone https://github.com/Stoicera/einvoice_at.git && cd einvoice_at
+cp .env.example .env   # set POSTGRES_PASSWORD, KEYCLOAK_ADMIN, KEYCLOAK_ADMIN_PASSWORD
+docker compose up -d   # http://localhost:8080/validator — set POSTGRES_PORT if 5432 is taken
+```
+
+From a fresh clone on 2026-11-06 that took 312 seconds to a healthy stack, image build included,
+and the only thing that broke was a database already listening on 5432.
