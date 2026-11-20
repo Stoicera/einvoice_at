@@ -155,6 +155,19 @@
          OpenApiIT (app/src/test/.../api/OpenApiIT.java) against the real Boot 4.1.0 context. -->
     <springdoc-openapi.version>3.1.0</springdoc-openapi.version>
 
+    <!-- SECURITY OVERRIDE of the swagger-ui webjar springdoc-openapi 3.1.0 brings in (5.32.11).
+
+         2026-11-20: the OWASP scan flags DOMPurify 3.4.12, embedded in swagger-ui-bundle.js and
+         swagger-ui-es-bundle.js, with CVE-2026-116803 and CVE-2026-116804 (NVD CVSS 10.0;
+         GHSA-77h4-4vqj-j7vc, GHSA-6vxf-252m-8g79: fixed in DOMPurify 3.4.17). swagger-ui 5.34.1
+         is the first release whose package.json requires dompurify ^3.4.17, and its bundle embeds
+         3.4.17 (verified by extracting the webjar). springdoc 3.1.1 still bundles 5.32.14
+         (DOMPurify ^3.4.13); 3.2.1 needs Boot 4.2. Same policy as the tomcat override: upgrade,
+         do not suppress. springdoc resolves the webjar version at runtime (OpenApiIT checks that
+         the bundle is served). Drop this once a springdoc release on Boot 4.1 manages 5.34.1 or
+         higher. -->
+    <swagger-ui.version>5.34.1</swagger-ui.version>
+
     <!-- Reactor-wide defaults for org.codehaus.mojo:exec-maven-plugin's `java` goal (used by the
          validation module's ValidationRunner CLI): skipped everywhere except where a module opts
          back in with its own <skip>false</skip>. Both properties are needed, not just exec.skip:
@@ -225,6 +238,12 @@
         <groupId>org.springdoc</groupId>
         <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
         <version>${springdoc-openapi.version}</version>
+      </dependency>
+      <!-- DOMPurify CVE-2026-116803/116804: see the swagger-ui.version property. -->
+      <dependency>
+        <groupId>org.webjars</groupId>
+        <artifactId>swagger-ui</artifactId>
+        <version>${swagger-ui.version}</version>
       </dependency>
       <dependency>
         <groupId>net.jqwik</groupId>
