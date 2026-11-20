@@ -1,0 +1,11 @@
+# Agent-control files: an agent must not weaken its own rules unreviewed.
+# Takes effect as a merge gate once the org ruleset requires code-owner review
+# (SSOT ai/ENGINEERING.md §8); until then GitHub requests the review automatically.
+/AGENTS.md                 @SebastianKrn @Artaeon
+/CLAUDE.md                 @SebastianKrn @Artaeon
+/.github/                  @SebastianKrn @Artaeon
+/.mcp.json                 @SebastianKrn @Artaeon
+/.claude/                  @SebastianKrn @Artaeon
+/opencode.json             @SebastianKrn @Artaeon
+/.pre-commit-config.yaml   @SebastianKrn @Artaeon
+/.gitleaks.toml            @SebastianKrn @Artaeon

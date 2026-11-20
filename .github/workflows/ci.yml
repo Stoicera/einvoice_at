@@ -439,6 +439,34 @@ jobs:
             exit 1
           fi
 
+  # Secret scan over the complete history (SSOT ai/ENGINEERING.md §8). Same pinned, checksum-verified
+  # binary as the local pre-commit hook (.pre-commit-config.yaml) and as mealtime's CI.
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install verified gitleaks binary
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl --fail --silent --show-error --location --retry 5 --retry-delay 2 --retry-all-errors \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}" \
+            --output "${RUNNER_TEMP}/${archive}"
+          echo "${GITLEAKS_SHA256}  ${RUNNER_TEMP}/${archive}" | sha256sum --check --strict
+          tar -xzf "${RUNNER_TEMP}/${archive}" -C "${RUNNER_TEMP}" gitleaks
+      - name: Scan complete repository history
+        run: '"${RUNNER_TEMP}/gitleaks" git . --redact --no-banner --verbose'
+
   # Tells the Hetzner/Dokploy deployment to pull the image that was just published.
   #
   # Skipped LOUDLY when the webhook secret is absent, exactly like the NVD scan above: a fork, a
@@ -446,7 +474,7 @@ jobs:
   # deployment it does not have, and a stage that is permanently red teaches everyone to ignore red.
   deploy:
     name: Deploy (Dokploy webhook)
-    needs: [build, docker]
+    needs: [build, docker, secret-scan]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
