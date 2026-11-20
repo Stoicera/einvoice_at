@@ -155,6 +155,17 @@ class OpenApiIT extends AbstractPostgresIT {
     assertThat(response.headers().firstValue("Content-Type").orElse("")).contains("text/html");
   }
 
+  /**
+   * The swagger-ui webjar is overridden in the root POM (DOMPurify CVE-2026-116803/116804). The
+   * page only works if springdoc still finds the bundle under the overridden version.
+   */
+  @Test
+  void swaggerUiBundleIsServed() throws Exception {
+    HttpResponse<String> response = get("/swagger-ui/swagger-ui-bundle.js");
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(response.headers().firstValue("Content-Type").orElse("")).contains("javascript");
+  }
+
   private HttpResponse<String> get(String path) throws Exception {
     HttpRequest request =
         HttpRequest.newBuilder(URI.create("http://localhost:" + port + path)).GET().build();

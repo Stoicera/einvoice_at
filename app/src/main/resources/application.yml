@@ -170,6 +170,10 @@ springdoc:
     enabled: ${API_DOCS_ENABLED:true}
   swagger-ui:
     enabled: ${API_DOCS_ENABLED:true}
+    # The webjar is overridden in the root POM (swagger-ui.version, DOMPurify CVE-2026-116803/116804).
+    # springdoc serves /swagger-ui/** from the version its own jar was built with unless told
+    # otherwise; Maven resource filtering (spring-boot-starter-parent, @…@) keeps the two in step.
+    version: "@swagger-ui.version@"
 
 server:
   port: 8080
