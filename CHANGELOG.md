@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Footer (`fragments/layout.html`, colophon): link "Stoicera auf Google" to the Stoicera
+  Google Business Profile (`https://g.page/r/CezXrp1afxE-EBM`, `rel="noopener"`).
 - **`/.well-known/security.txt`** (RFC 9116) on the public host, naming the same two contacts as
   `SECURITY.md` (GitHub private vulnerability reporting, office@stoicera.com), with `Expires`
   2027-10-01. The web filter chain now permits `/.well-known/**` anonymously; before, the URL
